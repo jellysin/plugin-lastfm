@@ -2,8 +2,8 @@
 
 Last.fm music integration for **Jellyfin 12**: scrobbling, favourites, listening
 insights, discovery and playlists. This is a new implementation with its own
-plugin identity and release history. The first release is being prepared; no
-installable JellySin release is advertised until publication and catalog verification.
+plugin identity and release history. [Version 1.0.0](https://github.com/jellysin/jellyfin-plugin-lastfm/releases/tag/v1.0.0)
+is published and verified through Jellyfin's native catalog installation.
 
 ## Music features
 
@@ -24,11 +24,11 @@ Jellyfin server's base path. Sign in with Jellyfin credentials or Quick Connect,
 then authorize Last.fm in its own browser page. Each Jellyfin user manages their
 own account. Last.fm passwords and session keys are never entered into the dashboard.
 
-## Installation after the first release
+## Installation
 
 1. Run Jellyfin 12 and add this plugin repository in the administrator dashboard:
    `https://raw.githubusercontent.com/jellysin/catalog/main/manifest.json`.
-2. Install **JellySin Last.fm** when it appears in the catalog, then restart Jellyfin.
+2. Install **JellySin Last.fm** from the catalog, then restart Jellyfin.
 3. Open the plugin's administration page and follow **Open JellySin Last.fm**.
    Users can also visit `/JellySin/Lastfm/` directly on the server.
 4. Sign in, connect Last.fm, and enable the features you want for your account.

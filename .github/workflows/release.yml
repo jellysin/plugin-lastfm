@@ -58,7 +58,7 @@ jobs:
           npm run build
           dotnet restore --locked-mode
           dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
-      - uses: jellysin/plugin-tooling/actions/package@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+      - uses: jellysin/plugin-tooling/actions/package@8beb2e91934cfa7ab3306eff9f6a6911f2278980 # v1.0.3
         id: package
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jellysin/plugin-tooling
-          ref: 41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+          ref: 8beb2e91934cfa7ab3306eff9f6a6911f2278980 # v1.0.3
           path: build/repro-tooling
           persist-credentials: false
       - name: Verify production artifact reproducibility with the embedded application
@@ -84,7 +84,7 @@ jobs:
         with:
           subject-path: dist/*
       - name: Verify bytes, resume missing draft uploads and publish
-        uses: jellysin/plugin-tooling/actions/publish@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+        uses: jellysin/plugin-tooling/actions/publish@8beb2e91934cfa7ab3306eff9f6a6911f2278980 # v1.0.3
         with:
           directory: ${{ steps.package.outputs.directory }}
           tag: ${{ github.ref_name }}

@@ -1,0 +1,27 @@
+{
+  "verifiedAtUtc": "2026-09-08T13:32:34.876309+00:00",
+  "repositories": [
+    {
+      "repository": "lusoris/jellyfin-plugin-lastfm",
+      "archived": true,
+      "main": "7c5fa9cd09d380687cc1644da2e1fb28fc48497d",
+      "releaseAndAssetIdentitiesPreserved": true,
+      "tagsPreserved": true,
+      "catalogBlobsPreserved": true,
+      "existingPullRequestsUnmerged": true,
+      "preexistingDraftIdsHiddenByArchivedRepository": [
+        304223349
+      ]
+    },
+    {
+      "repository": "lusoris/jellyfin-utilities",
+      "archived": true,
+      "main": "e16f30c73a6a377b20a920e93af9ce278c71bd35",
+      "releaseAndAssetIdentitiesPreserved": true,
+      "tagsPreserved": true,
+      "catalogBlobsPreserved": true,
+      "existingPullRequestsUnmerged": true,
+      "preexistingDraftIdsHiddenByArchivedRepository": []
+    }
+  ]
+}
