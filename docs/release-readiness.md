@@ -1,8 +1,9 @@
 # First-release acceptance
 
-The version file describes the intended first release. It does not establish that
-1.0.0 is ready. The initial implementation remains under review and no plugin
-release has been published. Existing repositories and catalog files stay intact.
+The implementation passed local, native-host and hosted candidate validation.
+The first release is awaiting exact-tag publication and catalog installation
+verification. Existing repositories and catalog files stay intact until those
+final rollout checks pass.
 
 ## Evidence and remaining work
 
@@ -19,12 +20,12 @@ release has been published. Existing repositories and catalog files stay intact.
 | Native similarity | Actual provider picker and Last.fm-influenced native ranking verified; public data only |
 | Private generated playlists | Actual ownership, regeneration, injected native write failure, durable restart recovery and retry passed; reviewed cancellation tested |
 | Storage and lifecycle | Atomic updates, cancellation, byte/document limits, durable reserves and orphan cleanup regressions passed |
-| Web page | 18 browser scenarios, 16 client tests, root/prefixed paths, immediate logout, safe rendering, review flows, axe, keyboard and performance budgets passed; final native admin form check pending |
-| Large-library behavior | Real 10,000-track server with eight concurrent search/playback HTTP clients passed; rerun against final candidate |
+| Web page | 18 browser scenarios, 16 client tests, root/prefixed paths, immediate logout, safe rendering, review flows, axe, keyboard and performance budgets passed; final native admin form/live read-only checks passed |
+| Large-library behavior | Final real 10,000-track server with eight concurrent search/playback HTTP clients passed locally and in hosted CI |
 | Callback performance | Production callbacks passed one/four-producer latency/allocation budgets with 256 linked accounts and zero dropped/failed writes |
 | Release tooling | Shared tooling 1.0.1 published; 67 tests with two distinct plugin fixtures, SBOM inventory, strict validation and interrupted-upload retry |
-| Reproducibility | Independent exact-commit rebuild comparison added; final committed candidate must pass |
-| Repository checks | PR/squash protections, pinned Actions, dependency locks, Renovate and read-only defaults configured; final hosted checks pending |
+| Reproducibility | Two independent checkouts matched the actual selected ZIP, release metadata, SBOM and checksums locally and in hosted CI; production tag repeats the gate with embedded credentials |
+| Repository checks | PR/squash protections, pinned Actions, locks, Renovate and read-only defaults configured; candidate CI and all four CodeQL analyses passed |
 | Publication and installation | Exact-tag production build, provenance, immutable release retry and published-catalog installation still pending |
 | Legacy migration | Notices and archival intentionally follow a verified new release; unfinished modernization PRs remain unmerged |
 

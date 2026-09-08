@@ -41,12 +41,12 @@ generated track, delivery state must remain empty and healthy, and HTTP p95 must
 stay below 1,000 ms. No Last.fm account is connected or external music API called.
 Only this harness's uniquely owned container, volumes and fixtures are cleaned up.
 
-The 2026-09-08 local run scanned all 10,000 tracks in 22.7 seconds:
+The final 2026-09-08 local run scanned all 10,000 tracks in 24.7 seconds:
 
 | Request | Median | p95 | p99 |
 | --- | ---: | ---: | ---: |
-| Plugin library search | 174.7 ms | 287.0 ms | 350.8 ms |
-| Native playback progress | 143.3 ms | 356.3 ms | 461.8 ms |
+| Plugin library search | 197.6 ms | 331.2 ms | 380.7 ms |
+| Native playback progress | 196.1 ms | 439.0 ms | 519.0 ms |
 
 These numbers include Docker networking, HTTP, authorization and Jellyfin's own
 work. They do not describe the plugin callback alone. The playback requests are
