@@ -1,7 +1,7 @@
 ## Change
 
 Describe the user-visible problem and resulting behavior. Explain any account,
-configuration, plugin API or catalog migration.
+configuration, plugin API or Plugin Repository migration.
 
 ## Validation
 

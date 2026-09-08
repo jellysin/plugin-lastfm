@@ -48,8 +48,9 @@ and never merges old runs or trusts summary percentages from the report header.
 ## Release and compatibility
 
 Release-please owns `version.txt`, web package versions, tags and changelogs.
-Stable `vX.Y.Z` tags map to assembly/catalog `X.Y.Z.0`; the minimum Jellyfin ABI
-is separately recorded in `plugin.json`. Do not ship host-provided assemblies.
+Stable `vX.Y.Z` tags map to `X.Y.Z.0` for the assembly and Plugin Repository;
+the minimum Jellyfin ABI is separately recorded in `plugin.json`.
+Do not ship host-provided assemblies.
 
 The release automation creates a draft and tag, then explicitly dispatches
 `release.yml` **on the tag ref**. This binds GitHub provenance to the source tag.
@@ -62,21 +63,9 @@ Immutable releases must be
 enabled before publication. Retry by dispatching the same workflow on the same tag;
 never use an upload replacement option or change already published bytes.
 
-The first `v1.0.0` publication stopped before upload because tooling 1.0.1 used
-GitHub's published-release lookup for a draft. Its source tag remains unchanged.
-For that tag, dispatch `recover-release.yml` on reviewed `main`. This narrowly
-scoped recovery rebuilds the original source with its original packaging tools,
-checks reproducibility, and requires all four existing `release.yml` attestations
-to match the original tag and commit before any upload. It has no permission to
-create attestations. The corrected publisher resolves the draft by its numeric
-release ID and preserves all byte checks. Retrying this recovery verifies the
-complete immutable release without replacing assets. Normal later releases use
-the corrected publisher directly from their own tag workflow.
+The plugin is in development and has no published release available.
 Draft asset checks use authenticated numeric API identities; GitHub assigns their
 canonical public download URLs when the release is published.
-Renovate excludes this historical recovery recipe so its original source, tool
-versions and recorded artifact digests stay fixed. Normal release, CI and security
-workflows continue receiving dependency updates.
 
 Production builds require the project-owned `LASTFM_API_KEY` and
 `LASTFM_SHARED_SECRET` repository secrets. CI and fork PR builds do not receive them.
@@ -90,8 +79,9 @@ explicitly dispatched; token-created tags are not assumed to trigger workflows.
 GitHub may additionally require a maintainer to approve the actual bot-created
 PR workflow run. Review and approve it through GitHub; a dispatched run alone may
 not satisfy that pending PR check. Required checks remain enforced.
-The catalog polls public releases and writes its own PR, so this repository needs
-no cross-repository write token. All shared tooling is pinned to full SHAs.
+The [Plugin Repository](https://github.com/jellysin/repo) has separate ownership,
+so this repository needs no cross-repository write token. All shared tooling is
+pinned to full SHAs in [release-helper](https://github.com/jellysin/release-helper).
 
 The engineering baseline is in
 [JellySin principles](https://github.com/jellysin/.github/blob/main/docs/principles.md).
