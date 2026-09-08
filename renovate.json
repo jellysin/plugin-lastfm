@@ -1,0 +1,14 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "dependencyDashboard": true,
+  "minimumReleaseAge": "3 days",
+  "rangeStrategy": "pin",
+  "automerge": false,
+  "prConcurrentLimit": 5,
+  "labels": ["dependencies"],
+  "packageRules": [
+    {"matchManagers": ["github-actions"], "groupName": "GitHub Actions"},
+    {"matchUpdateTypes": ["major"], "groupName": null}
+  ]
+}

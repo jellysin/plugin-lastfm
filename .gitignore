@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+build/
+dist/
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.vs/
+.idea/
+*.user
+TestResults/
+test-results/
+playwright-report/
+src/JellySin.Plugin.Lastfm/Web/*.js

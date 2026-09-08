@@ -1,0 +1,12 @@
+{
+  "guid": "2034650d-a290-4a16-b195-89fb44cfb932",
+  "name": "JellySin Last.fm",
+  "description": "Connect your music: Last.fm listening, favourites, discovery and playlists for Jellyfin 12.",
+  "overview": "Last.fm music integration for Jellyfin 12.",
+  "owner": "JellySin",
+  "category": "Music",
+  "targetAbi": "12.0.0.0",
+  "assemblyFile": "JellySin.Plugin.Lastfm.dll",
+  "packageFiles": ["LICENSE"],
+  "repository": "jellysin/jellyfin-plugin-lastfm"
+}

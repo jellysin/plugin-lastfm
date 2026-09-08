@@ -1,0 +1,57 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; color: #f4f0ff; background: #111018; line-height: 1.55; }
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(ellipse at 82% 0%, #30213e 0, transparent 38%); }
+[hidden] { display: none !important; }
+a { color: #d9b7ff; text-underline-offset: .25em; }
+a:hover { color: #f3e6ff; }
+button, input, select { font: inherit; }
+button, select, input { border: 1px solid #776c8b; border-radius: .6rem; background: #292432; color: inherit; padding: .7rem .9rem; }
+button { cursor: pointer; margin: .3rem .3rem .3rem 0; }
+button:hover { border-color: #e0b9ff; background: #3c304b; }
+button:disabled { cursor: default; opacity: .5; }
+input:not([type="checkbox"]), select { width: 100%; max-width: 36rem; min-width: 0; }
+input[type="checkbox"] { width: 1.2rem; height: 1.2rem; accent-color: #d6a4ff; }
+input:invalid:not(:placeholder-shown):focus { border-color: #ffb4ab; }
+:focus-visible { outline: 3px solid #c4f1d0; outline-offset: 4px; }
+label { display: block; margin: .9rem 0 .3rem; }
+form { margin-top: 1rem; }
+form > button { margin-top: 1rem; }
+.shell { width: min(1120px, calc(100% - 3rem)); margin-inline: auto; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding-block: 1.5rem; gap: 1rem; border-bottom: 1px solid #463a52; }
+.brand { display: flex; align-items: center; gap: .65rem; font-weight: 700; text-decoration: none; color: #fff; }
+.mark { display: grid; place-items: center; color: #211529; background: #d6a4ff; border-radius: 55% 55% 30% 30%; height: 2.2rem; width: 2.2rem; font-size: 1.6rem; }
+.intro { padding-block: 3.5rem 1rem; }
+h1 { font-size: clamp(2.6rem, 6vw, 4.8rem); letter-spacing: -.055em; line-height: 1.07; margin: .5rem 0 1.3rem; font-weight: 650; }
+h2 { letter-spacing: -.03em; font-size: 1.6rem; line-height: 1.2; margin: .3rem 0 1rem; }
+h3 { font-size: 1.1rem; }
+.eyebrow { color: #c4f1d0; font-size: .75rem; font-weight: 700; letter-spacing: .15em; }
+.muted, .detail, footer { color: #c3bacc; }
+.detail { font-size: .82rem; }
+.card { background: #1b1823; border: 1px solid #463a52; border-radius: 1rem; padding: 1.6rem; margin-block: 1.2rem; scroll-margin-top: 1rem; }
+.narrow { max-width: 40rem; }
+.primary { color: #241331; background: #d6a4ff; border-color: #d6a4ff; font-weight: 650; }
+.primary:hover { color: #190d23; background: #e6c8ff; }
+.actions { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; margin-block: .8rem; }
+.actions input, .actions select { flex: 1; min-width: 10rem; }
+.actions label { margin: 0; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.section-nav { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.section-nav button { margin-left: auto; }
+.columns, .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.wide { grid-column: 1 / -1; }
+.check { display: flex; align-items: center; gap: .6rem; }
+.music-list { list-style: none; padding: 0; margin: 1rem 0; }
+.music-list li { border-bottom: 1px solid #463a52; padding-block: 1rem; }
+.music-list p { margin: .2rem 0; }
+.music-list a { display: inline-block; margin-right: 1rem; font-size: .9rem; }
+details { border-top: 1px solid #463a52; margin-top: 1.5rem; padding-top: 1rem; }
+summary { cursor: pointer; font-weight: 600; }
+.code { font-size: 2.5rem; letter-spacing: .2em; color: #c4f1d0; }
+.notice { padding: 1rem; margin-top: 1rem; border-left: 3px solid #ffb4ab; background: #30222e; }
+#status { min-height: 1.6rem; color: #c4f1d0; }
+#status.error { color: #ffb4ab; }
+footer { font-size: .85rem; padding-block: 2rem; }
+.skip { position: absolute; top: -5rem; padding: 1rem; background: #211529; z-index: 2; }
+.skip:focus { top: .5rem; }
+@media (max-width: 640px) { .shell { width: calc(100% - 1.5rem); } .card { padding: 1rem; } .columns, .form-grid { grid-template-columns: 1fr; } .topbar { align-items: flex-start; font-size: .85rem; } .brand { flex-wrap: wrap; } .intro { padding-top: 2rem; } .section-nav { gap: .9rem; } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
