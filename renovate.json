@@ -7,6 +7,7 @@
   "automerge": false,
   "prConcurrentLimit": 5,
   "labels": ["dependencies"],
+  "ignorePaths": [".github/workflows/recover-release.yml"],
   "customManagers": [
     {
       "customType": "regex",
