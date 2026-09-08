@@ -8,7 +8,6 @@
   "prConcurrentLimit": 5,
   "labels": ["dependencies"],
   "vulnerabilityAlerts": {"enabled": true, "minimumReleaseAge": null},
-  "ignorePaths": [".github/workflows/recover-release.yml"],
   "customManagers": [
     {
       "customType": "regex",
