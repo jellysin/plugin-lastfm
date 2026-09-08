@@ -62,6 +62,20 @@ Immutable releases must be
 enabled before publication. Retry by dispatching the same workflow on the same tag;
 never use an upload replacement option or change already published bytes.
 
+The first `v1.0.0` publication stopped before upload because tooling 1.0.1 used
+GitHub's published-release lookup for a draft. Its source tag remains unchanged.
+For that tag, dispatch `recover-release.yml` on reviewed `main`. This narrowly
+scoped recovery rebuilds the original source with its original packaging tools,
+checks reproducibility, and requires all four existing `release.yml` attestations
+to match the original tag and commit before any upload. It has no permission to
+create attestations. The corrected publisher resolves the draft by its numeric
+release ID and preserves all byte checks. Retrying this recovery verifies the
+complete immutable release without replacing assets. Normal later releases use
+the corrected publisher directly from their own tag workflow.
+Renovate excludes this historical recovery recipe so its original source, tool
+versions and recorded artifact digests stay fixed. Normal release, CI and security
+workflows continue receiving dependency updates.
+
 Production builds require the project-owned `LASTFM_API_KEY` and
 `LASTFM_SHARED_SECRET` repository secrets. CI and fork PR builds do not receive them.
 Release publication fails if they are absent or malformed. They become assembly
