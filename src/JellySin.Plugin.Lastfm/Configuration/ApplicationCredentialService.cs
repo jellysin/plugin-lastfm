@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using JellySin.Plugin.Lastfm.Storage;
 using Microsoft.AspNetCore.DataProtection;
 
@@ -7,6 +9,8 @@ namespace JellySin.Plugin.Lastfm.Configuration;
 public sealed class ApplicationCredentialService(IStateStore store, IDataProtectionProvider protection)
 {
     private readonly IDataProtector _protector = protection.CreateProtector("JellySin.Lastfm.Application.v1");
+
+    public static string Identity(ApplicationCredentials credentials) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(credentials.ApiKey)));
 
     public async Task<ApplicationCredentials> GetAsync(CancellationToken cancellationToken)
     {

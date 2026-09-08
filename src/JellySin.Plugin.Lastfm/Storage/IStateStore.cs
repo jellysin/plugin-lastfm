@@ -13,6 +13,8 @@ public interface IStateStore
     Task DeleteUserAsync(Guid userId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Guid>> GetUsersAsync(CancellationToken cancellationToken);
+
+    Task ReserveNativeAsync(string identity, long bytes, CancellationToken cancellationToken);
 }
 
 public sealed class StorageBudgetException() : IOException("The Last.fm storage budget has been reached. Remove cached data before continuing.");

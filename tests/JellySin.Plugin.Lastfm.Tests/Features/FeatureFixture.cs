@@ -45,7 +45,7 @@ internal sealed class FeatureFixture : IDisposable
         {
             Assert.Equal("private-session-value", session);
             Loved.RemoveAll(t => t.Artist == parameters["artist"] && t.Title == parameters["track"]);
-            if (method == "track.love") Loved.Add(new(parameters["artist"], parameters["track"]));
+            if (method == "track.love") Loved.Add(new(parameters["artist"], parameters["track"], PlayedAt: Core.Clock.GetUtcNow()));
             return JsonDocument.Parse("{}");
         }
         return method switch
@@ -100,7 +100,14 @@ internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter
     {
         Validate(userId, ct);
         FavouriteWrites.Add((itemId, favourite));
-        Items[itemId] = Items[itemId] with { Favourite = favourite };
+        Items[itemId] = Items[itemId] with { Favourite = favourite, FavouriteRevision = Guid.NewGuid().ToString("N") };
+    }
+
+    public bool TrySetFavourite(Guid userId, Guid itemId, bool favourite, string expectedRevision, CancellationToken ct)
+    {
+        if (Items[itemId].FavouriteRevision != expectedRevision) return false;
+        SetFavourite(userId, itemId, favourite, ct);
+        return true;
     }
 
     public void ApplyHistoryFloor(Guid userId, Guid itemId, int playCount, DateTime? lastPlayed, CancellationToken ct)

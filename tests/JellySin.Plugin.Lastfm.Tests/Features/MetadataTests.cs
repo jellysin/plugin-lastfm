@@ -7,6 +7,7 @@ using JellySin.Plugin.Lastfm.Transport;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Configuration;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Features;
@@ -49,7 +50,7 @@ public sealed class MetadataTests
         Assert.DoesNotContain("<", result.Item.Overview, StringComparison.Ordinal);
         Assert.Single(result.Item.Tags);
         Assert.Empty(result.Item.Genres);
-        Assert.Single(Directory.EnumerateFiles(fixture.DirectoryPath, "feature-native-*.json", SearchOption.AllDirectories));
+        Assert.Single(Directory.EnumerateFiles(fixture.DirectoryPath, "native-reservations-*.json", SearchOption.AllDirectories));
         Assert.Single(new LastfmExternalUrls().GetExternalUrls(result.Item));
         using var image = await provider.GetImageResponse("https://invalid.example/secret", Ct);
         Assert.Equal(System.Net.HttpStatusCode.NotFound, image.StatusCode);
@@ -84,6 +85,10 @@ public sealed class MetadataTests
         Assert.False(call.Values.ContainsKey("user"));
         Assert.False(call.Values.ContainsKey("username"));
         Assert.Null(provider.CacheDuration);
+        Assert.Equal(MetadataPluginType.SimilarityProvider, provider.Type);
+        Assert.True(provider.Supports(typeof(Audio)));
+        Assert.True(provider.Supports(typeof(MusicAlbum)));
+        Assert.True(provider.Supports(typeof(MusicArtist)));
     }
 
     [Fact]
@@ -150,6 +155,6 @@ public sealed class MetadataTests
         var provider = new ArtistMetadataProvider(new(client.Object, fixture.Credentials, fixture.Store));
         var result = await provider.GetMetadata(new ArtistInfo { Name = "Artist" }, Ct);
         Assert.False(result.HasMetadata);
-        Assert.Empty(Directory.EnumerateFiles(fixture.DirectoryPath, "feature-native-*.json", SearchOption.AllDirectories));
+        Assert.Empty(Directory.EnumerateFiles(fixture.DirectoryPath, "native-reservations-*.json", SearchOption.AllDirectories));
     }
 }

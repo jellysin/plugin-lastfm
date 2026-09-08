@@ -1,5 +1,6 @@
 using System.Text.Json;
 using JellySin.Plugin.Lastfm.Features;
+using JellySin.Plugin.Lastfm.Transport;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Features;
@@ -7,6 +8,54 @@ namespace JellySin.Plugin.Lastfm.Tests.Features;
 public sealed class DiscoveryTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Theory]
+    [InlineData(6)]
+    [InlineData(7)]
+    public async Task UnknownDiscoveryResourcesReturnEmptyCandidates(int code)
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        f.Core.Client.Handler = (_, _, _) => throw new LastfmException(code);
+        Assert.Empty(await f.Api.SimilarAsync(new MusicTrack("Unknown artist", "Unknown track"), Ct));
+        Assert.Empty(await f.Api.ArtistTracksAsync("Unknown artist", Ct));
+        Assert.Empty(await f.Api.ArtistDiscoveryAsync("Unknown artist", false, Ct));
+        Assert.Empty(await f.Api.ArtistDiscoveryAsync("Unknown artist", true, Ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Api.SimilarAsync(new MusicTrack("Artist", ""), Ct));
+    }
+
+    [Theory]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(29)]
+    public async Task DiscoveryPreservesCredentialsServiceAndRateLimitFailures(int code)
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        f.Core.Client.Handler = (_, _, _) => throw new LastfmException(code);
+        var error = await Assert.ThrowsAsync<LastfmException>(() => f.Api.SimilarAsync(new MusicTrack("Artist", "Track"), Ct));
+        Assert.Equal(code, error.Code);
+    }
+
+    [Fact]
+    public async Task MissingPersonalSeedDoesNotDiscardOtherDiscoveryResults()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        f.Top.Add(new MusicTrack("Unknown", "Missing"));
+        f.Top.Add(new MusicTrack("Known", "Seed"));
+        f.Core.Client.Handler = (method, args, session) => method switch
+        {
+            "track.getSimilar" when args["artist"] == "Unknown" => throw new LastfmException(6),
+            "track.getSimilar" => JsonDocument.Parse("""{"similartracks":{"track":[{"name":"Discovery","artist":{"name":"Known"}}]}}"""),
+            "artist.getSimilar" => throw new LastfmException(6),
+            _ => f.Respond(method, args, session),
+        };
+        var result = await new DiscoveryService(f.Api, f.Library, Mock.Of<IDiscoveryLibrary>(), f.Core.Accounts)
+            .GetAsync(f.Core.UserId, null, Ct);
+        Assert.Equal("Discovery", Assert.Single(result.External).Title);
+        Assert.Empty(result.Artists);
+    }
 
     [Fact]
     public async Task DiscoverySeparatesPlayableTracksAndExternalArtistsAlbums()

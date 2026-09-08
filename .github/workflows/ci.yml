@@ -14,7 +14,7 @@ jobs:
   checks:
     name: CI
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 50
     env:
       CI: 'true'
       DOTNET_NOLOGO: 'true'
@@ -74,7 +74,7 @@ jobs:
           PY
       - name: Measure production playback callbacks
         run: dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
-      - uses: jellysin/plugin-tooling/actions/check@18035406096fc160acccc0afa7238aa314f0a4aa # v1.0.0
+      - uses: jellysin/plugin-tooling/actions/check@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
       - name: Validate workflows and scan tracked history for secrets
         env:
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -90,10 +90,26 @@ jobs:
           "$RUNNER_TEMP/gitleaks" git --redact --no-banner
       - name: Exercise real Jellyfin 12 load, account isolation and restart
         run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --image jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5
+      - name: Verify native history writes and interrupted private playlist recovery
+        run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll
+      - name: Enforce real-library search and concurrent playback budgets
+        run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000
       - name: Validate installable package and release metadata
-        uses: jellysin/plugin-tooling/actions/package@18035406096fc160acccc0afa7238aa314f0a4aa # v1.0.0
+        uses: jellysin/plugin-tooling/actions/package@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
+          nuget-lock-path: src/JellySin.Plugin.Lastfm/packages.lock.json
+          nuget-assets-path: src/JellySin.Plugin.Lastfm/obj/project.assets.json
+          runtime-dependencies-path: runtime-dependencies.json
+      - name: Check out the pinned packaging implementation for independent rebuilds
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jellysin/plugin-tooling
+          ref: 41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+          path: build/repro-tooling
+          persist-credentials: false
+      - name: Verify identical release artifacts from two independent checkouts
+        run: python tools/reproduce.py --tooling-directory build/repro-tooling --reference-directory dist
       - name: Retain diagnostic results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -103,6 +119,9 @@ jobs:
             build/coverage
             build/nuget-audit.json
             build/playback-benchmark.json
+            build/library-load.json
+            build/reproducibility.json
+            build/native-userdata-report.json
             playwright-report
             test-results
           if-no-files-found: ignore

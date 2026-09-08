@@ -1,4 +1,5 @@
 using JellySin.Plugin.Lastfm.Api;
+using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Transport;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,7 @@ public sealed class ExceptionRedactionTests
     [InlineData("remote", 502)]
     [InlineData("cancelled", 408)]
     [InlineData("storage", 503)]
+    [InlineData("budget", 507)]
     [InlineData("unknown", 500)]
     public void ExceptionResponsesAndLogsNeverExposeExceptionMessage(string category, int expectedStatus)
     {
@@ -32,6 +34,7 @@ public sealed class ExceptionRedactionTests
             "remote" => new LastfmException(9),
             "cancelled" => new OperationCanceledException(secret),
             "storage" => new IOException(secret),
+            "budget" => new StorageBudgetException(),
             _ => new Exception(secret)
         };
         var context = new ExceptionContext(new ActionContext(new DefaultHttpContext(), new RouteData(), new ActionDescriptor()), []) { Exception = exception };

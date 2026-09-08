@@ -21,7 +21,11 @@ public sealed record HistoryImportEntry(Guid ItemId, MusicTrack Track, int Curre
     DateTime? CurrentLastPlayed, DateTime? ProposedLastPlayed);
 
 public sealed record HistoryImportPreview(Guid Id, DateTimeOffset ExpiresAt, IReadOnlyList<HistoryImportEntry> Entries,
-    IReadOnlyList<MusicMatch> Unmatched, bool Complete, int NextPage = 1, long? Until = null);
+    IReadOnlyList<MusicMatch> Unmatched, bool Complete, int NextPage = 1, long? Until = null,
+    bool CountsComplete = false, bool DatesComplete = false, int RecentNextPage = 1,
+    IReadOnlyList<Guid>? DatedItemIds = null, int AppliedCount = 0);
+
+public sealed record HistoryImportResult(int Applied, int Total, bool Complete);
 
 public sealed record MusicSeed(Guid ItemId, string Name, string? Artist, string Kind);
 public sealed record DiscoveryEntity(string Kind, string Name, string? Artist, string? Url, string? MusicBrainzId, Guid? ItemId = null);

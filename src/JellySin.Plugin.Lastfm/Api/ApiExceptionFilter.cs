@@ -1,3 +1,4 @@
+using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Transport;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -17,6 +18,7 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IEx
             InvalidOperationException => (409, "The operation is unavailable or its preview has expired. Refresh and try again."),
             LastfmException => (502, "Last.fm could not complete the request. Check your connection and try again."),
             OperationCanceledException => (408, "The operation was cancelled or timed out."),
+            StorageBudgetException => (507, "The Last.fm data storage limit was reached. Any saved progress is retained."),
             IOException => (503, "Plugin storage is temporarily unavailable or full."),
             _ => (500, "The operation could not be completed."),
         };

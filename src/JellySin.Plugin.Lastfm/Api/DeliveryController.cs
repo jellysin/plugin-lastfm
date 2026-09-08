@@ -16,6 +16,10 @@ public sealed class DeliveryController(ScrobbleOutbox outbox, PlaybackService pl
             personal.Pending,
             personal.Blocked,
             personal.LastErrorCode,
+            personal.LastIgnoredCode,
+            personal.Rejected,
+            personal.LastRejectedCode,
+            PendingPersistence = playback.PendingPersistence(CallerId),
             runtime.LegacyPluginDetected,
             runtime.DroppedSnapshots,
             runtime.FailedWrites

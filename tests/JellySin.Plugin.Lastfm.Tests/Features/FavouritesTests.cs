@@ -7,6 +7,120 @@ public sealed class FavouritesTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task InterruptedRemoteAdditionCannotReaddAConcurrentLocalRemoval()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Crash after love", true);
+        f.Core.Client.Handler = (method, arguments, session) =>
+        {
+            var response = f.Respond(method, arguments, session);
+            if (method != "track.love") return response;
+            response.Dispose();
+            f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
+            throw new IOException("Simulated process loss after remote acceptance.");
+        };
+        await Assert.ThrowsAsync<IOException>(() => f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct));
+        Assert.Single(f.Loved);
+        Assert.NotNull(await f.Core.Store.ReadAsync<List<FavouriteAddition>>(f.Core.UserId, "feature-favourite-additions", Ct));
+        f.Core.Client.Handler = f.Respond;
+        var recovered = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
+        Assert.False(f.Library.Items[local.Id].Favourite);
+        Assert.Equal("lastfm", Assert.Single(recovered.Pending).RemoveFrom);
+        Assert.Null(await f.Core.Store.ReadAsync<List<FavouriteAddition>>(f.Core.UserId, "feature-favourite-additions", Ct));
+    }
+
+    [Fact]
+    public async Task InterruptedAdditionBeforeAcceptanceRetriesAdditively()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        f.AddLocal("Unaccepted love", true);
+        f.Core.Client.Handler = (method, arguments, session) => method == "track.love"
+            ? throw new IOException("Connection failed before acceptance.") : f.Respond(method, arguments, session);
+        await Assert.ThrowsAsync<IOException>(() => f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct));
+        f.Core.Client.Handler = f.Respond;
+        Assert.Empty((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
+        Assert.Single(f.Loved);
+    }
+
+    [Fact]
+    public async Task LargeAdditiveMergeCheckpointsAndResumesAtTwoHundredTracks()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        for (var index = 0; index < 201; index++) f.AddLocal("Bounded " + index, true);
+        var first = await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        Assert.Equal(200, f.Loved.Count);
+        Assert.Contains("continue", first.Status!, StringComparison.Ordinal);
+        var next = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
+        Assert.Equal(201, f.Loved.Count);
+        Assert.Equal(201, f.Core.Client.Calls.Count(call => call.Method == "track.love"));
+        Assert.NotNull(next.LastSync);
+    }
+
+    [Fact]
+    public async Task RejectedAmbiguousNamesCannotInventAnAddition()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var first = f.AddLocal("Collision");
+        f.AddLocal("Collision");
+        f.Loved.Add(first.Track);
+        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-favourites",
+            new FavouriteState(true, new() { [first.Id] = new(first.Track, false, false) }, []), Ct);
+        var result = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
+        Assert.Empty(f.Library.FavouriteWrites);
+        Assert.Empty(result.Pending);
+        Assert.Contains("unresolved", result.Status!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LocalRemoveReaddCannotReuseAnOldRemovalReview()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Local ABA", true);
+        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        f.Loved.Clear();
+        var original = Assert.Single((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
+        f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
+        f.Library.SetFavourite(f.Core.UserId, local.Id, true, Ct);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Favourites.ReviewRemovalAsync(f.Core.UserId, original.Id, true, Ct));
+        Assert.True(f.Library.Items[local.Id].Favourite);
+        var refreshed = Assert.Single((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
+        Assert.NotEqual(original.Id, refreshed.Id);
+    }
+
+    [Fact]
+    public async Task RemoteReloveDateInvalidatesAnOldRemovalReview()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Remote ABA", true);
+        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
+        var original = Assert.Single((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
+        f.Loved[0] = f.Loved[0] with { PlayedAt = f.Core.Clock.GetUtcNow().AddSeconds(1) };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Favourites.ReviewRemovalAsync(f.Core.UserId, original.Id, true, Ct));
+        Assert.DoesNotContain(f.Core.Client.Calls, c => c.Method == "track.unlove");
+    }
+
+    [Fact]
+    public async Task MissingRemoteEditTimestampCannotAuthorizeDestructiveRemoteWrite()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Unknown edit", true);
+        f.Loved.Add(local.Track);
+        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
+        var review = Assert.Single((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Favourites.ReviewRemovalAsync(f.Core.UserId, review.Id, true, Ct));
+        Assert.Single(f.Loved);
+    }
+
+    [Fact]
     public async Task FirstOptInMergesBothSidesAndDoesNotEchoWrites()
     {
         using var f = new FeatureFixture();

@@ -53,9 +53,12 @@ is separately recorded in `plugin.json`. Do not ship host-provided assemblies.
 
 The release automation creates a draft and tag, then explicitly dispatches
 `release.yml` **on the tag ref**. This binds GitHub provenance to the source tag.
-That workflow reruns CI, builds production bytes, creates a deterministic ZIP,
-SPDX file inventory and checksums, attests all four artifacts, verifies any existing
-draft bytes, and publishes only a complete release. Immutable releases must be
+That workflow reruns CI and builds production bytes. Packaging verifies the NuGet
+production graph against the committed lock and restored assets, then creates a
+deterministic ZIP, SPDX file/dependency inventory and checksums. Independent builds
+in different checkout paths must produce the same four artifacts. The workflow
+attests them, verifies existing draft bytes and publishes only a complete release.
+Immutable releases must be
 enabled before publication. Retry by dispatching the same workflow on the same tag;
 never use an upload replacement option or change already published bytes.
 
@@ -68,6 +71,9 @@ confidential server credential.
 
 Only the built-in repository token is used. Bot PR CI and release publication are
 explicitly dispatched; token-created tags are not assumed to trigger workflows.
+GitHub may additionally require a maintainer to approve the actual bot-created
+PR workflow run. Review and approve it through GitHub; a dispatched run alone may
+not satisfy that pending PR check. Required checks remain enforced.
 The catalog polls public releases and writes its own PR, so this repository needs
 no cross-repository write token. All shared tooling is pinned to full SHAs.
 

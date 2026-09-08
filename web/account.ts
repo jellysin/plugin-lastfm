@@ -19,10 +19,7 @@ export async function refreshAccount(client: Client): Promise<void> {
   const profile = element('profile-link');
   profile.replaceChildren();
   if (me.connection.username) link(profile, 'Your Last.fm profile ↗', `https://www.last.fm/user/${encodeURIComponent(me.connection.username)}`, true);
-  if (me.isAdministrator) {
-    const status = await client.api<{ configured: boolean }>('Admin/Application');
-    element('application-status').textContent = status.configured ? 'Application credentials are configured.' : 'Application credentials are required before connecting.';
-  }
+  if (me.isAdministrator) element<HTMLAnchorElement>('server-settings-link').href = `${client.root}/web/index.html#/configurationpage?name=jellysin-lastfm`;
 }
 
 export function setupAccount(client: Client, refresh: () => Promise<void>): void {
@@ -52,7 +49,7 @@ export function setupAccount(client: Client, refresh: () => Promise<void>): void
     element('disconnect-confirmation').hidden = false;
     element('confirm-disconnect').focus();
   });
-  bind('cancel-disconnect', async () => { element('disconnect-confirmation').hidden = true; });
+  bind('cancel-disconnect', async () => { element('disconnect-confirmation').hidden = true; element('disconnect-lastfm').focus(); });
   bind('confirm-disconnect', async () => {
     await client.api('Me/Connection', 'DELETE');
     client.resetAccount();
@@ -61,20 +58,13 @@ export function setupAccount(client: Client, refresh: () => Promise<void>): void
     message('Last.fm disconnected and private plugin data cleared.');
   });
   element<HTMLInputElement>('scrobbling').addEventListener('change', event => {
-    const enabled = (event.currentTarget as HTMLInputElement).checked;
-    void run(null, async () => { await client.api('Me/Scrobbling', 'PUT', { enabled }); message(enabled ? 'Scrobbling enabled.' : 'Scrobbling paused.'); });
-  });
-  element<HTMLFormElement>('application-form').addEventListener('submit', event => {
-    event.preventDefault();
-    void run(element<HTMLButtonElement>('application-save'), async () => {
-      const key = element<HTMLInputElement>('api-key');
-      const secret = element<HTMLInputElement>('api-secret');
-      const input = { apiKey: key.value, secret: secret.value };
-      key.value = ''; secret.value = '';
-      try { await client.api('Admin/Application', 'PUT', input); }
-      finally { input.apiKey = ''; input.secret = ''; }
-      await refresh();
-      message('Application credentials saved. Existing accounts may need reconnection after changing the application.');
+    const control = event.currentTarget as HTMLInputElement;
+    const enabled = control.checked;
+    control.disabled = true;
+    void run(null, async () => {
+      try { await client.api('Me/Scrobbling', 'PUT', { enabled }); message(enabled ? 'Scrobbling enabled.' : 'Scrobbling paused.'); }
+      catch (error) { control.checked = !enabled; throw error; }
+      finally { control.disabled = false; }
     });
   });
 }

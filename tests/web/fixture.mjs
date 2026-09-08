@@ -8,13 +8,15 @@ const json = body => ({ status: 200, contentType: 'application/json', body: JSON
 const empty = () => ({ status: 204 });
 const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url);
 
-export async function installServer(page, { prefix = '', administrator = false } = {}) {
-  const state = { requests: [], prefix, administrator, connected: true, favourites: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false };
+export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0 } = {}) {
+  const state = { requests: [], prefix, administrator, connected: true, favourites: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
+    historyTracks: [track], delivery: { Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0, Rejected: 0, PendingPersistence: 0 } };
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.origin !== 'http://127.0.0.1:4177' || !url.pathname.startsWith(prefix + '/')) return route.abort();
     const path = url.pathname.slice(prefix.length);
+    if (latencyMs) await new Promise(resolve => setTimeout(resolve, latencyMs));
     state.requests.push({ path, url: url.href, method: request.method(), headers: request.headers(), body: request.postDataJSON() });
     if (path === '/JellySin/Lastfm/') return route.fulfill({ contentType: 'text/html', body: await readFile(new URL('index.html', webRoot), 'utf8') });
     if (path.startsWith('/JellySin/Lastfm/Assets/')) {
@@ -43,7 +45,7 @@ function respond(path, method, body, url, state) {
   if (endpoint === 'Me/Connection/Finish') { state.connected = true; return empty(); }
   if (endpoint === 'Me/Connection' && method === 'DELETE') { state.connected = false; state.disconnected = true; return empty(); }
   if (endpoint === 'Me/Scrobbling') return empty();
-  if (endpoint === 'Me/Delivery') return json({ Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0 });
+  if (endpoint === 'Me/Delivery') return json(state.delivery);
   if (endpoint === 'Me/Delivery/Retry') return empty();
   if (endpoint.startsWith('Me/History')) return history(endpoint, method, url, state);
   if (endpoint === 'Me/Overview') return json({ Tracks: [track], Artists: [{ Name: track.Artist, PlayCount: 80 }], Albums: [{ Name: track.Album, PlayCount: 50 }], Statistics: { Scrobbles: 1000, Artists: 20, Albums: 50, Tracks: 100 } });
@@ -55,12 +57,18 @@ function respond(path, method, body, url, state) {
 }
 
 function history(endpoint, method, url, state) {
-  if (endpoint === 'Me/History') return json({ Tracks: [track], Page: Number(url.searchParams.get('page') || 1), TotalPages: 2, Complete: true, Until: 1788800000 });
-  if (endpoint === 'Me/History/Import') { state.imported = true; state.preview = false; return empty(); }
+  if (endpoint === 'Me/History') return json({ Tracks: state.historyTracks, Page: Number(url.searchParams.get('page') || 1), TotalPages: 2, Complete: true, Until: 1788800000 });
+  if (endpoint === 'Me/History/Import') {
+    state.appliedCount = Math.min(201, (state.appliedCount ?? 0) + 200);
+    state.imported = state.appliedCount === 201;
+    state.preview = !state.imported;
+    return json({ Applied: state.appliedCount, Total: 201, Complete: state.imported });
+  }
+  if (endpoint === 'Me/History/Continue') state.previewComplete = true;
   if (method === 'POST') state.preview = true;
   if (!state.preview) return empty();
   const page = Number(url.searchParams.get('page') || 1);
-  return json({ Id: previewId, ExpiresAt: '2026-09-08T15:00:00Z', Entries: [{ Track: { ...track, Title: page === 1 ? track.Title : 'Angel' }, CurrentPlayCount: 10, ProposedPlayCount: 42, ProposedLastPlayed: '2026-09-01T12:00:00Z' }], Unmatched: [{ Track: { ...track, Title: 'Ambiguous song' }, Status: 'Ambiguous' }], MatchedCount: 201, UnmatchedCount: 1, Complete: endpoint === 'Me/History/Continue', Page: page, Pages: 2 });
+  return json({ Id: previewId, ExpiresAt: '2026-09-08T15:00:00Z', Entries: [{ Track: { ...track, Title: page === 1 ? track.Title : 'Angel' }, CurrentPlayCount: 10, ProposedPlayCount: 42, ProposedLastPlayed: '2026-09-01T12:00:00Z' }], Unmatched: [{ Track: { ...track, Title: 'Ambiguous song' }, Status: 'Ambiguous' }], MatchedCount: 201, UnmatchedCount: 1, Complete: Boolean(state.previewComplete), CountsComplete: true, DatesComplete: Boolean(state.previewComplete), NextPage: 2, RecentNextPage: 1, AppliedCount: state.appliedCount ?? 0, Page: page, Pages: 2 });
 }
 
 function favourites(endpoint, method, body, state) {
@@ -70,6 +78,8 @@ function favourites(endpoint, method, body, state) {
 }
 
 function playlists(endpoint, method, body, state) {
+  if (endpoint === 'Me/Playlists/Pending') return json(state.pendingPlaylist ?? null);
+  if (endpoint.startsWith('Me/Playlists/Pending/') && method === 'DELETE') { state.pendingPlaylist = null; return empty(); }
   if (method === 'POST') state.recipes = [{ ...body, id: previewId, playlistId: item }];
   if (method === 'DELETE') { state.recipes = []; return empty(); }
   return json(state.recipes);

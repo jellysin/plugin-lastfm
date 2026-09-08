@@ -29,7 +29,7 @@ public sealed class DeliveryService(PlaybackService playback, ScrobbleOutbox out
         if (playback.GetStatus().LegacyPluginDetected || Plugin.Instance?.Configuration.Enabled == false) return;
         for (var index = 0; index < 8 && playback.TryTakeNowPlaying(out var listen); index++)
         {
-            try { await outbox.NowPlayingAsync(listen!, cancellationToken).ConfigureAwait(false); }
+            try { await outbox.NowPlayingAsync(listen!, cancellationToken, () => playback.IsCurrentNowPlaying(listen!)).ConfigureAwait(false); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (LastfmException) { /* The protocol forbids retrying failed now-playing requests. */ }
             catch (Exception exception) { logger.LogWarning("Now-playing update failed ({ErrorType}).", exception.GetType().Name); }

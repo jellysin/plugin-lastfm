@@ -8,7 +8,7 @@ using MediaBrowser.Model.Entities;
 
 namespace JellySin.Plugin.Lastfm.Features;
 
-public sealed record LocalMusic(Guid Id, MusicTrack Track, bool Favourite, int PlayCount, DateTime? LastPlayed);
+public sealed record LocalMusic(Guid Id, MusicTrack Track, bool Favourite, int PlayCount, DateTime? LastPlayed, string FavouriteRevision = "");
 
 public interface IMusicLibrary
 {
@@ -20,6 +20,7 @@ public interface IMusicLibrary
 public interface IMusicWriter
 {
     void SetFavourite(Guid userId, Guid itemId, bool favourite, CancellationToken ct);
+    bool TrySetFavourite(Guid userId, Guid itemId, bool favourite, string expectedRevision, CancellationToken ct);
     void ApplyHistoryFloor(Guid userId, Guid itemId, int playCount, DateTime? lastPlayed, CancellationToken ct);
 }
 
@@ -98,6 +99,11 @@ public sealed class MusicLibrary(ILibraryManager library, IUserManager users, IU
     {
         ct.ThrowIfCancellationRequested();
         var item = library.GetItemById<Audio>(itemId, userId) ?? throw new KeyNotFoundException("Track is unavailable.");
+        if (data is CoordinatedUserData coordinated)
+        {
+            var snapshot = coordinated.GetFavouriteSnapshot(User(userId), item);
+            return Map(item, snapshot.Value) with { FavouriteRevision = snapshot.Revision };
+        }
         return Map(item, data.GetUserData(User(userId), item));
     }
 
@@ -124,18 +130,22 @@ public sealed class MusicLibrary(ILibraryManager library, IUserManager users, IU
         data.SaveUserData(user, item, state, UserDataSaveReason.UpdateUserData, ct);
     }
 
+    public bool TrySetFavourite(Guid userId, Guid itemId, bool favourite, string expectedRevision, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var item = library.GetItemById<Audio>(itemId, userId) ?? throw new KeyNotFoundException("Track is unavailable.");
+        if (data is not CoordinatedUserData coordinated) throw new InvalidOperationException("This Jellyfin host cannot coordinate favourite edits safely.");
+        return coordinated.TrySetFavourite(User(userId), item, favourite, expectedRevision, ct);
+    }
+
     public void ApplyHistoryFloor(Guid userId, Guid itemId, int playCount, DateTime? lastPlayed, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         var item = library.GetItemById<Audio>(itemId, userId) ?? throw new KeyNotFoundException("Track is unavailable.");
         var user = User(userId);
-        // Jellyfin shares this cached object with playback; mutate only the imported fields immediately before save.
-        var state = data.GetUserData(user, item) ?? new UserItemData { Key = item.GetUserDataKeys().First() };
-        state.PlayCount = Math.Max(state.PlayCount, playCount);
-        if (lastPlayed.HasValue && (!state.LastPlayedDate.HasValue || lastPlayed.Value > state.LastPlayedDate))
-            state.LastPlayedDate = lastPlayed;
-        if (state.PlayCount > 0) state.Played = true;
-        data.SaveUserData(user, item, state, UserDataSaveReason.Import, ct);
+        if (data is not CoordinatedUserData coordinated)
+            throw new InvalidOperationException("This Jellyfin host cannot coordinate history imports safely.");
+        coordinated.ApplyHistoryFloor(user, item, playCount, lastPlayed, ct);
     }
 
     private InternalItemsQuery Query(Guid userId, int limit)

@@ -9,6 +9,49 @@ public sealed class PlaybackTests
     private readonly MusicTrack _track = new(Guid.NewGuid(), "Artist", "Track", "Album", null, 100);
 
     [Fact]
+    public void OlderEventsCannotRewindAnObservationAndDoubleCountListening()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
+        _clock.Advance(20);
+        var delayed = Snapshot(PlaybackSignal.Progress, 20);
+        _clock.Advance(10);
+        tracker.Observe(Snapshot(PlaybackSignal.Progress, 30));
+        tracker.Observe(delayed);
+        _clock.Advance(10);
+        Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Progress, 40)).Scrobble);
+    }
+
+    [Fact]
+    public void EligibilityRemainsInRecoveryBufferAfterStopUntilDurableAcknowledgement()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
+        _clock.Advance(30);
+        tracker.Observe(Snapshot(PlaybackSignal.Progress, 30));
+        _clock.Advance(30);
+        var listen = tracker.Observe(Snapshot(PlaybackSignal.Stop, 60)).Scrobble;
+        Assert.NotNull(listen);
+        Assert.Equal(listen, Assert.Single(tracker.Pending()));
+        Assert.False(tracker.IsCurrent(listen));
+        tracker.Acknowledge(listen.OccurrenceId);
+        Assert.Empty(tracker.Pending());
+    }
+
+    [Fact]
+    public void AccountGenerationChangeCannotInheritPreviouslyHeardSeconds()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        var first = Guid.NewGuid();
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0) with { AccountGeneration = first });
+        _clock.Advance(30);
+        tracker.Observe(Snapshot(PlaybackSignal.Progress, 30) with { AccountGeneration = first });
+        _clock.Advance(30);
+        Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Progress, 60) with { AccountGeneration = Guid.NewGuid() }).Scrobble);
+        Assert.Empty(tracker.Pending());
+    }
+
+    [Fact]
     public void ObservedHalfDurationQualifiesExactlyOnce()
     {
         var tracker = new PlaybackTracker(_clock);

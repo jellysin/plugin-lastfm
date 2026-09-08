@@ -13,6 +13,46 @@ namespace JellySin.Plugin.Lastfm.Tests.Features;
 public sealed class FeatureWorkerTests
 {
     [Fact]
+    public async Task FavouriteApiFailureDoesNotBlockInterruptedPlaylistRecovery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Recover independently");
+        var playlist = new Playlist { Id = Guid.NewGuid(), OwnerUserId = f.Core.UserId, Path = "" };
+        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-favourites", new FavouriteState(true, [], []), ct);
+        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-playlist-operation",
+            new PlaylistOperation(new(Guid.NewGuid(), "Recovery", PlaylistSource.Top), [local.Id], playlist.Id, Guid.NewGuid()), ct);
+        f.Core.Client.Handler = (_, _, _) => throw new IOException("Favourite API unavailable.");
+        var updated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var library = new Mock<ILibraryManager>();
+        library.Setup(l => l.GetItemById<Playlist>(playlist.Id, f.Core.UserId)).Returns(playlist);
+        var playlists = new Mock<IPlaylistManager>();
+        playlists.Setup(p => p.UpdatePlaylist(It.IsAny<MediaBrowser.Model.Playlists.PlaylistUpdateRequest>()))
+            .Returns(() => { updated.TrySetResult(); return Task.CompletedTask; });
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddLastfmFeatures();
+        services.AddSingleton(f.Core.Accounts);
+        services.AddSingleton<IStateStore>(f.Core.Store);
+        services.AddSingleton<ILastfmClient>(f.Core.Client);
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton(f.Favourites);
+        services.AddSingleton<IMusicLibrary>(f.Library);
+        services.AddSingleton<IMusicWriter>(f.Library);
+        services.AddSingleton<IDiscoveryLibrary>(Mock.Of<IDiscoveryLibrary>());
+        services.AddSingleton(library.Object);
+        services.AddSingleton(playlists.Object);
+        services.AddSingleton(Mock.Of<IUserDataManager>());
+        using var provider = services.BuildServiceProvider();
+        var worker = Assert.Single(provider.GetServices<IHostedService>());
+        await worker.StartAsync(ct);
+        await updated.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+        await worker.StopAsync(ct);
+        playlists.Verify(p => p.UpdatePlaylist(It.IsAny<MediaBrowser.Model.Playlists.PlaylistUpdateRequest>()), Times.Once);
+    }
+
+    [Fact]
     public async Task UserChangesAreReconciledAndEventsDetachBeforeShutdown()
     {
         var ct = TestContext.Current.CancellationToken;

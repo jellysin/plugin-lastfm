@@ -40,11 +40,8 @@ public sealed class MusicController(MusicFeatureService music, DiscoveryService 
         HistoryPreviewView.From(await music.ContinueHistoryImportAsync(CallerId, request.PreviewId, cancellationToken).ConfigureAwait(false), 1);
 
     [HttpPost("History/Import")]
-    public async Task<IActionResult> Import(PreviewRequest request, CancellationToken cancellationToken)
-    {
-        await music.ApplyHistoryImportAsync(CallerId, request.PreviewId, cancellationToken).ConfigureAwait(false);
-        return NoContent();
-    }
+    public Task<HistoryImportResult> Import(PreviewRequest request, CancellationToken cancellationToken) =>
+        music.ApplyHistoryImportAsync(CallerId, request.PreviewId, cancellationToken);
 
     [HttpGet("Discovery")]
     public Task<DiscoveryResult> Discover([FromQuery] Guid? seedItemId, CancellationToken cancellationToken) =>
@@ -54,7 +51,8 @@ public sealed class MusicController(MusicFeatureService music, DiscoveryService 
 public sealed record PreviewRequest(Guid PreviewId);
 
 public sealed record HistoryPreviewView(Guid Id, DateTimeOffset ExpiresAt, IReadOnlyList<HistoryImportEntry> Entries,
-    IReadOnlyList<MusicMatch> Unmatched, int MatchedCount, int UnmatchedCount, bool Complete, int NextPage, long? Until, int Page, int Pages)
+    IReadOnlyList<MusicMatch> Unmatched, int MatchedCount, int UnmatchedCount, bool Complete, int NextPage, long? Until, int Page, int Pages,
+    bool CountsComplete, bool DatesComplete, int RecentNextPage, int AppliedCount)
 {
     public static HistoryPreviewView From(HistoryImportPreview preview, int page)
     {
@@ -62,6 +60,7 @@ public sealed record HistoryPreviewView(Guid Id, DateTimeOffset ExpiresAt, IRead
         page = Math.Clamp(page, 1, pages);
         return new(preview.Id, preview.ExpiresAt, preview.Entries.Skip((page - 1) * 200).Take(200).ToArray(),
             preview.Unmatched.Skip((page - 1) * 200).Take(200).ToArray(), preview.Entries.Count, preview.Unmatched.Count,
-            preview.Complete, preview.NextPage, preview.Until, page, pages);
+            preview.Complete, preview.NextPage, preview.Until, page, pages,
+            preview.CountsComplete, preview.DatesComplete, preview.RecentNextPage, preview.AppliedCount);
     }
 }

@@ -25,14 +25,29 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
 
     public bool CanPersist(JsonDocument response) => !_responsePolicies.TryGetValue(response, out var policy) || !policy.NoStore;
 
-    public async Task<JsonDocument> CallAsync(string method, IReadOnlyDictionary<string, string> parameters, string? sessionKey, RequestPriority priority, CancellationToken cancellationToken)
+    public TimeSpan GetCacheLifetime(JsonDocument response) => _responsePolicies.TryGetValue(response, out var policy)
+        && policy.ExpiresAt is { } expires && expires > clock.GetUtcNow() ? expires - clock.GetUtcNow() : TimeSpan.Zero;
+
+    public Task<JsonDocument> CallAsync(string method, IReadOnlyDictionary<string, string> parameters, string? sessionKey, RequestPriority priority, CancellationToken cancellationToken)
+        => QueueAsync(method, parameters, sessionKey, null, priority, null, cancellationToken);
+
+    public Task<JsonDocument> CallForApplicationAsync(string method, IReadOnlyDictionary<string, string> parameters, string? sessionKey,
+        string applicationIdentity, RequestPriority priority, CancellationToken cancellationToken)
+        => QueueAsync(method, parameters, sessionKey, applicationIdentity, priority, null, cancellationToken);
+
+    public Task<JsonDocument> UpdateNowPlayingAsync(IReadOnlyDictionary<string, string> parameters, string sessionKey,
+        string applicationIdentity, Func<bool> isCurrent, CancellationToken cancellationToken)
+        => QueueAsync("track.updateNowPlaying", parameters, sessionKey, applicationIdentity, RequestPriority.Listening, isCurrent, cancellationToken);
+
+    private async Task<JsonDocument> QueueAsync(string method, IReadOnlyDictionary<string, string> parameters, string? sessionKey,
+        string? applicationIdentity, RequestPriority priority, Func<bool>? isCurrent, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
         if (method.Length > 80 || parameters.Count > 500 || parameters.Any(pair => pair.Key.Length > 80 || pair.Value.Length > 4096))
             throw new ArgumentException("Last.fm request exceeds supported bounds.", nameof(parameters));
         if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
         cancellationToken.ThrowIfCancellationRequested();
-        var work = new Work(method, new Dictionary<string, string>(parameters), sessionKey, clock.GetUtcNow(), cancellationToken);
+        var work = new Work(method, new Dictionary<string, string>(parameters), sessionKey, applicationIdentity, clock.GetUtcNow(), cancellationToken, isCurrent);
         if (!_queues[(int)priority].Writer.TryWrite(work)) throw new LastfmException(16);
         _available.Release();
         using var registration = cancellationToken.Register(() => work.Completion.TrySetCanceled(cancellationToken));
@@ -106,11 +121,10 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
     private async Task<JsonDocument> SendAsync(Work work, CancellationToken cancellationToken)
     {
         if (work.Method == "track.updateNowPlaying" && clock.GetUtcNow() - work.CreatedAt > TimeSpan.FromSeconds(20)) throw new LastfmException(8);
+        if (work.IsCurrent?.Invoke() == false) throw new LastfmException(8);
         var app = await credentials.GetAsync(cancellationToken).ConfigureAwait(false);
         if (!app.IsConfigured) throw new LastfmException(10);
-        if (_suspendedKey == app.ApiKey) throw new LastfmException(26);
-        var delay = _throttledUntil - clock.GetUtcNow();
-        if (delay > TimeSpan.Zero) throw new LastfmException(29, delay);
+        if (work.ApplicationIdentity is { } expected && expected != ApplicationCredentialService.Identity(app)) throw new LastfmException(9);
         var values = new Dictionary<string, string>(work.Parameters, StringComparer.Ordinal)
         { ["method"] = work.Method, ["api_key"] = app.ApiKey };
         var signed = work.SessionKey is not null || work.Method.StartsWith("auth.", StringComparison.Ordinal);
@@ -123,15 +137,24 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
         if (cacheable)
         {
             var cached = await store.ReadAsync<CachedResponse>(Guid.Empty, cacheKey, cancellationToken).ConfigureAwait(false);
-            if (cached?.ExpiresAt > clock.GetUtcNow()) return JsonDocument.Parse(cached.Json);
+            if (cached?.ExpiresAt > clock.GetUtcNow())
+            {
+                var document = JsonDocument.Parse(cached.Json);
+                _responsePolicies.Add(document, new(false, cached.ExpiresAt));
+                return document;
+            }
             if (cached is not null) await store.DeleteAsync(Guid.Empty, cacheKey, cancellationToken).ConfigureAwait(false);
         }
+        if (_suspendedKey == app.ApiKey) throw new LastfmException(26);
+        var delay = _throttledUntil - clock.GetUtcNow();
+        if (delay > TimeSpan.Zero) throw new LastfmException(29, delay);
         using var form = new FormUrlEncodedContent(values);
         var endpoint = "https://ws.audioscrobbler.com/2.0/";
         using var request = new HttpRequestMessage(signed ? HttpMethod.Post : HttpMethod.Get,
             signed ? endpoint : endpoint + "?" + await form.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
         if (signed) request.Content = form;
         request.Headers.UserAgent.ParseAdd("JellySin.Lastfm/1.0 (+https://github.com/jellysin/jellyfin-plugin-lastfm)");
+        if (work.IsCurrent?.Invoke() == false) throw new LastfmException(8);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         return await ProcessResponseAsync(response, app.ApiKey, cacheable ? cacheKey : null, cancellationToken).ConfigureAwait(false);
     }
@@ -150,6 +173,7 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
         catch (JsonException) { throw new LastfmException(response.IsSuccessStatusCode || (int)response.StatusCode >= 500 ? 16 : 6); }
         try
         {
+            if (json.RootElement.ValueKind != JsonValueKind.Object) throw new LastfmException(16);
             if (json.RootElement.TryGetProperty("error", out var error))
             {
                 var code = error.ValueKind == JsonValueKind.Number && error.TryGetInt32(out var numeric) ? numeric
@@ -159,7 +183,7 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
                 throw new LastfmException(code, code == 29 ? retryAfter : null);
             }
             if (!response.IsSuccessStatusCode) throw new LastfmException((int)response.StatusCode >= 500 ? 16 : 6);
-            _responsePolicies.Add(json, new ResponsePolicy(response.Headers.CacheControl?.NoStore == true));
+            _responsePolicies.Add(json, new ResponsePolicy(response.Headers.CacheControl?.NoStore == true, FreshUntil(response)));
             if (cacheKey is not null) await CacheAsync(cacheKey, bytes, response, cancellationToken).ConfigureAwait(false);
             return json;
         }
@@ -170,11 +194,18 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
     {
         var control = response.Headers.CacheControl;
         if (control?.NoStore == true || control?.NoCache == true || control?.Private == true) return;
-        var age = response.Headers.Age ?? TimeSpan.Zero;
-        var expires = control?.MaxAge is { } maxAge ? clock.GetUtcNow() + maxAge - age : response.Content.Headers.Expires;
+        var expires = FreshUntil(response);
         if (expires is null || expires <= clock.GetUtcNow()) return;
         try { await store.WriteAsync(Guid.Empty, key, new CachedResponse(expires.Value, Encoding.UTF8.GetString(bytes)), cancellationToken).ConfigureAwait(false); }
         catch (StorageBudgetException) { /* A cache miss must not prevent delivery or consume the durable reserve. */ }
+    }
+
+    private DateTimeOffset? FreshUntil(HttpResponseMessage response)
+    {
+        var control = response.Headers.CacheControl;
+        if (control?.NoStore == true || control?.NoCache == true) return null;
+        var age = response.Headers.Age ?? TimeSpan.Zero;
+        return control?.MaxAge is { } maxAge ? clock.GetUtcNow() + maxAge - age : response.Content.Headers.Expires;
     }
 
     private TimeSpan ReadRetryAfter(HttpResponseMessage response)
@@ -205,9 +236,9 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
 
     public sealed record CachedResponse(DateTimeOffset ExpiresAt, string Json);
 
-    private sealed record ResponsePolicy(bool NoStore);
+    private sealed record ResponsePolicy(bool NoStore, DateTimeOffset? ExpiresAt);
 
-    private sealed record Work(string Method, Dictionary<string, string> Parameters, string? SessionKey, DateTimeOffset CreatedAt, CancellationToken CancellationToken)
+    private sealed record Work(string Method, Dictionary<string, string> Parameters, string? SessionKey, string? ApplicationIdentity, DateTimeOffset CreatedAt, CancellationToken CancellationToken, Func<bool>? IsCurrent)
     {
         public TaskCompletionSource<JsonDocument> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }

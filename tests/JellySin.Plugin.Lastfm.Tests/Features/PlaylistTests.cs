@@ -12,6 +12,64 @@ public sealed class PlaylistTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task CancellingBrokenPendingWorkPreservesNativePlaylistAndAllowsNewGeneration()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Disappearing");
+        f.Top.Add(local.Track);
+        var host = new PlaylistHost(f) { FailUpdate = true };
+        await Assert.ThrowsAsync<IOException>(() => host.Service.GenerateAsync(f.Core.UserId, new(Guid.Empty, "Broken", PlaylistSource.Top), Ct));
+        var pending = (await host.Service.GetPendingOperationAsync(f.Core.UserId, Ct))!;
+        f.Library.Items.Remove(local.Id);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => host.Service.RefreshDueAsync(f.Core.UserId, Ct));
+        Assert.Contains("unavailable", (await host.Service.GetPendingOperationAsync(f.Core.UserId, Ct))!.Status!, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => host.Service.CancelPendingAsync(f.Core.UserId, Guid.NewGuid(), Ct));
+        await host.Service.CancelPendingAsync(f.Core.UserId, pending.OperationId, Ct);
+        Assert.Null(await host.Service.GetPendingOperationAsync(f.Core.UserId, Ct));
+        Assert.Single(host.Updates);
+        Assert.Single(host.Creations);
+        f.Library.Items[local.Id] = local;
+        host.FailUpdate = false;
+        await host.Service.GenerateAsync(f.Core.UserId, new(Guid.Empty, "Replacement", PlaylistSource.Top), Ct);
+        Assert.Equal(2, host.Updates.Count);
+    }
+
+    [Fact]
+    public async Task DurableCancellationRecoveryPausesDailyRefreshWithoutReplayingTheHostWrite()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Daily");
+        f.Top.Add(local.Track);
+        var host = new PlaylistHost(f);
+        var recipe = await host.Service.GenerateAsync(f.Core.UserId, new(Guid.Empty, "Daily", PlaylistSource.Top, DailyRefresh: true), Ct);
+        f.Core.Clock.Advance(86401);
+        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-playlist-operation",
+            new PlaylistOperation(recipe, [Guid.NewGuid()], recipe.PlaylistId, Guid.NewGuid(), Cancelled: true), Ct);
+        await host.Service.RefreshDueAsync(f.Core.UserId, Ct);
+        Assert.Null(await host.Service.GetPendingOperationAsync(f.Core.UserId, Ct));
+        Assert.False(Assert.Single(await host.Service.GetRecipesAsync(f.Core.UserId, Ct)).DailyRefresh);
+        Assert.Single(host.Updates);
+    }
+
+    [Fact]
+    public async Task StopManagingCanRemoveAPoisonedRecipeWithoutRetryingOwnershipFailure()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        f.Top.Add(f.AddLocal("Transferred").Track);
+        var host = new PlaylistHost(f);
+        var recipe = await host.Service.GenerateAsync(f.Core.UserId, new(Guid.Empty, "Transferred", PlaylistSource.Top), Ct);
+        host.Playlist.OwnerUserId = Guid.NewGuid();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => host.Service.GenerateAsync(f.Core.UserId, recipe, Ct));
+        await host.Service.DeleteRecipeAsync(f.Core.UserId, recipe.Id, Ct);
+        Assert.Empty(await host.Service.GetRecipesAsync(f.Core.UserId, Ct));
+        Assert.Null(await host.Service.GetPendingOperationAsync(f.Core.UserId, Ct));
+        Assert.Single(host.Updates);
+    }
+
+    [Fact]
     public async Task NewPlaylistIsPrivateAndRepeatedCreationReusesItsOwnedRecipe()
     {
         using var f = new FeatureFixture();

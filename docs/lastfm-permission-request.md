@@ -1,9 +1,9 @@
 # Last.fm permission request — unsent draft
 
 Status: not sent; no Last.fm approval received. The project application is registered
-under Lothario87. Live user authorization and written confirmation of the intended
-distribution remain pending. Do not put API keys, shared secrets or user session
-keys in this message or its attachments.
+under Lothario87, and live authorization and one approved scrobble passed. This
+optional clarification draft remains unsent following maintainer review. Do not put
+API keys, shared secrets or user session keys in this message or its attachments.
 
 To: partners@last.fm
 Subject: JellySin Last.fm — self-hosted Jellyfin plugin application and display approval

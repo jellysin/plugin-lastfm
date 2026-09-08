@@ -8,7 +8,8 @@ using MediaBrowser.Model.Playlists;
 
 namespace JellySin.Plugin.Lastfm.Features;
 
-public sealed record PlaylistOperation(PlaylistRecipe Recipe, Guid[] Items, Guid? PlaylistId);
+public sealed record PlaylistOperation(PlaylistRecipe Recipe, Guid[] Items, Guid? PlaylistId, Guid OperationId = default,
+    string? Status = null, bool Cancelled = false, bool StopManaging = false);
 
 public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IMusicLibrary music, ILibraryManager library,
     IPlaylistManager playlists, IStateStore store, FeatureLocks locks, TimeProvider clock, AccountService accounts)
@@ -20,7 +21,7 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
     {
         var recipes = await store.ReadAsync<List<PlaylistRecipe>>(userId, RecipesKey, ct).ConfigureAwait(false) ?? [];
         var pending = await store.ReadAsync<PlaylistOperation>(userId, OperationKey, ct).ConfigureAwait(false);
-        if (pending is not null && recipes.All(r => r.Id != pending.Recipe.Id))
+        if (pending is { Cancelled: false } && recipes.All(r => r.Id != pending.Recipe.Id))
             recipes.Add(pending.Recipe with { PlaylistId = pending.PlaylistId });
         return recipes;
     }
@@ -41,9 +42,9 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
         recipe = recipe with { Id = previous?.Id ?? Guid.NewGuid(), PlaylistId = previous?.PlaylistId, UpdatedAt = null };
         var desired = await ResolveAsync(userId, recipe, ct).ConfigureAwait(false);
         if (desired.Length == 0) throw new InvalidOperationException("No accessible local tracks match this recipe; the existing playlist was preserved.");
-        var operation = new PlaylistOperation(recipe, desired, recipe.PlaylistId);
+        var operation = new PlaylistOperation(recipe, desired, recipe.PlaylistId, Guid.NewGuid());
         await store.WriteAsync(userId, OperationKey, operation, ct).ConfigureAwait(false);
-        return await ExecuteAsync(userId, operation, ct).ConfigureAwait(false);
+        return await ExecutePendingAsync(userId, operation, ct).ConfigureAwait(false);
     }
 
     public async Task DeleteRecipeAsync(Guid userId, Guid recipeId, CancellationToken ct)
@@ -51,9 +52,28 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
         using var accountOperation = accounts.LinkOperation(userId, ct);
         ct = accountOperation.Token;
         using var lease = await locks.EnterAsync(userId, ct).ConfigureAwait(false);
-        await RecoverAsync(userId, ct).ConfigureAwait(false);
+        var pending = await GetPendingOperationAsync(userId, ct).ConfigureAwait(false);
+        if (pending?.Recipe.Id == recipeId)
+        {
+            await CancelOperationAsync(userId, pending with { StopManaging = true }, ct).ConfigureAwait(false);
+            return;
+        }
         var recipes = (await GetRecipesAsync(userId, ct).ConfigureAwait(false)).Where(r => r.Id != recipeId).ToList();
         await store.WriteAsync(userId, RecipesKey, recipes, ct).ConfigureAwait(false);
+    }
+
+    public Task<PlaylistOperation?> GetPendingOperationAsync(Guid userId, CancellationToken ct) =>
+        store.ReadAsync<PlaylistOperation>(userId, OperationKey, ct);
+
+    public async Task CancelPendingAsync(Guid userId, Guid operationId, CancellationToken ct)
+    {
+        using var accountOperation = accounts.LinkOperation(userId, ct);
+        ct = accountOperation.Token;
+        using var lease = await locks.EnterAsync(userId, ct).ConfigureAwait(false);
+        var pending = await GetPendingOperationAsync(userId, ct).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException("No playlist operation is pending.");
+        if (pending.OperationId != operationId) throw new InvalidOperationException("The pending operation changed; refresh before cancelling.");
+        await CancelOperationAsync(userId, pending, ct).ConfigureAwait(false);
     }
 
     public async Task RefreshDueAsync(Guid userId, CancellationToken ct)
@@ -83,7 +103,41 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
     private async Task RecoverAsync(Guid userId, CancellationToken ct)
     {
         var pending = await store.ReadAsync<PlaylistOperation>(userId, OperationKey, ct).ConfigureAwait(false);
-        if (pending is not null) await ExecuteAsync(userId, pending, ct).ConfigureAwait(false);
+        if (pending is { Cancelled: true }) await FinishCancellationAsync(userId, pending, ct).ConfigureAwait(false);
+        else if (pending is not null) await ExecutePendingAsync(userId, pending, ct).ConfigureAwait(false);
+    }
+
+    private async Task CancelOperationAsync(Guid userId, PlaylistOperation pending, CancellationToken ct)
+    {
+        pending = pending with { Cancelled = true, Status = "Cancelled. Any partially written private playlist is preserved; automatic refresh is paused." };
+        await store.WriteAsync(userId, OperationKey, pending, ct).ConfigureAwait(false);
+        await FinishCancellationAsync(userId, pending, ct).ConfigureAwait(false);
+    }
+
+    private async Task FinishCancellationAsync(Guid userId, PlaylistOperation pending, CancellationToken ct)
+    {
+        var recipes = await store.ReadAsync<List<PlaylistRecipe>>(userId, RecipesKey, ct).ConfigureAwait(false) ?? [];
+        recipes = recipes.Where(recipe => !pending.StopManaging || recipe.Id != pending.Recipe.Id)
+            .Select(recipe => recipe.Id == pending.Recipe.Id ? recipe with { DailyRefresh = false } : recipe).ToList();
+        await store.WriteAsync(userId, RecipesKey, recipes, ct).ConfigureAwait(false);
+        await store.DeleteAsync(userId, OperationKey, ct).ConfigureAwait(false);
+    }
+
+    private async Task<PlaylistRecipe> ExecutePendingAsync(Guid userId, PlaylistOperation operation, CancellationToken ct)
+    {
+        try { return await ExecuteAsync(userId, operation, ct).ConfigureAwait(false); }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            var pending = await GetPendingOperationAsync(userId, ct).ConfigureAwait(false);
+            if (pending is not null)
+                await store.WriteAsync(userId, OperationKey, pending with
+                {
+                    Status = error is UnauthorizedAccessException or KeyNotFoundException
+                        ? "A track or playlist is unavailable or its ownership changed. Cancel this operation before generating another playlist."
+                        : "The playlist write did not finish. Retry to recover it, or cancel to preserve its current contents."
+                }, ct).ConfigureAwait(false);
+            throw;
+        }
     }
 
     private async Task<PlaylistRecipe> ExecuteAsync(Guid userId, PlaylistOperation operation, CancellationToken ct)

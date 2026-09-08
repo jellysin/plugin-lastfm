@@ -12,6 +12,7 @@ public static class FeatureRegistration
     public static IServiceCollection AddLastfmFeatures(this IServiceCollection services)
     {
         services.AddSingleton<MusicApi>();
+        services.AddSingleton<MusicViewCache>();
         services.AddSingleton<FeatureLocks>();
         services.AddSingleton<MusicLibrary>();
         services.AddSingleton<IMusicLibrary>(s => s.GetRequiredService<MusicLibrary>());
@@ -87,10 +88,17 @@ internal sealed class FeatureWorker(AccountService accounts, FavouritesService f
         {
             var account = await accounts.GetAsync(id, ct).ConfigureAwait(false);
             if (account is null || account.NeedsReconnect) return;
-            await favourites.SyncAsync(id, ct).ConfigureAwait(false);
-            if (includePlaylists) await playlists.RefreshDueAsync(id, ct).ConfigureAwait(false);
+            await RunFeatureAsync(id, token => favourites.SyncAsync(id, token), ct).ConfigureAwait(false);
+            if (includePlaylists) await RunFeatureAsync(id, token => playlists.RefreshDueAsync(id, token), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex) { logger.LogWarning("Feature refresh for {UserId} failed with {ErrorType}.", id, ex.GetType().Name); }
+    }
+
+    private async Task RunFeatureAsync(Guid id, Func<CancellationToken, Task> action, CancellationToken ct)
+    {
+        try { await action(ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) { logger.LogWarning("A feature operation for {UserId} failed with {ErrorType}.", id, ex.GetType().Name); }
     }
 }

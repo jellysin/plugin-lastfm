@@ -11,12 +11,12 @@ in the dashboard. A pending attempt belongs to one Jellyfin user and expires aft
 JellySin's project Last.fm application is registered, and its credentials are
 configured in the repository secrets for production builds. Browser authorization,
 live history/charts/discovery and one explicitly authorized test scrobble were
-verified on 2026-09-08. Last.fm's written confirmation of the distribution, storage
-and display arrangements remains pending. The [permission request](lastfm-permission-request.md)
-is an unsent draft; obtain confirmation and incorporate any required changes before
-the first production distribution. A build passing CI is not Last.fm approval.
+verified on 2026-09-08. The [API terms review](lastfm-api.md) records the storage,
+attribution and display requirements. The [optional clarification enquiry](lastfm-permission-request.md)
+is unsent; no separate written approval has been obtained or is implied by these
+tests. Account connection uses the registered application's documented API flow.
 
-An administrator can configure an application override in the dashboard. Changing
+An administrator can configure an application override in Jellyfin's plugin settings. Changing
 applications requires reconnecting user accounts; old sessions cannot be assumed
 valid under another application's credentials.
 
@@ -38,7 +38,7 @@ are evicted before durable account or delivery state. Reaching a durable limit
 reports a failure rather than silently discarding unsent listens. This accounting
 does not measure administrator backups or exports, establish Last.fm's allowance
 across independent deployments, or grant additional data rights. These details
-are included in the pending permission request.
+are included in the unsent clarification draft.
 
 Disconnecting cancels account work and removes that user's plugin state, including
 session data, private caches and pending delivery. It does not delete data already
@@ -57,6 +57,12 @@ they describe a transient state. Temporary delivery failures receive bounded
 backoff; invalid sessions require reconnecting and blocked errors are visible in
 the account dashboard.
 
+Daily-limit and rate-limit rejections remain queued. The dashboard distinguishes
+durably saved submissions from observations still waiting for an outbox write.
+If storage is unavailable, the bounded recovery buffer can retry while the process
+is alive; those not-yet-saved observations cannot survive a crash or guarantee
+persistence through continued disk failure.
+
 Last.fm has no scrobble idempotency key. If it accepts a batch and the response is
 lost, retrying can duplicate a listen. Local occurrence identifiers and receipts
 reduce duplicates but cannot provide an exactly-once guarantee across the network.
@@ -72,14 +78,19 @@ History import starts with a preview. It raises play counts to the larger of
 existing local and Last.fm aggregate counts and only moves last-played dates
 forward where an observed remote date is available. It does not add Last.fm totals
 on top of local totals or fabricate Jellyfin play events. Unmatched or ambiguous
-tracks are shown separately. Bounded continuation builds larger previews; expired
-previews must be refreshed before applying.
+tracks are shown separately. Bounded continuation first gathers counts and then
+verified listening dates. Confirmation becomes available when retrieval completes;
+each confirmed application handles at most 200 tracks and saves its progress.
+Expired previews must be refreshed before applying.
 
 Generated playlists contain accessible local items and belong to the requesting
 user. Recipes support loved tracks, top tracks, similarity or discovery, with 1–200
 items and optional daily refresh. The service resolves the full desired membership
 before updating a playlist and records pending operations for restart recovery.
-Stopping recipe management leaves the playlist itself in Jellyfin.
+Stopping recipe management leaves the playlist itself in Jellyfin. An interrupted
+update appears in the page for review. Cancelling it pauses daily refresh and keeps
+the possibly partial playlist; subsequent cancellation recovery completes that
+intent instead of resuming the old update.
 
 ## Metadata and clients
 

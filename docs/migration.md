@@ -7,8 +7,9 @@ It does not replace an older plugin automatically and cannot run on Jellyfin 10.
 The first release is pending. Once an installable release is available:
 
 1. Back up the Jellyfin configuration and plugin data directories.
-2. Disable scrobbling and favourite synchronization in the previous Last.fm plugin.
-   Leaving two integrations active can submit duplicate listens or conflicting changes.
+2. Disable the previous Last.fm plugin's scrobbling and favourite synchronization,
+   then uninstall that plugin and restart Jellyfin. JellySin suppresses listening
+   delivery while it detects the legacy plugin, to prevent duplicate submissions.
 3. Add `https://raw.githubusercontent.com/jellysin/catalog/main/manifest.json` in
    Jellyfin's plugin repository settings and install JellySin Last.fm. Restart Jellyfin.
 4. Open `/JellySin/Lastfm/` under the server's existing base path. Sign in to Jellyfin

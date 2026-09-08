@@ -9,6 +9,49 @@ public sealed class HistoryTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task LastPlayedRetrievalContinuesBeyondTheFirstRecentPageAndResumesBoundedly()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var local = f.AddLocal("Older latest play");
+        var played = f.Core.Clock.GetUtcNow().AddYears(-1);
+        f.Core.Client.Handler = (method, args, _) => method == "user.getTopTracks"
+            ? FeatureFixture.Page("toptracks", [local.Track with { PlayCount = 20 }])
+            : FeatureFixture.Page("recenttracks", [args["page"] == "11" ? local.Track with { PlayedAt = played }
+                : new MusicTrack("Other", "Unmatched", PlayedAt: played)], 12, int.Parse(args["page"], CultureInfo.InvariantCulture));
+        var preview = await f.History.PreviewHistoryImportAsync(f.Core.UserId, Ct);
+        Assert.True(preview.CountsComplete);
+        Assert.False(preview.DatesComplete);
+        Assert.False(preview.Complete);
+        Assert.Equal(10, f.Core.Client.Calls.Count);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.History.ApplyHistoryImportAsync(f.Core.UserId, preview.Id, Ct));
+        var resumed = await f.History.ContinueHistoryImportAsync(f.Core.UserId, preview.Id, Ct);
+        Assert.True(resumed.Complete);
+        Assert.Equal(played.UtcDateTime, Assert.Single(resumed.Entries).ProposedLastPlayed);
+        Assert.Equal(12, resumed.RecentNextPage);
+        Assert.Empty(f.Library.HistoryWrites);
+    }
+
+    [Fact]
+    public async Task ApplyingAConfirmedPreviewUsesResumableTwoHundredItemChunks()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var entries = Enumerable.Range(0, 202).Select(index => f.AddLocal("Import " + index))
+            .Select(local => new HistoryImportEntry(local.Id, local.Track, 0, 10, null, null)).ToArray();
+        var preview = new HistoryImportPreview(Guid.NewGuid(), f.Core.Clock.GetUtcNow().AddMinutes(30), entries, [], true,
+            CountsComplete: true, DatesComplete: true);
+        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-history-preview", preview, Ct);
+        var first = await f.History.ApplyHistoryImportAsync(f.Core.UserId, preview.Id, Ct);
+        Assert.Equal(new HistoryImportResult(200, 202, false), first);
+        Assert.Equal(200, (await f.History.GetHistoryImportPreviewAsync(f.Core.UserId, Ct))!.AppliedCount);
+        var second = await f.History.ApplyHistoryImportAsync(f.Core.UserId, preview.Id, Ct);
+        Assert.Equal(new HistoryImportResult(202, 202, true), second);
+        Assert.Equal(202, f.Library.HistoryWrites.Count);
+        Assert.Null(await f.History.GetHistoryImportPreviewAsync(f.Core.UserId, Ct));
+    }
+
+    [Fact]
     public async Task PreviewDoesNotWriteAndRequiresUserOwnedUnexpiredToken()
     {
         using var f = new FeatureFixture();
@@ -23,7 +66,7 @@ public sealed class HistoryTests
         Assert.Empty(f.Library.HistoryWrites);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.History.ApplyHistoryImportAsync(Guid.NewGuid(), preview.Id, Ct));
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.History.ApplyHistoryImportAsync(f.Core.UserId, Guid.NewGuid(), Ct));
-        Assert.Equal(1, await f.History.ApplyHistoryImportAsync(f.Core.UserId, preview.Id, Ct));
+        Assert.Equal(1, (await f.History.ApplyHistoryImportAsync(f.Core.UserId, preview.Id, Ct)).Applied);
         Assert.Single(f.Library.HistoryWrites);
         Assert.DoesNotContain(f.Core.Client.Calls, c => c.Method.StartsWith("track.", StringComparison.Ordinal));
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.History.ApplyHistoryImportAsync(f.Core.UserId, preview.Id, Ct));

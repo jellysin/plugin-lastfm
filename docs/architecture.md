@@ -21,6 +21,11 @@ the caller before reading or mutating items. Favourite removals and history impo
 are explicit reviewed operations. Playlist updates keep a recovery record because
 Jellyfin's clear-and-add update API is not an atomic transaction.
 
+Audio history writes coordinate with Jellyfin's verified native userdata service
+so a stale playback snapshot cannot undo an import. Fresh intentional resets remain
+available. The narrow host-registration boundary, fresh-row reads and fail-closed
+behavior are documented in [ADR 0001](adr/0001-native-userdata-coordination.md).
+
 Public metadata and remote similarity are user-independent. Jellyfin's shared
 similarity cache does not include user identity; personalized discovery therefore
 stays in the user-scoped service and generated playlists.
@@ -56,7 +61,9 @@ The plugin descriptor contains a new stable GUID and an independent ABI floor of
 Reviewed release-please changes create a draft/tag and explicitly dispatch the
 publication workflow on that tag. CI verifies the exact source, then production
 builds embed the project application's credentials. Shared tooling produces a
-deterministic flat ZIP, metadata, SHA-256/MD5 checksums and an SPDX file inventory.
+deterministic flat ZIP, metadata, SHA-256/MD5 checksums and an SPDX file/dependency
+inventory verified against the production NuGet lock and restored assets. Two
+independent builds in different paths must match the artifacts selected for upload.
 The workflow attests all four artifacts and verifies existing bytes before
 resuming an interrupted draft upload. Published releases must be immutable.
 

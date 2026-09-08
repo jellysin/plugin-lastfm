@@ -44,9 +44,9 @@ public sealed partial class MetadataApi(ILastfmClient client, ApplicationCredent
         var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
         // Reserve a conservative encoded copy plus per-item database/NFO overhead in the same global budget.
         // This contains no API data and is retained after refresh/deletion so accounting never silently shrinks.
-        var size = checked(JsonSerializer.SerializeToUtf8Bytes(metadata).Length * 4 + 2048);
-        await store.UpdateAsync<string>(Guid.Empty, "feature-native-" + hash,
-            previous => previous is not null && previous.Length >= size ? previous : new string('0', size), ct).ConfigureAwait(false);
+        var encoded = metadata with { Overview = WebUtility.HtmlEncode(metadata.Overview) };
+        var size = checked(JsonSerializer.SerializeToUtf8Bytes(encoded).Length * 4L + 2048);
+        await store.ReserveNativeAsync(hash, size, ct).ConfigureAwait(false);
     }
 
     private static Dictionary<string, string>? Parameters(string kind, string name, string? artist, string? mbid)

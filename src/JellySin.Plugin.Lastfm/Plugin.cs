@@ -9,6 +9,7 @@ namespace JellySin.Plugin.Lastfm;
 public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
     private volatile bool _listeningEnabled;
+    private long _listeningGeneration;
     public static readonly Guid PluginId = new("2034650d-a290-4a16-b195-89fb44cfb932");
 
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer) : base(applicationPaths, xmlSerializer)
@@ -18,10 +19,12 @@ public sealed class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     }
 
     public bool ListeningEnabled => _listeningEnabled;
+    public long ListeningGeneration => Interlocked.Read(ref _listeningGeneration);
 
     public override void UpdateConfiguration(BasePluginConfiguration configuration)
     {
         base.UpdateConfiguration(configuration);
+        if (_listeningEnabled != Configuration.Enabled) Interlocked.Increment(ref _listeningGeneration);
         _listeningEnabled = Configuration.Enabled;
     }
 

@@ -123,6 +123,7 @@ def wait_ready(client: Client) -> None:
 
 def fixture_music(directory: Path, title: str) -> None:
     directory.mkdir(parents=True, exist_ok=True)
+    directory.chmod(0o755)
     path = directory / (title + ".wav")
     with wave.open(str(path), "wb") as audio:
         audio.setnchannels(1)
@@ -139,19 +140,26 @@ def fixture_music(directory: Path, title: str) -> None:
         size = audio.tell()
         audio.seek(4)
         audio.write(struct.pack("<I", size - 8))
+    path.chmod(0o644)
 
 
 class DockerHost:
-    def __init__(self, plugin: Path, image: str) -> None:
+    def __init__(self, plugin: Path, image: str, probe_plugin: Path | None = None) -> None:
         self.name = "jellysin-smoke-" + uuid.uuid4().hex[:16]
         self.config = self.name + "-config"
         self.cache = self.name + "-cache"
         self.image = image
         self.plugin = plugin
+        self.probe_plugin = probe_plugin.resolve(strict=True) if probe_plugin else None
+        if self.probe_plugin:
+            require(self.probe_plugin.name == "JellySin.NativeProbe.dll", "Only the named test fixture may enable the native probe.")
         self.origin = ""
         self.started = False
         self.volumes: list[str] = []
         self.fixture_directory = Path(tempfile.mkdtemp(prefix=self.name + "-"))
+        # mkdtemp uses 0700: the unprivileged container may have a different UID.
+        # Only synthetic fixtures live here; grant read/traverse, never shared writes.
+        self.fixture_directory.chmod(0o755)
 
     def start(self) -> None:
         try:
@@ -167,13 +175,16 @@ class DockerHost:
         docker("run", "--rm", "--network", "none", "--user", "0:0", "--entrypoint", "/bin/sh",
                "--mount", f"type=volume,src={self.config},dst=/config",
                "--mount", f"type=volume,src={self.cache},dst=/cache", self.image,
-               "-c", "mkdir -p /config/plugins/JellySin.Lastfm && chown -R 1000:1000 /config /cache")
+               "-c", "mkdir -p /config/plugins/JellySin.Lastfm /config/plugins/JellySin.NativeProbe && chown -R 1000:1000 /config /cache")
+        probe_arguments = [] if self.probe_plugin is None else [
+            "--env", "JELLYSIN_NATIVE_PROBE=1", "--mount",
+            f"type=bind,src={self.probe_plugin},dst=/config/plugins/JellySin.NativeProbe/JellySin.NativeProbe.dll,readonly"]
         docker("run", "--detach", "--name", self.name, "--label", "org.jellysin.smoke=true",
                "--user", "1000:1000", "--memory", "1536m", "--cpus", "2", "--stop-timeout", "20",
                "--publish", "127.0.0.1::8096", "--mount", f"type=volume,src={self.config},dst=/config",
                "--mount", f"type=volume,src={self.cache},dst=/cache",
                "--mount", f"type=bind,src={self.plugin},dst=/config/plugins/JellySin.Lastfm/JellySin.Plugin.Lastfm.dll,readonly",
-               "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", self.image)
+               "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", *probe_arguments, self.image)
         self.started = True
         self.refresh_origin()
         wait_ready(Client(self.origin))
@@ -240,6 +251,11 @@ def check_plugin(client: Client) -> None:
     require(bootstrap["basepath"] == client.base_path, "The plugin does not report Jellyfin's configured base path.")
     page, _, _ = client.request("/web/configurationpage?name=jellysin-lastfm", raw=True)
     require(b"JellySin" in page, "The plugin's administrator configuration page is missing.")
+    options = client.request("/Libraries/AvailableOptions?libraryContentType=music")["typeoptions"]
+    for kind in ("Audio", "MusicAlbum", "MusicArtist"):
+        providers = next(item["similaritemproviders"] for item in options if item["type"] == kind)
+        require(any(item["name"] == "JellySin Last.fm" and not item["defaultenabled"] for item in providers),
+                "The native library picker must expose Last.fm as an opt-in similarity provider for " + kind + ".")
 
 
 def check_page_redirect(client: Client) -> None:

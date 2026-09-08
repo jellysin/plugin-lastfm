@@ -21,7 +21,7 @@ export function setupFavourites(client: Client): void {
       line(item, `Remove the favourite from ${removal.removeFrom === 'lastfm' ? 'Last.fm' : 'Jellyfin'}?`, 'muted');
       for (const apply of [true, false]) item.append(button(apply ? 'Apply removal' : 'Keep unchanged', async () => {
         render(await client.api<Review>('Me/Favourites/Review', 'POST', { reviewId: removal.id, apply }));
-        message(apply ? 'Removal applied after revalidation.' : 'Removal dismissed.');
+        message(apply ? 'Removal reviewed against current favourites.' : 'Removal dismissed.');
       }));
       list.append(item);
     }

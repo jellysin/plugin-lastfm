@@ -44,17 +44,37 @@ async function start(): Promise<void> {
   const jellyfin = element<HTMLAnchorElement>('jellyfin-link');
   jellyfin.href = `${client.root}/web/index.html`;
   bind('delivery-refresh', async () => {
-    const state = await client.api<{ pending: number; blocked: number; legacyPluginDetected: boolean; droppedSnapshots: number; failedWrites: number }>('Me/Delivery');
-    element('delivery-status').textContent = `${state.pending} pending · ${state.blocked} awaiting retry${state.legacyPluginDetected ? ' · remove the legacy plugin to enable delivery' : ''}${state.droppedSnapshots || state.failedWrites ? ' · some playback events could not be saved; check server logs' : ''}`;
+    const state = await client.api<Delivery>('Me/Delivery');
+    element('delivery-status').textContent = deliveryStatus(state);
   });
   bind('delivery-retry', async () => { await client.api('Me/Delivery/Retry', 'POST'); message('Retained submissions queued for retry.'); });
   await refresh();
 }
 
+interface Delivery {
+  pending: number; blocked: number; lastErrorCode?: number; lastIgnoredCode?: number;
+  rejected: number; lastRejectedCode?: number; pendingPersistence: number;
+  legacyPluginDetected: boolean; droppedSnapshots: number; failedWrites: number;
+}
+
+function deliveryStatus(state: Delivery): string {
+  const details = [`${state.pending} saved for delivery`, `${state.blocked} awaiting retry`];
+  if (state.lastIgnoredCode === 5) details.push('Last.fm daily limit reached; submissions retained');
+  else if (state.lastErrorCode === 29 || state.lastErrorCode === 429) details.push('Last.fm rate limit reached; submissions retained');
+  else if (state.lastErrorCode === 9) details.push('Reconnect Last.fm to resume delivery');
+  else if (state.lastErrorCode) details.push(`Last.fm error ${state.lastErrorCode}`);
+  if (state.rejected) details.push(`${state.rejected} rejected by Last.fm${state.lastRejectedCode ? ` (reason ${state.lastRejectedCode})` : ''}`);
+  if (state.pendingPersistence) details.push(`${state.pendingPersistence} still waiting for storage; these listens cannot yet survive a server restart`);
+  if (state.legacyPluginDetected) details.push('Remove the legacy plugin to enable delivery');
+  if (state.droppedSnapshots || state.failedWrites) details.push('Some playback events could not be saved; check server logs');
+  return details.join(' · ');
+}
+
 void start().catch((error: unknown) => { message(error instanceof Error ? error.message : 'The page could not start.', true); });
 
 function clearPrivateView(): void {
-  for (const id of ['history-list', 'history-preview-list', 'history-page', 'listening-stats', 'chart-tracks', 'chart-artists', 'chart-albums', 'removal-list', 'favourites-status', 'favourites-page', 'discovery-local', 'discovery-external', 'discovery-artists', 'discovery-albums', 'playlist-list', 'profile-link', 'connection-status', 'application-status', 'delivery-status']) element(id).replaceChildren();
+  message('');
+  for (const id of ['history-list', 'history-preview-list', 'history-page', 'listening-stats', 'chart-tracks', 'chart-artists', 'chart-albums', 'removal-list', 'favourites-status', 'favourites-page', 'discovery-local', 'discovery-external', 'discovery-artists', 'discovery-albums', 'playlist-list', 'playlist-pending', 'profile-link', 'connection-status', 'delivery-status']) element(id).replaceChildren();
   for (const id of ['finish-connection', 'disconnect-confirmation', 'preview-pagination', 'history-continue', 'administrator']) element(id).hidden = true;
   for (const id of ['history-apply', 'history-previous', 'history-next', 'favourites-previous', 'favourites-next']) element<HTMLButtonElement>(id).disabled = true;
   element<HTMLAnchorElement>('authorize-lastfm').removeAttribute('href');

@@ -9,7 +9,15 @@
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
       <p id="jellysin-settings-status" role="status" aria-live="polite"></p>
     </form>
-    <p>Open the music dashboard to configure the Last.fm application, connect your account, and manage music features.</p>
+    <h2>Last.fm application</h2>
+    <p id="jellysin-application-status" role="status"></p>
+    <p>The project application is included in release builds. A private application override is protected on this server. Changing applications requires reconnecting accounts.</p>
+    <form id="jellysin-application-form">
+      <div class="inputContainer"><label for="jellysin-api-key">Application API key</label><input id="jellysin-api-key" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
+      <div class="inputContainer"><label for="jellysin-api-secret">Application shared secret</label><input id="jellysin-api-secret" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
+      <button is="emby-button" type="submit" class="raised button-submit block"><span>Save application override</span></button>
+    </form>
+    <p>Open the music dashboard to connect your account and manage music features.</p>
     <p><a id="jellysin-dashboard-link" class="button-link" target="_blank" rel="noopener noreferrer">Open JellySin Last.fm</a></p>
     <p>The user dashboard signs in with your Jellyfin account. Each user manages their own Last.fm connection.</p>
   </div></div>
@@ -21,7 +29,23 @@
         document.getElementById('jellysin-enabled').checked = config.Enabled;
         document.getElementById('jellysin-metadata').checked = config.MetadataEnabled;
         document.getElementById('jellysin-similarity').checked = config.SimilarityEnabled;
+        const application = await ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JellySin/Lastfm/Admin/Application'), dataType: 'json' });
+        document.getElementById('jellysin-application-status').textContent = application.Configured || application.configured ? 'Application credentials are configured.' : 'Application credentials are required.';
       } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be loaded.'; }
+    });
+    document.getElementById('jellysin-application-form').addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const control = event.currentTarget.querySelector('button');
+      control.disabled = true;
+      const key = document.getElementById('jellysin-api-key');
+      const secret = document.getElementById('jellysin-api-secret');
+      const input = { ApiKey: key.value, Secret: secret.value };
+      key.value = ''; secret.value = '';
+      try {
+        await ApiClient.ajax({ type: 'PUT', url: ApiClient.getUrl('JellySin/Lastfm/Admin/Application'), contentType: 'application/json', data: JSON.stringify(input) });
+        document.getElementById('jellysin-application-status').textContent = 'Application credentials saved. Reconnect accounts when changing applications.';
+      } catch { document.getElementById('jellysin-application-status').textContent = 'Application credentials could not be saved.'; }
+      finally { input.ApiKey = ''; input.Secret = ''; control.disabled = false; }
     });
     document.getElementById('jellysin-settings').addEventListener('submit', async function (event) {
       event.preventDefault();

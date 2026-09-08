@@ -12,7 +12,7 @@ namespace JellySin.Plugin.Lastfm.Metadata;
 public sealed class LastfmSimilarityProvider(ILastfmClient client, ApplicationCredentialService credentials) : IRemoteSimilarItemsProvider
 {
     public string Name => "JellySin Last.fm";
-    public MetadataPluginType Type => MetadataPluginType.MetadataFetcher;
+    public MetadataPluginType Type => MetadataPluginType.SimilarityProvider;
     // The transport alone caches responses using their HTTP policy; host-side caching cannot honor no-store.
     public TimeSpan? CacheDuration => null;
     public bool Supports(Type itemType) => itemType == typeof(Audio) || itemType == typeof(MusicArtist) || itemType == typeof(MusicAlbum);

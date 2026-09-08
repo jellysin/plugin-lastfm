@@ -44,8 +44,17 @@ public sealed class LibraryTests
         var manager = new Mock<ILibraryManager>();
         manager.Setup(l => l.GetItemById<Audio>(item.Id, user.Id)).Returns(item);
         var data = new Mock<IUserDataManager>();
-        data.Setup(d => d.GetUserData(user, item)).Returns(() => state);
-        var library = new MusicLibrary(manager.Object, users.Object, data.Object);
+        data.Setup(d => d.GetUserData(user, item)).Returns(() => new UserItemData
+        {
+            Key = state.Key,
+            PlayCount = state.PlayCount,
+            LastPlayedDate = state.LastPlayedDate,
+            IsFavorite = state.IsFavorite,
+            PlaybackPositionTicks = state.PlaybackPositionTicks
+        });
+        data.Setup(d => d.SaveUserData(user, item, It.IsAny<UserItemData>(), UserDataSaveReason.Import, Ct))
+            .Callback<User, BaseItem, UserItemData, UserDataSaveReason, CancellationToken>((_, _, value, _, _) => state = value);
+        var library = new MusicLibrary(manager.Object, users.Object, new CoordinatedUserData(data.Object));
         library.ApplyHistoryFloor(user.Id, item.Id, 5, later.AddDays(-1), Ct);
         Assert.Equal(12, state.PlayCount);
         Assert.Equal(later, state.LastPlayedDate);
@@ -55,7 +64,7 @@ public sealed class LibraryTests
         library.ApplyHistoryFloor(user.Id, item.Id, 15, later.AddDays(1), Ct);
         Assert.Equal(20, state.PlayCount);
         Assert.Equal(later.AddDays(1), state.LastPlayedDate);
-        data.Verify(d => d.SaveUserData(user, item, state, UserDataSaveReason.Import, Ct), Times.Exactly(2));
+        data.Verify(d => d.SaveUserData(user, item, It.IsAny<UserItemData>(), UserDataSaveReason.Import, Ct), Times.Exactly(2));
     }
 
     [Fact]

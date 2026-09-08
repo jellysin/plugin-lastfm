@@ -22,7 +22,7 @@ public abstract class MusicMetadataProvider<TItem, TInfo>(MetadataApi api) : IRe
         if (Plugin.Instance?.Configuration.Enabled == false || Plugin.Instance?.Configuration.MetadataEnabled == false) return result;
         var metadata = await api.GetAsync(Kind, info.Name, Artist(info), info.ProviderIds.GetValueOrDefault(ProviderId), cancellationToken).ConfigureAwait(false);
         if (metadata is null || metadata.Name.Length == 0) return result;
-        await api.ReserveNativeCopyAsync(Kind + "|" + info.Path + "|" + metadata.MusicBrainzId + "|" + metadata.Artist + "|" + metadata.Name,
+        await api.ReserveNativeCopyAsync(Kind + "|" + (string.IsNullOrEmpty(info.Path) ? info.Name + "|" + Artist(info) : info.Path),
             metadata, cancellationToken).ConfigureAwait(false);
         var item = new TItem { Name = metadata.Name, Overview = WebUtility.HtmlEncode(metadata.Overview), Tags = metadata.Tags };
         if (metadata.MusicBrainzId is { } mbid) item.ProviderIds[ProviderId] = mbid;

@@ -33,8 +33,8 @@ own account. Last.fm passwords and session keys are never entered into the dashb
    Users can also visit `/JellySin/Lastfm/` directly on the server.
 4. Sign in, connect Last.fm, and enable the features you want for your account.
 
-Jellyfin 10.11 is unsupported. Users of the older Last.fm plugin must disable its
-scrobbling before enabling this one and reconnect their accounts. The new GUID is
+Jellyfin 10.11 is unsupported. Users of the older Last.fm plugin must remove it,
+restart Jellyfin and reconnect their accounts in this plugin. The new GUID is
 `2034650d-a290-4a16-b195-89fb44cfb932`; old credentials and XML settings are not
 silently copied. See [migration](docs/migration.md).
 
@@ -47,9 +47,9 @@ Its dashboard is a separate authenticated page; custom controls do not
 automatically appear in every Jellyfin TV or mobile client.
 
 History import updates Jellyfin's aggregate play count and last-played fields,
-without fabricating native chronological play events. It uses a monotonic floor
-to avoid double-adding existing counts; unmatched and ambiguous tracks remain for
-review. Last.fm offers no idempotency key for scrobbles, so an accepted request
+without fabricating native chronological play events. It retains the higher count
+and later verified date; a later deliberate Jellyfin reset remains possible.
+Unmatched and ambiguous tracks remain for review. Last.fm offers no idempotency key for scrobbles, so an accepted request
 whose reply is lost cannot be guaranteed exactly once.
 
 See [account privacy and operations](docs/operations.md),

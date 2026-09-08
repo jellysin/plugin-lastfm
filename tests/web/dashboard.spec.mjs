@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { readFile } from 'node:fs/promises';
 import { installServer, passwordLogin, token } from './fixture.mjs';
 
 for (const prefix of ['', '/jellyfin']) {
@@ -63,6 +64,8 @@ test('history changes are paged, resumable and only applied after confirmation',
   await page.getByText('Import play counts into Jellyfin', { exact: true }).click();
   await page.getByRole('button', { name: 'Prepare preview', exact: true }).click();
   await expect(page.locator('#history-preview-list')).toContainText('201 matched tracks');
+  await expect(page.locator('#history-apply')).toBeDisabled();
+  await expect(page.locator('#history-preview-list')).toContainText('Last-played dates: through history page 0');
   expect(state.imported).toBe(false);
   await page.getByRole('button', { name: 'Next changes' }).click();
   await expect(page.locator('#history-preview-list')).toContainText('Angel');
@@ -72,8 +75,16 @@ test('history changes are paged, resumable and only applied after confirmation',
   await page.getByRole('button', { name: 'Continue preview', exact: true }).click();
   await expect(page.locator('#history-continue')).toBeHidden();
   await page.getByRole('button', { name: 'Confirm and import preview' }).click();
+  await expect(page.locator('#history-preview-list')).toContainText('200 of 201 tracks already applied');
+  expect(state.imported).toBe(false);
+  await page.reload();
+  await expect(page.locator('#signed-in')).toBeVisible();
+  await page.getByText('Import play counts into Jellyfin', { exact: true }).click();
+  await page.getByRole('button', { name: 'Resume saved preview' }).click();
+  await page.getByRole('button', { name: 'Continue confirmed import', exact: true }).click();
   await expect(page.locator('#history-apply')).toBeDisabled();
   expect(state.imported).toBe(true);
+  expect(state.requests.filter(request => request.path.endsWith('History/Import'))).toHaveLength(2);
 });
 
 test('favourite removals and disconnect need explicit review', async ({ page }) => {
@@ -93,17 +104,102 @@ test('favourite removals and disconnect need explicit review', async ({ page }) 
   expect(state.disconnected).toBe(true);
 });
 
-test('admin credential replacement clears secrets from the form', async ({ page }) => {
-  const state = await installServer(page, { administrator: true });
+test('administrators open native Jellyfin settings from the user page', async ({ page }) => {
+  await installServer(page, { administrator: true });
   await passwordLogin(page);
   await expect(page.locator('#administrator')).toBeVisible();
+  await expect(page.locator('#server-settings-link')).toHaveAttribute('href', '/web/index.html#/configurationpage?name=jellysin-lastfm');
+  await expect(page.locator('#signed-in input[type=password]')).toHaveCount(0);
+});
+
+test('delivery exposes retained daily limits, rejected submissions and pending disk writes', async ({ page }) => {
+  const state = await installServer(page);
+  state.delivery = { ...state.delivery, LastIgnoredCode: 5, Rejected: 2, LastRejectedCode: 3, PendingPersistence: 1 };
+  await passwordLogin(page);
+  await page.getByText('Delivery status', { exact: true }).click();
+  await page.locator('#delivery-refresh').click();
+  await expect(page.locator('#delivery-status')).toContainText('daily limit reached; submissions retained');
+  await expect(page.locator('#delivery-status')).toContainText('2 rejected by Last.fm (reason 3)');
+  await expect(page.locator('#delivery-status')).toContainText('cannot yet survive a server restart');
+  expect(state.requests.some(request => request.path.endsWith('/Delivery/Retry'))).toBe(false);
+});
+
+test('keyboard sign-in, disclosure controls and cancellation preserve focus', async ({ page }) => {
+  await installServer(page);
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Skip to music' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#quick-connect')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#username')).toBeFocused();
+  await page.keyboard.type('listener');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('fixture-password');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#signed-in')).toBeVisible();
+  await page.locator('#disconnect-lastfm').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#confirm-disconnect')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#cancel-disconnect')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#disconnect-confirmation')).toBeHidden();
+  await expect(page.locator('#disconnect-lastfm')).toBeFocused();
+});
+
+test('an interrupted playlist can be reviewed and cancelled without deleting the playlist', async ({ page }) => {
+  const state = await installServer(page);
+  const operationId = '33333333-3333-4333-8333-333333333333';
+  state.pendingPlaylist = { OperationId: operationId, Name: 'Evening listening', ItemCount: 20, Status: 'A track is no longer accessible.' };
+  await passwordLogin(page);
+  await page.locator('#playlists-refresh').click();
+  await expect(page.locator('#playlist-pending')).toContainText('no longer accessible');
+  await page.getByRole('button', { name: 'Review cancellation' }).click();
+  await expect(page.locator('#playlist-pending')).toContainText('possibly partial state');
+  expect(state.pendingPlaylist).not.toBeNull();
+  await page.getByRole('button', { name: 'Keep waiting' }).click();
+  await expect(page.locator('#playlist-pending')).toContainText('Evening listening');
+  await page.getByRole('button', { name: 'Review cancellation' }).click();
+  await page.getByRole('button', { name: 'Cancel update and pause refresh' }).click();
+  await expect(page.locator('#playlist-pending')).toBeEmpty();
+  expect(state.pendingPlaylist).toBeNull();
+  const deletes = state.requests.filter(request => request.method === 'DELETE');
+  expect(deletes.map(request => request.path)).toEqual([`/JellySin/Lastfm/Me/Playlists/Pending/${operationId}`]);
+});
+
+test('native admin settings preserve host configuration and clear application secrets', async ({ page }) => {
+  await page.addInitScript(() => {
+    const state = { Enabled: true, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' };
+    globalThis.ApiClient = {
+      getUrl: path => '/jellyfin/' + path,
+      getPluginConfiguration: async () => ({ ...state }),
+      updatePluginConfiguration: async (_id, input) => { globalThis.savedConfig = input; },
+      ajax: async input => {
+        if (input.type === 'PUT') globalThis.savedApplication = JSON.parse(input.data);
+        return { Configured: true };
+      },
+    };
+  });
+  const fragment = await readFile(new URL('../../src/JellySin.Plugin.Lastfm/Web/admin.html', import.meta.url), 'utf8');
+  await page.route('http://127.0.0.1:4177/native', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="en"><title>Native settings test</title><body>' + fragment + '</body></html>' }));
+  await page.goto('http://127.0.0.1:4177/native');
+  await page.locator('#jellysin-admin').dispatchEvent('pageshow');
+  await expect(page.locator('#jellysin-application-status')).toHaveText('Application credentials are configured.');
+  await expect(page.locator('#jellysin-enabled')).toBeChecked();
+  await page.locator('#jellysin-enabled').uncheck();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
+  expect(await page.evaluate(() => globalThis.savedConfig)).toEqual({ Enabled: false, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' });
   await page.getByLabel('Application API key', { exact: true }).fill('b'.repeat(32));
   await page.getByLabel('Application shared secret').fill('c'.repeat(32));
-  await page.getByRole('button', { name: 'Save application credentials' }).click();
-  await expect(page.locator('#status')).toContainText('Application credentials saved');
-  await expect(page.locator('#api-key')).toHaveValue('');
-  await expect(page.locator('#api-secret')).toHaveValue('');
-  expect(state.requests.find(request => request.path.endsWith('Admin/Application') && request.method === 'PUT').body.secret).toBe('c'.repeat(32));
+  await page.getByRole('button', { name: 'Save application override' }).click();
+  await expect(page.locator('#jellysin-application-status')).toContainText('Application credentials saved');
+  await expect(page.locator('#jellysin-api-key')).toHaveValue('');
+  await expect(page.locator('#jellysin-api-secret')).toHaveValue('');
+  expect(await page.evaluate(() => globalThis.savedApplication.Secret)).toBe('c'.repeat(32));
 });
 
 for (const width of [320, 1280]) {

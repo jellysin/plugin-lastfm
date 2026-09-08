@@ -96,6 +96,16 @@ test('chunked responses are cancelled as soon as the byte budget is exceeded', a
   assert.ok(reads <= 3);
 });
 
+test('storage exhaustion explains the limit without exposing server response bodies', async context => {
+  context.mock.method(globalThis, 'fetch', async () => new Response('secret-token-and-storage-path', { status: 507 }));
+  await assert.rejects(new Client(bootstrap).api('Me/History/Preview'), error => {
+    assert.match(error.message, /data storage limit/);
+    assert.match(error.message, /saved progress is retained/);
+    assert.equal(error.message.includes('secret'), false);
+    return true;
+  });
+});
+
 test('split UTF-8 responses decode without corrupting music titles', async () => {
   const bytes = new TextEncoder().encode('{"Title":"Björk"}');
   let index = 0;
@@ -134,4 +144,38 @@ test('changing Last.fm account cancels data requests while retaining Jellyfin lo
   complete(Response.json({ Tracks: ['old account data'] }));
   await assert.rejects(request, error => error.name === 'AbortError');
   assert.equal(client.signedIn, true);
+});
+
+test('logout immediately clears private state and revokes only the previous server session', async context => {
+  const state = new Map();
+  const storage = { getItem: key => state.get(key), setItem: (key, value) => state.set(key, value), removeItem: key => state.delete(key) };
+  const client = new Client(bootstrap, storage);
+  client.acceptSession(session);
+  let complete;
+  context.mock.method(globalThis, 'fetch', (url, options) => {
+    assert.equal(url, '/jellyfin/Sessions/Logout');
+    assert.ok(options.headers.Authorization.includes(session.accessToken));
+    assert.equal(options.signal.aborted, false);
+    return new Promise(resolve => { complete = resolve; });
+  });
+  const revocation = client.logout();
+  assert.equal(client.signedIn, false);
+  assert.equal(state.size, 0);
+  client.acceptSession({ ...session, accessToken: 'b'.repeat(32) });
+  complete(new Response(null, { status: 401 }));
+  await revocation;
+  assert.equal(client.signedIn, true);
+  assert.equal([...state.values()][0], 'b'.repeat(32));
+});
+
+test('a superseded request cannot return a session even when the transport completes late', async context => {
+  const client = new Client(bootstrap);
+  const attempt = new AbortController();
+  let complete;
+  context.mock.method(globalThis, 'fetch', () => new Promise(resolve => { complete = resolve; }));
+  const request = client.request('/Users/AuthenticateByName', 'POST', {}, attempt.signal);
+  attempt.abort();
+  complete(Response.json(session));
+  await assert.rejects(request, error => error.name === 'AbortError');
+  assert.equal(client.signedIn, false);
 });

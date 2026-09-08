@@ -20,16 +20,21 @@ export function button(text: string, action: () => Promise<void>): HTMLButtonEle
 }
 
 const busyControls = new WeakSet<HTMLButtonElement>();
+let pendingActions = 0;
 
 export async function run(control: HTMLButtonElement | null, action: () => Promise<void>): Promise<void> {
   if (control && busyControls.has(control)) return;
   if (control) { busyControls.add(control); control.setAttribute('aria-disabled', 'true'); }
+  pendingActions++;
   element('workspace').setAttribute('aria-busy', 'true');
   try { await action(); }
-  catch (error: unknown) { message(error instanceof Error ? error.message : 'The operation failed.', true); }
+  catch (error: unknown) {
+    if (!(error instanceof DOMException && error.name === 'AbortError')) message(error instanceof Error ? error.message : 'The operation failed.', true);
+  }
   finally {
     if (control) { busyControls.delete(control); control.removeAttribute('aria-disabled'); }
-    element('workspace').setAttribute('aria-busy', 'false');
+    pendingActions--;
+    element('workspace').setAttribute('aria-busy', pendingActions > 0 ? 'true' : 'false');
   }
 }
 

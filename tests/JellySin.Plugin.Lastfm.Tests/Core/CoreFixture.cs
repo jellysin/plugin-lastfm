@@ -12,6 +12,7 @@ public sealed class CoreFixture : IDisposable
     public FileStateStore Store { get; }
     public TestClock Clock { get; } = new();
     public StubClient Client { get; } = new();
+    public IDataProtectionProvider Protection { get; } = new EphemeralDataProtectionProvider();
     public AccountService Accounts { get; }
     public ApplicationCredentialService Credentials { get; }
     public Guid UserId { get; } = Guid.NewGuid();
@@ -19,9 +20,8 @@ public sealed class CoreFixture : IDisposable
     public CoreFixture()
     {
         Store = new FileStateStore(DirectoryPath);
-        var protection = new EphemeralDataProtectionProvider();
-        Credentials = new ApplicationCredentialService(Store, protection);
-        Accounts = new AccountService(Store, Client, Credentials, protection, Clock);
+        Credentials = new ApplicationCredentialService(Store, Protection);
+        Accounts = new AccountService(Store, Client, Credentials, Protection, Clock);
     }
 
     public async Task ConnectAsync(Guid? user = null)

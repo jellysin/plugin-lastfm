@@ -51,7 +51,8 @@ public sealed class RequestValidationTests
         var track = new JellySin.Plugin.Lastfm.Features.MusicTrack("Artist", "Track");
         var entries = Enumerable.Range(0, 401).Select(index => new HistoryImportEntry(Guid.NewGuid(), track with { Title = "Matched " + index }, 1, 2, null, null)).ToArray();
         var unmatched = Enumerable.Range(0, 501).Select(index => new MusicMatch(track with { Title = "Missing " + index }, null, "missing")).ToArray();
-        var preview = new HistoryImportPreview(Guid.NewGuid(), new DateTimeOffset(2026, 9, 8, 0, 0, 0, TimeSpan.Zero), entries, unmatched, false, 4, 1234);
+        var preview = new HistoryImportPreview(Guid.NewGuid(), new DateTimeOffset(2026, 9, 8, 0, 0, 0, TimeSpan.Zero), entries, unmatched, false, 4, 1234,
+            CountsComplete: true, RecentNextPage: 9, AppliedCount: 200);
         var page = HistoryPreviewView.From(preview, requestedPage);
         Assert.Equal(expectedMatches, page.Entries.Count);
         Assert.Equal(expectedUnmatched, page.Unmatched.Count);
@@ -63,5 +64,9 @@ public sealed class RequestValidationTests
         Assert.Equal(4, page.NextPage);
         Assert.Equal(1234, page.Until);
         Assert.False(page.Complete);
+        Assert.True(page.CountsComplete);
+        Assert.False(page.DatesComplete);
+        Assert.Equal(9, page.RecentNextPage);
+        Assert.Equal(200, page.AppliedCount);
     }
 }

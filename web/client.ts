@@ -83,29 +83,48 @@ export class Client extends EventTarget {
     this.dispatchEvent(new Event('accountchanged'));
   }
 
+  async logout(): Promise<void> {
+    const authorization = this.authorizationHeader();
+    this.clearSession();
+    try {
+      const response = await fetch(this.root + '/Sessions/Logout', {
+        method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store',
+        headers: { Authorization: authorization }, signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok && response.status !== 401) throw new Error('Revocation failed.');
+    } catch {
+      if (!this.signedIn) throw new Error('Signed out of this page. Jellyfin could not confirm server-session revocation.');
+    }
+  }
+
+  private authorizationHeader(): string {
+    const header = `MediaBrowser Client="JellySin%20Last.fm", Device="Browser", DeviceId="${this.deviceId}", Version="${encodeURIComponent(this.config.version)}"`;
+    return header + (this.token ? `, Token="${this.token}"` : '');
+  }
+
   async api<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
     return this.request<T>(`/JellySin/Lastfm/${path}`, method, body, signal);
   }
 
   async request<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
     if (!path.startsWith('/') || path.startsWith('//') || /[\r\n\\]/.test(path)) throw new Error('Invalid API path.');
-    const header = `MediaBrowser Client="JellySin%20Last.fm", Device="Browser", DeviceId="${this.deviceId}", Version="${encodeURIComponent(this.config.version)}"`;
-    const sessionSignal = this.sessionRequests.signal;
+    const requestSignal = AbortSignal.any([this.sessionRequests.signal, AbortSignal.timeout(90_000), ...(signal ? [signal] : [])]);
     const response = await fetch(this.root + path, {
       method, credentials: 'omit', redirect: 'error', cache: 'no-store',
-      headers: { Authorization: header + (this.token ? `, Token="${this.token}"` : ''),
+      headers: { Authorization: this.authorizationHeader(),
         Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.any([sessionSignal, AbortSignal.timeout(90_000), ...(signal ? [signal] : [])]),
+      signal: requestSignal,
     });
-    sessionSignal.throwIfAborted();
+    requestSignal.throwIfAborted();
     if (response.status === 401) { this.clearSession(); throw new Error('Your Jellyfin session expired. Sign in again.'); }
     if (!response.ok) throw new Error(response.status === 403 ? 'Your account cannot perform this action.'
+      : response.status === 507 ? 'JellySin reached its data storage limit. Any saved progress is retained; check storage before retrying.'
       : response.status === 409 ? 'This action is unavailable or its preview expired. Refresh and try again.'
       : `The request could not be completed (HTTP ${response.status}).`);
     if (response.status === 204) return undefined as T;
     const result = await readJson(response) as T;
-    sessionSignal.throwIfAborted();
+    requestSignal.throwIfAborted();
     return result;
   }
 }

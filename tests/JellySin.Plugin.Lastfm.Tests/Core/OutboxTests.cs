@@ -7,6 +7,98 @@ namespace JellySin.Plugin.Lastfm.Tests.Core;
 public sealed class OutboxTests
 {
     [Fact]
+    public async Task MalformedPersistedMetadataIsRejectedWithoutBlockingFollowingValidListen()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var invalid = Listen(fixture);
+        invalid = invalid with { Track = invalid.Track with { Title = new string('x', 5000) } };
+        await fixture.Store.WriteAsync(fixture.UserId, "outbox", new OutboxState([new(invalid), new(Listen(fixture))], []), TestContext.Current.CancellationToken);
+        var outbox = NewOutbox(fixture);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var status = await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(0, status.Pending);
+        Assert.Equal(1, status.Rejected);
+        Assert.Equal(-1, status.LastRejectedCode);
+        Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
+    }
+    [Theory]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(99)]
+    public async Task PartialDailyFutureAndUnknownRejectionsRemainVisibleAndRetryable(int ignored)
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var outbox = NewOutbox(fixture);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        fixture.Client.Handler = (_, _, _) => JsonSerializer.SerializeToDocument(new
+        { scrobbles = new { scrobble = new[] { new { ignoredMessage = new { code = 0 } }, new { ignoredMessage = new { code = ignored } } } } });
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var status = await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(1, status.Pending);
+        Assert.Equal(1, status.Blocked);
+        Assert.Equal(ignored, status.LastIgnoredCode);
+        Assert.Null(status.LastErrorCode);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
+        await outbox.ResumeAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        fixture.Client.Handler = null;
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
+    }
+
+    [Fact]
+    public async Task OversizedOptionalMetadataCannotPoisonTheDeliveryBatch()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var outbox = NewOutbox(fixture);
+        var listen = Listen(fixture);
+        await outbox.EnqueueAsync(listen with { Track = listen.Track with { Album = new string('x', 5000), MusicBrainzId = new string('y', 5000) } }, TestContext.Current.CancellationToken);
+        fixture.Client.Handler = (_, parameters, _) =>
+        {
+            Assert.DoesNotContain("album[0]", parameters.Keys);
+            Assert.DoesNotContain("mbid[0]", parameters.Keys);
+            return JsonDocument.Parse("""{"scrobbles":{"scrobble":{"ignoredMessage":{"code":0}}}}""");
+        };
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
+    }
+
+    [Fact]
+    public async Task OldAccountAndNowPlayingGenerationsCannotReachReconnectedAccount()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var listen = Listen(fixture);
+        var outbox = NewOutbox(fixture);
+        await fixture.Accounts.DisconnectAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        await fixture.ConnectAsync();
+        await outbox.EnqueueAsync(listen, TestContext.Current.CancellationToken);
+        await outbox.NowPlayingAsync(listen, TestContext.Current.CancellationToken);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(fixture.Client.Calls, call => call.Method.StartsWith("track.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EligibleListenPersistsDuringPauseAndDeliversOnlyAfterResume()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var listen = Listen(fixture);
+        var outbox = NewOutbox(fixture);
+        await fixture.Accounts.SetScrobblingAsync(fixture.UserId, false, TestContext.Current.CancellationToken);
+        await outbox.EnqueueAsync(listen, TestContext.Current.CancellationToken);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(1, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
+        await fixture.Accounts.SetScrobblingAsync(fixture.UserId, true, TestContext.Current.CancellationToken);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
+    }
+
+    [Fact]
     public async Task CompletedOccurrenceIsNotResubmittedAcrossRestart()
     {
         using var fixture = new CoreFixture();
@@ -189,5 +281,6 @@ public sealed class OutboxTests
     }
 
     private static ScrobbleOutbox NewOutbox(CoreFixture fixture) => new(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
-    private static EligibleListen Listen(CoreFixture fixture) => new(Guid.NewGuid(), fixture.UserId, new MusicTrack(Guid.NewGuid(), "Artist", "Song", "Album", null, 180), fixture.Clock.GetUtcNow());
+    private static EligibleListen Listen(CoreFixture fixture) => new(Guid.NewGuid(), fixture.UserId, new MusicTrack(Guid.NewGuid(), "Artist", "Song", "Album", null, 180), fixture.Clock.GetUtcNow(),
+        fixture.Accounts.GetCaptureBinding(fixture.UserId)?.AccountGeneration ?? Guid.Empty, fixture.Accounts.GetCaptureBinding(fixture.UserId)?.CaptureGeneration ?? Guid.Empty);
 }

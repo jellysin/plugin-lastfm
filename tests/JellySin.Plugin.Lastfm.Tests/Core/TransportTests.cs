@@ -1,11 +1,70 @@
 using System.Net;
 using System.Net.Http.Headers;
+using JellySin.Plugin.Lastfm.Configuration;
 using JellySin.Plugin.Lastfm.Transport;
 
 namespace JellySin.Plugin.Lastfm.Tests.Core;
 
 public sealed class TransportTests
 {
+    [Fact]
+    public async Task NowPlayingStoppedWhileQueuedNeverReachesNetwork()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var handler = new Handler(_ => throw new InvalidOperationException("Stopped playback must not reach the network."));
+        using var client = Create(fixture, handler);
+        var account = (await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken))!;
+        var current = true;
+        var queued = client.UpdateNowPlayingAsync(new Dictionary<string, string> { ["artist"] = "Artist", ["track"] = "Track" },
+            account.SessionKey, account.ApplicationIdentity, () => current, TestContext.Current.CancellationToken);
+        current = false;
+        await client.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(8, (await Assert.ThrowsAsync<LastfmException>(() => queued)).Code);
+        Assert.Equal(0, handler.Count);
+        await client.StopAsync(TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task QueuedSessionCannotBeSentWithAReplacementApplicationsKey()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var expected = ApplicationCredentialService.Identity(await fixture.Credentials.GetAsync(TestContext.Current.CancellationToken));
+        var handler = new Handler(_ => throw new InvalidOperationException("Network must not receive the old session."));
+        using var client = Create(fixture, handler);
+        var queued = client.CallForApplicationAsync("track.love", new Dictionary<string, string>(), "old-session", expected, RequestPriority.Interactive, TestContext.Current.CancellationToken);
+        await fixture.Credentials.SetAsync(new ApplicationCredentials(new string('c', 32), new string('d', 32)), TestContext.Current.CancellationToken);
+        await client.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(9, (await Assert.ThrowsAsync<LastfmException>(() => queued)).Code);
+        Assert.Equal(0, handler.Count);
+        await client.StopAsync(TestContext.Current.CancellationToken);
+    }
+    [Theory]
+    [InlineData(29)]
+    [InlineData(26)]
+    public async Task FreshPublicCacheRemainsUsableDuringRateLimitsAndKeySuspension(int failure)
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var count = 0;
+        var handler = new Handler(_ =>
+        {
+            if (++count > 1) return Response($$"""{"error":{{failure}}}""");
+            var response = Response("{}");
+            response.Headers.CacheControl = new CacheControlHeaderValue { MaxAge = TimeSpan.FromMinutes(5) };
+            return response;
+        });
+        using var client = Create(fixture, handler);
+        await client.StartAsync(TestContext.Current.CancellationToken);
+        using var original = await Call(client);
+        await Assert.ThrowsAsync<LastfmException>(() => client.CallAsync("artist.getInfo", new Dictionary<string, string> { ["artist"] = "Uncached" }, null, RequestPriority.Background, TestContext.Current.CancellationToken));
+        fixture.Clock.Advance(10);
+        using var cached = await Call(client);
+        Assert.Equal(TimeSpan.FromSeconds(290), client.GetCacheLifetime(cached));
+        Assert.Equal(2, handler.Count);
+        await client.StopAsync(TestContext.Current.CancellationToken);
+    }
     [Fact]
     public void SignatureUsesUtf8AndExcludesFormatCallbackAndSignature()
     {

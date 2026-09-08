@@ -11,6 +11,28 @@ public sealed class PlaylistsController(PlaylistService playlists) : PrivateCont
     public Task<IReadOnlyList<PlaylistRecipe>> Get(CancellationToken cancellationToken) =>
         playlists.GetRecipesAsync(CallerId, cancellationToken);
 
+    [HttpGet("Pending")]
+    public async Task<object?> Pending(CancellationToken cancellationToken)
+    {
+        var pending = await playlists.GetPendingOperationAsync(CallerId, cancellationToken).ConfigureAwait(false);
+        return pending is null ? null : new
+        {
+            pending.OperationId,
+            RecipeId = pending.Recipe.Id,
+            pending.Recipe.Name,
+            pending.PlaylistId,
+            ItemCount = pending.Items.Length,
+            Status = pending.Status ?? "Update is waiting for completion or recovery."
+        };
+    }
+
+    [HttpDelete("Pending/{id:guid}")]
+    public async Task<IActionResult> CancelPending(Guid id, CancellationToken cancellationToken)
+    {
+        await playlists.CancelPendingAsync(CallerId, id, cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
     [HttpPost]
     public Task<PlaylistRecipe> Generate(PlaylistInput input, CancellationToken cancellationToken) =>
         playlists.GenerateAsync(CallerId, new(input.Id, input.Name, input.Source, input.Period,
