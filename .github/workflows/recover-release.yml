@@ -91,7 +91,7 @@ jobs:
           SHA256
       - name: Verify original tag attestations before recovering the existing draft
         # Original subjects: https://github.com/jellysin/jellyfin-plugin-lastfm/attestations/45962373
-        uses: jellysin/plugin-tooling/actions/publish@24d91a995375f230fe943dff87cf4e4c49a0987f # v1.0.2
+        uses: jellysin/plugin-tooling/actions/publish@8beb2e91934cfa7ab3306eff9f6a6911f2278980 # v1.0.3
         with:
           directory: ${{ steps.package.outputs.directory }}
           tag: v1.0.0

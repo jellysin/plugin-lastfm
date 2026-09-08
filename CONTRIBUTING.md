@@ -72,6 +72,8 @@ create attestations. The corrected publisher resolves the draft by its numeric
 release ID and preserves all byte checks. Retrying this recovery verifies the
 complete immutable release without replacing assets. Normal later releases use
 the corrected publisher directly from their own tag workflow.
+Draft asset checks use authenticated numeric API identities; GitHub assigns their
+canonical public download URLs when the release is published.
 Renovate excludes this historical recovery recipe so its original source, tool
 versions and recorded artifact digests stay fixed. Normal release, CI and security
 workflows continue receiving dependency updates.
