@@ -1,0 +1,12 @@
+.git
+**/bin
+**/obj
+node_modules
+build
+dist
+TestResults
+test-results
+playwright-report
+**/__pycache__
+.vs
+.idea

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "dependencyDashboard": true,
+  "minimumReleaseAge": "3 days",
+  "rangeStrategy": "pin",
+  "automerge": false,
+  "prConcurrentLimit": 5,
+  "labels": ["dependencies"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^runtime-dependencies\\.json$/"],
+      "matchStrings": ["\"id\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "nuget",
+      "versioningTemplate": "nuget"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^tools/smoke\\.py$/", "/^\\.github/workflows/ci\\.yml$/"],
+      "matchStrings": ["jellyfin/jellyfin:(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)@(?<currentDigest>sha256:[a-f0-9]{64})"],
+      "depNameTemplate": "jellyfin/jellyfin",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {"matchManagers": ["github-actions"], "groupName": "GitHub Actions"},
+    {"matchUpdateTypes": ["major"], "groupName": null},
+    {"matchPackageNames": ["/^Jellyfin\\./", "jellyfin/jellyfin"], "allowedVersions": "/^12(?:\\.|$)/", "groupName": "Jellyfin 12"}
+  ]
+}

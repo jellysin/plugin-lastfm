@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AnalysisInput>
+  <Settings />
+  <Rules>
+    <Rule>
+      <Key>S3776</Key>
+      <Parameters>
+        <Parameter><Key>threshold</Key><Value>30</Value></Parameter>
+        <Parameter><Key>propertyThreshold</Key><Value>30</Value></Parameter>
+      </Parameters>
+    </Rule>
+  </Rules>
+</AnalysisInput>

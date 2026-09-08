@@ -1,0 +1,128 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    name: CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      CI: 'true'
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+      LASTFM_API_KEY: ''
+      LASTFM_SHARED_SECRET: ''
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - name: Build and check account interface
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          npm run check
+          npm test
+          npx --no-install playwright install --with-deps chromium
+          npm run test:e2e
+          npm audit --audit-level=low
+      - name: Restore, format and build with strict analyzers
+        run: |
+          dotnet restore --locked-mode
+          dotnet format --verify-no-changes --no-restore
+          dotnet build -c Release --no-restore
+      - name: Enforce C# syntax and cognitive-complexity limits
+        run: |
+          dotnet run --project tools/JellySin.CodePolicy -c Release --no-build -- --self-test
+          dotnet run --project tools/JellySin.CodePolicy -c Release --no-build -- src
+      - name: Test production behavior and enforce coverage
+        run: |
+          python -m unittest discover -s tests/python
+          dotnet test tests/JellySin.Plugin.Lastfm.Tests/JellySin.Plugin.Lastfm.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage" --results-directory build/coverage
+          python tools/coverage.py build/coverage
+      - name: Audit transitive NuGet dependencies
+        run: |
+          dotnet list package --vulnerable --include-transitive --format json > build/nuget-audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('build/nuget-audit.json').read_text())
+          if not report.get('projects'):
+              raise SystemExit('Dependency audit returned no projects')
+          vulnerable = [package['id'] for project in report.get('projects', []) for framework in project.get('frameworks', []) for kind in ('topLevelPackages', 'transitivePackages') for package in framework.get(kind, []) if package.get('vulnerabilities')]
+          if vulnerable:
+              raise SystemExit('Vulnerable dependencies: ' + ', '.join(sorted(set(vulnerable))))
+          PY
+      - name: Measure production playback callbacks
+        run: dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
+      - uses: jellysin/plugin-tooling/actions/check@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+      - name: Validate workflows and scan tracked history for secrets
+        env:
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --max-time 60 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz --output "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+          curl --fail --silent --show-error --location --proto '=https' --max-time 60 https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner
+      - name: Exercise real Jellyfin 12 load, account isolation and restart
+        run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --image jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5
+      - name: Verify native history writes and interrupted private playlist recovery
+        run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll
+      - name: Enforce real-library search and concurrent playback budgets
+        run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000
+      - name: Validate installable package and release metadata
+        uses: jellysin/plugin-tooling/actions/package@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+        with:
+          publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
+          nuget-lock-path: src/JellySin.Plugin.Lastfm/packages.lock.json
+          nuget-assets-path: src/JellySin.Plugin.Lastfm/obj/project.assets.json
+          runtime-dependencies-path: runtime-dependencies.json
+      - name: Check out the pinned packaging implementation for independent rebuilds
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jellysin/plugin-tooling
+          ref: 41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+          path: build/repro-tooling
+          persist-credentials: false
+      - name: Verify identical release artifacts from two independent checkouts
+        run: python tools/reproduce.py --tooling-directory build/repro-tooling --reference-directory dist
+      - name: Retain diagnostic results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: validation-results
+          path: |
+            build/coverage
+            build/nuget-audit.json
+            build/playback-benchmark.json
+            build/library-load.json
+            build/reproducibility.json
+            build/native-userdata-report.json
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 7
