@@ -1,0 +1,7 @@
+.git
+.vs
+**/bin
+**/obj
+**/TestResults
+build
+coverage
