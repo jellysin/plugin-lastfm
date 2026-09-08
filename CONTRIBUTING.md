@@ -47,14 +47,20 @@ and never merges old runs or trusts summary percentages from the report header.
 
 ## Release and compatibility
 
-Release-please owns `version.txt`, web package versions, tags and changelogs.
+Release-please collects commits in a release PR and updates `version.txt`, web
+package versions and the changelog. Its `skip-github-release: true` setting prevents
+tag and release creation. Ordinary pushes and PR merges never publish a release.
+The first release PR targets `1.0.0`; it stays open while changes accumulate.
+
 Stable `vX.Y.Z` tags map to `X.Y.Z.0` for the assembly and Plugin Repository;
 the minimum Jellyfin ABI is separately recorded in `plugin.json`.
 Do not ship host-provided assemblies.
 
-The release automation creates a draft and tag, then explicitly dispatches
-`release.yml` **on the tag ref**. This binds GitHub provenance to the source tag.
-That workflow reruns CI and builds production bytes. Packaging verifies the NuGet
+A maintainer separately decides when to publish. After reviewing and merging the
+release PR, create the chosen version tag and an unpublished draft, then manually
+dispatch `release.yml` **on that tag ref**. This binds GitHub provenance to the
+source tag. The publication workflow has no push or PR trigger and is never
+dispatched by release-please. It reruns CI and builds production bytes. Packaging verifies the NuGet
 production graph against the committed lock and restored assets, then creates a
 deterministic ZIP, SPDX file/dependency inventory and checksums. Independent builds
 in different checkout paths must produce the same four artifacts. The workflow
@@ -74,8 +80,8 @@ metadata in distributed plugin bytes and are extractable by server owners; build
 secret storage does not turn a distributed desktop application secret into a
 confidential server credential.
 
-Only the built-in repository token is used. Bot PR CI and release publication are
-explicitly dispatched; token-created tags are not assumed to trigger workflows.
+Only the built-in repository token is used. Bot PR CI is explicitly dispatched;
+publication requires the separate maintainer action described above.
 GitHub may additionally require a maintainer to approve the actual bot-created
 PR workflow run. Review and approve it through GitHub; a dispatched run alone may
 not satisfy that pending PR check. Required checks remain enforced.

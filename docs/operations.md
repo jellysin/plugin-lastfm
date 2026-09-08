@@ -12,9 +12,8 @@ JellySin's project Last.fm application is registered, and its credentials are
 configured in the repository secrets for production builds. Browser authorization,
 live history/charts/discovery and one explicitly authorized test scrobble were
 verified on 2026-09-08. The [API terms review](lastfm-api.md) records the storage,
-attribution and display requirements. The [optional clarification enquiry](lastfm-permission-request.md)
-is unsent; no separate written approval has been obtained or is implied by these
-tests. Account connection uses the registered application's documented API flow.
+attribution and display requirements. Account connection uses the registered
+application's documented API flow.
 
 An administrator can configure an application override in Jellyfin's plugin settings. Changing
 applications requires reconnecting user accounts; old sessions cannot be assumed
@@ -37,8 +36,7 @@ metadata copies passed to Jellyfin's database/NFO storage. Disposable cache entr
 are evicted before durable account or delivery state. Reaching a durable limit
 reports a failure rather than silently discarding unsent listens. This accounting
 does not measure administrator backups or exports, establish Last.fm's allowance
-across independent deployments, or grant additional data rights. These details
-are included in the unsent clarification draft.
+across independent deployments, or grant additional data rights.
 
 Disconnecting cancels account work and removes that user's plugin state, including
 session data, private caches and pending delivery. It does not delete data already
