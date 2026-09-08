@@ -8,5 +8,5 @@
   "targetAbi": "12.0.0.0",
   "assemblyFile": "JellySin.Plugin.Lastfm.dll",
   "packageFiles": ["LICENSE"],
-  "repository": "jellysin/jellyfin-plugin-lastfm"
+  "repository": "jellysin/plugin-lastfm"
 }
