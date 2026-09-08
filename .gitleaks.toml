@@ -1,0 +1,13 @@
+# Last.fm metadata client identifier inherited from the original public plugin.
+# Match both the exact value and its source path; changed credentials still fail.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Existing public Last.fm metadata application identifier"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(^|/)Jellyfin\.Plugin\.Lastfm/Providers/LastfmArtistProvider\.cs$''']
+regexes = ['''^7b76553c3eb1d341d642755aecc40a33$''']
