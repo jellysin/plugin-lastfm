@@ -84,6 +84,6 @@ not determine how Last.fm interprets storage across deployments or authorize pub
 data redistribution. Commercial/research usage and public data surfaces may require
 contact or approval under the terms. The project application is registered and its
 documented account flow has been tested. Questions about aggregate storage across
-independent installations and attribution in native clients remain recorded in an
-unsent clarification draft; API registration is not a blanket permission for other
-uses. EUPL-1.2 licenses this code, not Last.fm's data or third-party artwork.
+independent installations and attribution in native clients remain unresolved;
+API registration is not a blanket permission for other uses. EUPL-1.2 licenses
+this code, not Last.fm's data or third-party artwork.

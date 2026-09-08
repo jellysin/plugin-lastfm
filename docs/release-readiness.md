@@ -28,8 +28,8 @@ validation below records observed checks, not approval for production publicatio
 | Legacy migration | Separate plugin GUID and explicit uninstall/reconnect instructions; existing Last.fm history remains on Last.fm |
 
 The Last.fm API terms and unresolved distributed-storage/display questions are
-documented in [API research](lastfm-api.md). The clarification draft is unsent;
-neither registration nor a successful API call is represented as separate written
+documented in [API research](lastfm-api.md). Neither registration nor a successful
+API call is represented as separate written
 permission for data redistribution.
 
 The detailed measured results belong in [validation.md](validation.md) and
