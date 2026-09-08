@@ -1,0 +1,50 @@
+{
+  "tag": "v1.0.0",
+  "commit": "ae3b4b19ecc0f41761760c73a8c9910664815920",
+  "releaseId": 384711468,
+  "immutable": true,
+  "publishedAt": "2026-09-08T13:07:56Z",
+  "releaseUrl": "https://github.com/jellysin/jellyfin-plugin-lastfm/releases/tag/v1.0.0",
+  "releaseAutomationRun": 34226340003,
+  "originalAttestationRun": 34226367796,
+  "recoveryRun": 34229970211,
+  "recoveryWorkflowCommit": "8ed192b07e6e258439196019b0425366d1a2da32",
+  "assets": [
+    {
+      "id": 550499394,
+      "name": "checksums.txt",
+      "size": 259,
+      "sha256": "a8141a3390c78f11260cbc7532734d1fda15bd2a7cbd052bf136a05e74a5190c",
+      "attestationVerified": true
+    },
+    {
+      "id": 550522321,
+      "name": "jellyfin-plugin-lastfm-1.0.0.zip",
+      "size": 475344,
+      "sha256": "bbd13d4514d76a1cd61aa80608f32fd44dc75b87059fcec96f2b5e4c6664775d",
+      "attestationVerified": true
+    },
+    {
+      "id": 550522375,
+      "name": "release.json",
+      "size": 7603,
+      "sha256": "9765f19daae38453c2397f119d1579f177f41a3f470ce30124a3d1a307ab676b",
+      "attestationVerified": true
+    },
+    {
+      "id": 550522431,
+      "name": "sbom.spdx.json",
+      "size": 22657,
+      "sha256": "a74248702fd3018758df89e12634b951e2915b33e0b68caf72ce636f43e539c5",
+      "attestationVerified": true
+    }
+  ],
+  "archiveMembers": [
+    "JellySin.Plugin.Lastfm.dll",
+    "LICENSE"
+  ],
+  "packageContractVerified": true,
+  "successfulImmutableRetryRun": 34230153136,
+  "assetIdsSizesAndDigestsUnchangedAfterRetry": true,
+  "tagAndPublicationTimeUnchangedAfterRetry": true
+}

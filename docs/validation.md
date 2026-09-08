@@ -63,7 +63,7 @@ Callback measurements and their workload limits are in
 [benchmarks/README.md](../benchmarks/README.md). They are local measurements, not
 claims of improvement over an inherited implementation.
 
-## Remaining release checks
+## Production release verification
 
 The candidate's final live-browser checks passed with the project application:
 native administrator status/form/configuration save, ordinary-user history/charts/
@@ -73,10 +73,32 @@ reproduced it. Final reports recorded no page errors or attempted Last.fm writes
 The existing connection stayed valid with scrobbling/favourites paused and no
 pending deliveries.
 
-The first production release still requires exact-tag packaging/provenance and
-installation through the published catalog. Production rebuilds repeat the
-artifact comparison with embedded application credentials. No plugin 1.0.0
-publication is claimed by this validation record.
-The separate Last.fm terms questions remain documented; no provider confirmation
-is claimed. Existing repositories remain preserved until that release is verified. Native client
-behavior beyond the tested host surfaces must not be inferred from unit coverage.
+The immutable [1.0.0 release](https://github.com/jellysin/jellyfin-plugin-lastfm/releases/tag/v1.0.0)
+was published at 13:07:56 UTC on 2026-09-08 from unchanged source commit
+`ae3b4b19ecc0f41761760c73a8c9910664815920`. The original tag workflow passed its full
+CI, credentialed reproducibility and four artifact attestations, then encountered
+two draft API assumptions in the publisher. Shared tooling 1.0.3 corrects draft
+lookup and authenticated asset identity validation. The reviewed recovery workflow
+rebuilt the exact original source and required every original signed digest before
+resuming the same draft; it created no replacement attestations or tags.
+
+[Recovery 34229970211](https://github.com/jellysin/jellyfin-plugin-lastfm/actions/runs/34229970211)
+passed. [Retry 34230153136](https://github.com/jellysin/jellyfin-plugin-lastfm/actions/runs/34230153136)
+also passed, preserving all four asset IDs, sizes and SHA-256 digests, the source
+tag and publication time. Independent public downloads verified every original
+tag/workflow/source-bound attestation, ZIP/MD5, checksum manifest and SPDX inventory.
+
+[Catalog PR 8](https://github.com/jellysin/catalog/pull/8) added the verified release.
+At 13:29:38 UTC, a fresh UID 1000 host with an empty plugin directory and no plugin
+bind mounts registered the public catalog through Jellyfin's native API, discovered
+and installed 1.0.0.0, then passed two restarts, embedded application checks,
+ordinary-user access, anonymous rejection and ordinary-user admin rejection.
+The installed DLL SHA-256 was
+`cdc522f232935a75a7666bb6e9a4bfcf3b7a395689e515ac38e440aaec332a2d`, matching the
+attested ZIP. No Last.fm account was connected and no Last.fm writes were made in
+this installation test. Its disposable host and volumes were removed.
+
+Safe portable release and installation reports are retained in
+[validation/](validation/). Native client behavior beyond the tested host surfaces
+must not be inferred from unit coverage. API data-use limits remain documented in
+[the API research](lastfm-api.md).
