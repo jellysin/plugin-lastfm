@@ -74,7 +74,7 @@ jobs:
           PY
       - name: Measure production playback callbacks
         run: dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
-      - uses: jellysin/plugin-tooling/actions/check@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+      - uses: jellysin/release-helper/actions/check@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
       - name: Validate workflows and scan tracked history for secrets
         env:
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -95,7 +95,7 @@ jobs:
       - name: Enforce real-library search and concurrent playback budgets
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000
       - name: Validate installable package and release metadata
-        uses: jellysin/plugin-tooling/actions/package@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+        uses: jellysin/release-helper/actions/package@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
           nuget-lock-path: src/JellySin.Plugin.Lastfm/packages.lock.json
@@ -104,7 +104,7 @@ jobs:
       - name: Check out the pinned packaging implementation for independent rebuilds
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: jellysin/plugin-tooling
+          repository: jellysin/release-helper
           ref: 41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
           path: build/repro-tooling
           persist-credentials: false

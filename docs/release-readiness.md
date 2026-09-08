@@ -1,9 +1,7 @@
-# First-release acceptance
+# Release readiness
 
-The implementation passed local, native-host and hosted candidate validation.
-The first release is awaiting exact-tag publication and catalog installation
-verification. Existing repositories and catalog files stay intact until those
-final rollout checks pass.
+The plugin is in development; no published release is available. The candidate
+validation below records observed checks, not approval for production publication.
 
 ## Evidence and remaining work
 
@@ -23,11 +21,11 @@ final rollout checks pass.
 | Web page | 18 browser scenarios, 16 client tests, root/prefixed paths, immediate logout, safe rendering, review flows, axe, keyboard and performance budgets passed; final native admin form/live read-only checks passed |
 | Large-library behavior | Final real 10,000-track server with eight concurrent search/playback HTTP clients passed locally and in hosted CI |
 | Callback performance | Production callbacks passed one/four-producer latency/allocation budgets with 256 linked accounts and zero dropped/failed writes |
-| Release tooling | Shared tooling 1.0.1 published; 67 tests with two distinct plugin fixtures, SBOM inventory, strict validation and interrupted-upload retry |
+| Release tooling | The tooling revision tested on 2026-09-08 passed 67 tests with two distinct plugin fixtures, SBOM inventory, strict validation and interrupted-upload retry |
 | Reproducibility | Two independent checkouts matched the actual selected ZIP, release metadata, SBOM and checksums locally and in hosted CI; production tag repeats the gate with embedded credentials |
 | Repository checks | PR/squash protections, pinned Actions, locks, Renovate and read-only defaults configured; candidate CI and all four CodeQL analyses passed |
-| Publication and installation | Exact-tag production build, provenance, immutable release retry and published-catalog installation still pending |
-| Legacy migration | Notices and archival intentionally follow a verified new release; unfinished modernization PRs remain unmerged |
+| Publication and installation | No plugin release is available in the Plugin Repository |
+| Legacy migration | Separate plugin GUID and explicit uninstall/reconnect instructions; existing Last.fm history remains on Last.fm |
 
 The Last.fm API terms and unresolved distributed-storage/display questions are
 documented in [API research](lastfm-api.md). The clarification draft is unsent;

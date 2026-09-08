@@ -3,7 +3,7 @@
 Read CONTRIBUTING.md before changing release or branch behavior.
 
 - This is a fresh Jellyfin 12 implementation. Do not add 10.11 or Emby compatibility.
-- Preserve the new plugin GUID and stable catalog URL; document intentional migrations.
+- Preserve the new plugin GUID and Plugin Repository URL; document intentional migrations.
 - Use global.json, exact package versions and committed NuGet locks. Never ship host assemblies.
 - Compile the web resources before .NET. Keep frontend implementation details out of user flows.
 - Test production behavior: cancellation, user isolation, failures, absent metadata and restart recovery.

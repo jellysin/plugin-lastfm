@@ -10,7 +10,7 @@ Subject: JellySin Last.fm — self-hosted Jellyfin plugin application and displa
 
 Hello Last.fm partnerships team,
 
-We maintain [JellySin Last.fm](https://github.com/jellysin/jellyfin-plugin-lastfm),
+We maintain [JellySin Last.fm](https://github.com/jellysin/plugin-lastfm),
 a new EUPL-1.2 plugin for Jellyfin 12. We intend to distribute it free of charge
 for noncommercial, self-hosted music libraries, without advertising, a hosted
 aggregation service or resale of Last.fm data. Please confirm the following
