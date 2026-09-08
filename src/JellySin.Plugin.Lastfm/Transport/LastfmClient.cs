@@ -153,7 +153,7 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
         using var request = new HttpRequestMessage(signed ? HttpMethod.Post : HttpMethod.Get,
             signed ? endpoint : endpoint + "?" + await form.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
         if (signed) request.Content = form;
-        request.Headers.UserAgent.ParseAdd("JellySin.Lastfm/1.0 (+https://github.com/jellysin/jellyfin-plugin-lastfm)");
+        request.Headers.UserAgent.ParseAdd("JellySin.Lastfm/1.0 (+https://github.com/jellysin/plugin-lastfm)");
         if (work.IsCurrent?.Invoke() == false) throw new LastfmException(8);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         return await ProcessResponseAsync(response, app.ApiKey, cacheable ? cacheKey : null, cancellationToken).ConfigureAwait(false);

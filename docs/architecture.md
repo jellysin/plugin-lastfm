@@ -56,7 +56,7 @@ Last.fm browser grant; no Last.fm mobile/password authentication is used.
 ## Delivery
 
 The plugin descriptor contains a new stable GUID and an independent ABI floor of
-`12.0.0.0`. SemVer `X.Y.Z` maps to assembly/catalog `X.Y.Z.0`.
+`12.0.0.0`. SemVer `X.Y.Z` maps to `X.Y.Z.0` for the assembly and Plugin Repository.
 
 Reviewed release-please changes create a draft/tag and explicitly dispatch the
 publication workflow on that tag. CI verifies the exact source, then production
@@ -67,7 +67,7 @@ independent builds in different paths must match the artifacts selected for uplo
 The workflow attests all four artifacts and verifies existing bytes before
 resuming an interrupted draft upload. Published releases must be immutable.
 
-The catalog polls only allowlisted public plugin repositories. It independently
+The [Plugin Repository](https://github.com/jellysin/repo) accepts only allowlisted public plugin repositories. It independently
 verifies signed workflow/tag/commit provenance and package contents, then opens
 its own PR and explicitly dispatches CI. Each repository uses its own built-in
 GITHUB_TOKEN; there is no cross-repository write credential.

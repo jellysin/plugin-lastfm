@@ -20,7 +20,7 @@ Python 3.14.7 and repeats automated checks on proposed changes and release tags.
 | Repository configuration | Actionlint, shared policy and the official Renovate JSON schema passed |
 | Secret scans | Staged changes and all fresh-history commits passed Gitleaks with redaction; private state/build credentials remain ignored |
 | Reproducibility | Two clean checkouts reproduced all four artifacts and matched the selected upload set; official SPDX schema passed |
-| Hosted candidate | [CI 34224880828](https://github.com/jellysin/jellyfin-plugin-lastfm/actions/runs/34224880828) and [CodeQL 34224880825](https://github.com/jellysin/jellyfin-plugin-lastfm/actions/runs/34224880825) passed for `0a93c0c` |
+| Hosted candidate | [CI 34224880828](https://github.com/jellysin/plugin-lastfm/actions/runs/34224880828) and [CodeQL 34224880825](https://github.com/jellysin/plugin-lastfm/actions/runs/34224880825) passed for `0a93c0c` |
 
 The real Docker smoke harness loaded the plugin as UID 1000 and verified embedded
 resources, security headers, ordinary-user password and Quick Connect access,
@@ -63,7 +63,7 @@ Callback measurements and their workload limits are in
 [benchmarks/README.md](../benchmarks/README.md). They are local measurements, not
 claims of improvement over an inherited implementation.
 
-## Remaining release checks
+## Release availability
 
 The candidate's final live-browser checks passed with the project application:
 native administrator status/form/configuration save, ordinary-user history/charts/
@@ -73,10 +73,9 @@ reproduced it. Final reports recorded no page errors or attempted Last.fm writes
 The existing connection stayed valid with scrobbling/favourites paused and no
 pending deliveries.
 
-The first production release still requires exact-tag packaging/provenance and
-installation through the published catalog. Production rebuilds repeat the
-artifact comparison with embedded application credentials. No plugin 1.0.0
-publication is claimed by this validation record.
+The plugin is in development; no published release is available in the
+Plugin Repository. The candidate checks above are historical evidence and do
+not establish production release approval.
 The separate Last.fm terms questions remain documented; no provider confirmation
-is claimed. Existing repositories remain preserved until that release is verified. Native client
+is claimed. Native client
 behavior beyond the tested host surfaces must not be inferred from unit coverage.
