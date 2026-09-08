@@ -1,0 +1,5 @@
+# Historical public Last.fm application identifiers used by the client protocol.
+# These exact findings are reviewed exceptions; future credentials still fail.
+e31af5fb405f954e99323d10e1f5e2624fa5cafa:Jellyfin.Plugin.Lastfm/Resources/Strings.cs:generic-api-key:25
+cb1c949f6d8a21f2511cd4635c8dba9d9eaf222f:Lastfm/Resources/Strings.cs:generic-api-key:24
+14705953f3cbd1a09ccf845927c82d6cbd35fa08:Lastfm/Providers/LastfmArtistProvider.cs:generic-api-key:27

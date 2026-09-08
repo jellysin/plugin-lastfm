@@ -120,3 +120,6 @@ build/
 
 # Build artifacts
 lastfm_*.zip
+coverage/
+__pycache__/
+.pytest_cache/

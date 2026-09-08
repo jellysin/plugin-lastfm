@@ -4,8 +4,8 @@ namespace Jellyfin.Plugin.Lastfm.Models.Requests
 
     public class TrackLoveRequest : BaseAuthedRequest
     {
-        public string Track { get; set; }
-        public string Artist { get; set; }
+        public string Track { get; set; } = string.Empty;
+        public string Artist { get; set; } = string.Empty;
 
         public override Dictionary<string, string> ToDictionary()
         {

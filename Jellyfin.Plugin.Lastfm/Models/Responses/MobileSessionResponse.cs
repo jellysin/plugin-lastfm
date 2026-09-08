@@ -5,6 +5,6 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
     public class MobileSessionResponse : BaseResponse
     {
         [JsonPropertyName("session")]
-        public MobileSession Session { get; set; }
+        public MobileSession? Session { get; set; }
     }
 }

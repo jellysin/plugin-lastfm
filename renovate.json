@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", "docker:pinDigests"],
+  "forkProcessing": "enabled",
+  "baseBranchPatterns": ["main", "release/10.11"],
+  "timezone": "Europe/Berlin",
+  "schedule": ["before 6am on monday"],
+  "minimumReleaseAge": "3 days",
+  "automerge": false,
+  "dependencyDashboard": true,
+  "semanticCommits": "enabled",
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Refresh Jellyfin smoke-test image digests while preserving the manually aligned tags",
+      "managerFilePatterns": ["/^tools\\/jellyfin-images\\.json$/"],
+      "matchStrings": [
+        "\"(?<depName>jellyfin/jellyfin):(?<currentValue>[^\"@\\s]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker",
+      "autoReplaceStringTemplate": "\"{{{depName}}}:{{{currentValue}}}@{{{newDigest}}}\""
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 5am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Only pin or refresh image digests; image tags and mapping keys follow Jellyfin package updates",
+      "matchManagers": ["custom.regex"],
+      "matchFileNames": ["tools/jellyfin-images.json"],
+      "matchUpdateTypes": ["major", "minor", "patch", "lockFileMaintenance", "rollback", "bump", "replacement"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["nuget"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "compatible NuGet packages"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchBaseBranches": ["release/10.11"],
+      "matchPackageNames": ["Jellyfin.Controller"],
+      "allowedVersions": "/^10\\.11\\./"
+    },
+    {
+      "matchBaseBranches": ["main"],
+      "matchPackageNames": ["Jellyfin.Controller"],
+      "allowedVersions": "/^12\\./"
+    }
+  ]
+}

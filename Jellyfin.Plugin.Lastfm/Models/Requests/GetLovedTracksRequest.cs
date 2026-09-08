@@ -4,7 +4,7 @@ namespace Jellyfin.Plugin.Lastfm.Models.Requests
 
     public class GetLovedTracksRequest : BaseRequest
     {
-        public string User { get; set; }
+        public string User { get; set; } = string.Empty;
         public int Limit { get; set; }
         public int Page { get; set; }
 

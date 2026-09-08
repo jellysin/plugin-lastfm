@@ -2,6 +2,7 @@ namespace Jellyfin.Plugin.Lastfm
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
     using Configuration;
     using MediaBrowser.Common.Configuration;
     using MediaBrowser.Common.Plugins;
@@ -14,7 +15,13 @@ namespace Jellyfin.Plugin.Lastfm
         /// <summary>
         /// Flag set when an Import Syncing task is running
         /// </summary>
-        public static bool Syncing { get; internal set; }
+        private static int _syncing;
+
+        public static bool Syncing
+        {
+            get => Volatile.Read(ref _syncing) != 0;
+            internal set => Volatile.Write(ref _syncing, value ? 1 : 0);
+        }
 
 
         public PluginConfiguration PluginConfiguration => Configuration;
@@ -33,7 +40,7 @@ namespace Jellyfin.Plugin.Lastfm
         public override string Description
             => "Scrobble your music collection to Last.fm";
 
-        public static Plugin Instance { get; private set; }
+        public static Plugin? Instance { get; private set; }
 
         public IEnumerable<PluginPageInfo> GetPages()
         {

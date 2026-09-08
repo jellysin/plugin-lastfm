@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Extensions;
@@ -15,133 +14,59 @@ using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
-namespace Jellyfin.Plugin.Lastfm.Providers
+namespace Jellyfin.Plugin.Lastfm.Providers;
+
+public class LastfmArtistProvider : IRemoteMetadataProvider<MusicArtist, ArtistInfo>, IHasOrder
 {
-    public class LastfmArtistProvider : IRemoteMetadataProvider<MusicArtist, ArtistInfo>, IHasOrder
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<LastfmArtistProvider> _logger;
+    internal const string RootUrl = "https://ws.audioscrobbler.com/2.0/?";
+    internal static string ApiKey = "7b76553c3eb1d341d642755aecc40a33";
+
+    public LastfmArtistProvider(IHttpClientFactory httpClientFactory, IServerConfigurationManager config, ILoggerFactory loggerFactory)
     {
-        private readonly IHttpClientFactory _httpClientFactory;
+        _httpClientFactory = httpClientFactory;
+        _logger = loggerFactory.CreateLogger<LastfmArtistProvider>();
+    }
 
-        internal const string RootUrl = @"http://ws.audioscrobbler.com/2.0/?";
-        internal static string ApiKey = "7b76553c3eb1d341d642755aecc40a33";
+    public string Name => "last.fm";
+    public int Order => 2;
+    public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(ArtistInfo searchInfo, CancellationToken cancellationToken)
+        => Task.FromResult<IEnumerable<RemoteSearchResult>>([]);
 
-        private readonly IServerConfigurationManager _config;
-        private readonly ILoggerFactory _loggerFactory;
-        private readonly ILogger<LastfmArtistProvider> _logger;
-
-        public LastfmArtistProvider(IHttpClientFactory httpClientFactory, IServerConfigurationManager config, ILoggerFactory loggerFactory)
+    public async Task<MetadataResult<MusicArtist>> GetMetadata(ArtistInfo id, CancellationToken cancellationToken)
+    {
+        var result = new MetadataResult<MusicArtist>();
+        var mbid = id.GetMusicBrainzArtistId();
+        if (string.IsNullOrWhiteSpace(mbid))
         {
-            _httpClientFactory = httpClientFactory;
-            _config = config;
-            _loggerFactory = loggerFactory;
-            _logger = loggerFactory.CreateLogger<LastfmArtistProvider>();
-        }
-
-        public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(ArtistInfo searchInfo, CancellationToken cancellationToken)
-        {
-            return Task.FromResult<IEnumerable<RemoteSearchResult>>(new List<RemoteSearchResult>());
-        }
-
-        public async Task<MetadataResult<MusicArtist>> GetMetadata(ArtistInfo id, CancellationToken cancellationToken)
-        {
-            var result = new MetadataResult<MusicArtist>();
-
-            var musicBrainzId = id.GetMusicBrainzArtistId();
-
-            if (!String.IsNullOrWhiteSpace(musicBrainzId))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                result.Item = new MusicArtist();
-                result.HasMetadata = true;
-
-                await FetchLastfmData(result.Item, musicBrainzId, cancellationToken).ConfigureAwait(false);
-            }
-
             return result;
         }
-
-        protected async Task FetchLastfmData(MusicArtist item, string musicBrainzId, CancellationToken cancellationToken)
+        var data = await LastfmMetadataClient.Get<LastfmGetArtistResult>(_httpClientFactory, _logger,
+            RootUrl + "method=artist.getInfo&mbid=" + WebUtility.UrlEncode(mbid) + "&api_key=" + ApiKey + "&format=json", cancellationToken).ConfigureAwait(false);
+        if (data?.artist is not { } artist)
         {
-            // Get artist info with provided id
-            var url = RootUrl + String.Format("method=artist.getInfo&mbid={0}&api_key={1}&format=json", UrlEncode(musicBrainzId), ApiKey);
-
-            LastfmGetArtistResult result;
-
-            using (var response = await _httpClientFactory.CreateClient().GetAsync(url, cancellationToken).ConfigureAwait(false))
+            return result;
+        }
+        var item = new MusicArtist();
+        if (artist.bio is { } bio)
+        {
+            item.Overview = (bio.content ?? string.Empty).StripHtml();
+            if (!string.IsNullOrWhiteSpace(bio.placeformed))
             {
-                using (var stream = await response.Content.ReadAsStreamAsync())
-                {
-                    using (var reader = new StreamReader(stream))
-                    {
-                        var jsonText = await reader.ReadToEndAsync().ConfigureAwait(false);
-
-                        // Fix their bad json
-                        jsonText = jsonText.Replace("\"#text\"", "\"url\"");
-
-                        result = JsonSerializer.Deserialize<LastfmGetArtistResult>(jsonText);
-                    }
-                }
+                item.ProductionLocations = [bio.placeformed];
             }
-
-            if (result != null && result.artist != null)
+            if (int.TryParse(bio.yearformed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var year) && year is > 0 and <= 9999)
             {
-                ProcessArtistData(item, result.artist, musicBrainzId);
+                item.PremiereDate = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                item.ProductionYear = year;
             }
         }
-
-        private void ProcessArtistData(MusicArtist artist, LastfmArtist data, string musicBrainzId)
-        {
-            var yearFormed = 0;
-
-            if (data.bio != null)
-            {
-                Int32.TryParse(data.bio.yearformed, out yearFormed);
-                if (!artist.LockedFields.Contains(MetadataField.Overview))
-                {
-                    artist.Overview = (data.bio.content ?? string.Empty).StripHtml();
-                }
-                if (!string.IsNullOrEmpty(data.bio.placeformed) && !artist.LockedFields.Contains(MetadataField.ProductionLocations))
-                {
-                    artist.ProductionLocations = new[] { data.bio.placeformed };
-                }
-            }
-
-            if (yearFormed > 0)
-            {
-                artist.PremiereDate = new DateTime(yearFormed, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-
-                artist.ProductionYear = yearFormed;
-            }
-
-        }
-
-        /// <summary>
-        /// Encodes an URL.
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <returns>System.String.</returns>
-        private string UrlEncode(string name)
-        {
-            return WebUtility.UrlEncode(name);
-        }
-
-        public string Name
-        {
-            get { return "last.fm"; }
-        }
-
-        public int Order
-        {
-            get
-            {
-                // After fanart & audiodb
-                return 2;
-            }
-        }
-
-        public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
+        result.Item = item;
+        result.HasMetadata = true;
+        return result;
     }
+
+    public Task<HttpResponseMessage> GetImageResponse(string url, CancellationToken cancellationToken)
+        => LastfmMetadataClient.GetImage(_httpClientFactory, url, cancellationToken);
 }

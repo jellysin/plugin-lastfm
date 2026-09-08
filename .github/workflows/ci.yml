@@ -1,0 +1,178 @@
+name: CI
+
+on:
+  push:
+    branches: [main, release/10.11]
+  pull_request:
+    branches: [main, release/10.11]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Expected bot PR head commit
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+      expected_sha:
+        required: false
+        type: string
+      release_tag:
+        required: true
+        type: string
+    outputs:
+      commit:
+        value: ${{ jobs.check.outputs.commit }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ inputs.source_ref || github.ref }}
+  cancel-in-progress: ${{ inputs.release_tag == '' }}
+
+jobs:
+  check:
+    name: Build, test and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify source
+        id: source
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse HEAD)"
+          if [[ -n "$EXPECTED_SHA" && "$commit" != "$EXPECTED_SHA" ]]; then
+            echo '::error::The source commit changed before verification'
+            exit 1
+          fi
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          dotnet-version: '9.0.x'
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Validate Conventional Commit PR title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: python tools/check_pr_title.py
+      - name: Restore locked dependencies
+        run: dotnet restore --locked-mode
+      - name: Verify formatting
+        run: dotnet format --no-restore --verify-no-changes --verbosity minimal
+      - name: Build release
+        run: dotnet build --configuration Release --no-restore --warnaserror
+      - name: Test plugin
+        run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage" --logger trx --results-directory build/test-results
+      - name: Test configuration page
+        run: node --test tests/config-page.test.cjs
+      - name: Test packaging and release contracts
+        run: python -m unittest discover -s tools -p 'test_*.py' -v
+      - name: Check vulnerable dependencies
+        run: |
+          mkdir -p build
+          dotnet list package --vulnerable --include-transitive --no-restore --format json > build/dependency-audit.json
+          python tools/release.py audit build/dependency-audit.json
+      - name: Check workflows and exposed credentials
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
+          printf '%s  %s\n' '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8' "$RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o "$RUNNER_TEMP/gitleaks.tar.gz"
+          printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --log-opts='HEAD' --gitleaks-ignore-path tools/gitleaks.ignore
+      - name: Verify release tag
+        if: inputs.release_tag != ''
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_SHA: ${{ steps.source.outputs.commit }}
+        run: python tools/github_release.py verify-tag --tag "$RELEASE_TAG" --sha "$RELEASE_SHA"
+      - name: Package plugin
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            python tools/release.py package --tag "$RELEASE_TAG"
+          else
+            python tools/release.py package
+          fi
+      - name: Smoke-test the package on its pinned Jellyfin server
+        timeout-minutes: 15
+        run: |
+          python - <<'PY'
+          import subprocess
+          import sys
+          sys.path.insert(0, 'tools')
+          import release
+          properties = release.properties()
+          image = release.read_json('tools/jellyfin-images.json')[properties['JellyfinVersion']]
+          archive = 'build/release/lastfm_' + properties['AssemblyVersion'] + '.zip'
+          subprocess.run([sys.executable, 'tools/smoke.py', '--image', image, '--archive', archive], check=True)
+          PY
+      - name: Verify catalog additions against published releases
+        if: github.head_ref == 'automation/plugin-catalog' || github.ref_name == 'automation/plugin-catalog'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/github_release.py validate-catalog
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-${{ steps.source.outputs.commit }}
+          path: build/release/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: test-results-${{ steps.source.outputs.commit }}
+          path: |
+            build/test-results
+            build/smoke/result-*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      contents: read
+      security-events: write
+    with:
+      source_ref: ${{ inputs.source_ref || github.ref }}
+
+  gate:
+    name: CI
+    if: always()
+    needs: [check, codeql]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require successful verification
+        env:
+          RESULT: ${{ needs.check.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+        run: test "$RESULT" = success && test "$CODEQL_RESULT" = success

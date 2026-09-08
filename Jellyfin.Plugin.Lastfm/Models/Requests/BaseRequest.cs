@@ -4,8 +4,8 @@ namespace Jellyfin.Plugin.Lastfm.Models.Requests
 
     public class BaseRequest
     {
-        public string ApiKey { get; set; }
-        public string Method { get; set; }
+        public string ApiKey { get; set; } = string.Empty;
+        public string Method { get; set; } = string.Empty;
 
         /// <summary>
         /// If the request is a secure request (Over HTTPS)
@@ -24,7 +24,7 @@ namespace Jellyfin.Plugin.Lastfm.Models.Requests
 
     public class BaseAuthedRequest : BaseRequest
     {
-        public string SessionKey { get; set; }
+        public string SessionKey { get; set; } = string.Empty;
 
         public override Dictionary<string, string> ToDictionary()
         {

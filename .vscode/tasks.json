@@ -26,15 +26,14 @@
             "problemMatcher": "$msCompile"
         },
         {
-            "label": "watch",
+            "label": "test",
             "command": "dotnet",
             "type": "process",
             "args": [
-                "watch",
-                "run",
-                "${workspaceFolder}/Jellyfin.Plugin.Lastfm/Jellyfin.Plugin.Lastfm.csproj",
-                "/property:GenerateFullPaths=true",
-                "/consoleloggerparameters:NoSummary"
+                "test",
+                "${workspaceFolder}/Jellyfin.Plugin.Lastfm.sln",
+                "-c",
+                "Release"
             ],
             "problemMatcher": "$msCompile"
         }

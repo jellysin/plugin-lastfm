@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "b0994e805bbd129dec066b5de09739bfb445dea1",
+  "release-type": "simple",
+  "versioning": "always-bump-patch",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "draft": true,
+  "force-tag-creation": true,
+  "packages": {
+    ".": {
+      "package-name": "jellyfin-plugin-lastfm",
+      "version-file": "version.txt",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

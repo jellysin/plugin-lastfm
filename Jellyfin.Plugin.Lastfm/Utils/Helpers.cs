@@ -23,14 +23,14 @@ namespace Jellyfin.Plugin.Lastfm.Utils
             var sb = new StringBuilder();
 
             foreach (byte b in hashBytes)
-                sb.Append(b.ToString("X2"));
+                sb.Append(b.ToString("x2"));
 
             return sb.ToString();
         }
 
         public static void AppendSignature(ref Dictionary<string, string> data)
         {
-            data.Add("api_sig", CreateSignature(data));
+            data["api_sig"] = CreateSignature(data);
         }
 
         public static int ToTimestamp(DateTime date)
@@ -59,7 +59,7 @@ namespace Jellyfin.Plugin.Lastfm.Utils
         {
             var s = new StringBuilder();
 
-            foreach (var item in data.OrderBy(x => x.Key))
+            foreach (var item in data.Where(x => x.Key is not ("format" or "callback" or "api_sig")).OrderBy(x => x.Key, StringComparer.Ordinal))
                 s.Append(String.Format("{0}{1}", item.Key, item.Value));
 
             //Append seceret
@@ -69,7 +69,7 @@ namespace Jellyfin.Plugin.Lastfm.Utils
         }
 
         //The nuget doesn't seem to have GetProviderId for artists
-        public static string GetMusicBrainzArtistId(MusicArtist artist)
+        public static string? GetMusicBrainzArtistId(MusicArtist artist)
         {
 
             if (artist.ProviderIds == null)
@@ -77,7 +77,7 @@ namespace Jellyfin.Plugin.Lastfm.Utils
                 return null;
             }
 
-            if (artist.ProviderIds.TryGetValue("MusicBrainzArtist", out string mbArtistId))
+            if (artist.ProviderIds.TryGetValue("MusicBrainzArtist", out var mbArtistId))
             {
                 return mbArtistId;
             }

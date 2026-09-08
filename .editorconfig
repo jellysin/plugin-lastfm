@@ -109,13 +109,13 @@ csharp_space_between_square_brackets = false
 csharp_preserve_single_line_statements = false
 csharp_preserve_single_line_blocks = true
 
-# Analyzer severity (relaxed for existing code)
-dotnet_diagnostic.CA1062.severity = suggestion
+# Log messages and metadata are not localized resources.
 dotnet_diagnostic.CA1303.severity = none
-dotnet_diagnostic.CA1305.severity = suggestion
-dotnet_diagnostic.CA1307.severity = suggestion
-dotnet_diagnostic.CA1310.severity = suggestion
-dotnet_diagnostic.CA1707.severity = none
-dotnet_diagnostic.CA1716.severity = none
+# Jellyfin discovers providers and scheduled tasks through reflection.
 dotnet_diagnostic.CA1812.severity = none
+# ConfigureAwait does not change correctness inside the Jellyfin host.
 dotnet_diagnostic.CA2007.severity = none
+
+[**/*Tests.cs]
+# Underscores make scenario names readable in test reports.
+dotnet_diagnostic.CA1707.severity = none

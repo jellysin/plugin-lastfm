@@ -6,7 +6,7 @@ namespace Jellyfin.Plugin.Lastfm.Providers
 {
     public static class Extensions
     {
-        public static string GetAlbumArtist(this AlbumInfo info)
+        public static string? GetAlbumArtist(this AlbumInfo info)
         {
             var id = info.AlbumArtists.FirstOrDefault();
 
@@ -19,7 +19,7 @@ namespace Jellyfin.Plugin.Lastfm.Providers
             return id;
         }
 
-        public static string GetReleaseGroupId(this AlbumInfo info)
+        public static string? GetReleaseGroupId(this AlbumInfo info)
         {
             var id = info.GetProviderId(MetadataProvider.MusicBrainzReleaseGroup);
 
@@ -32,7 +32,7 @@ namespace Jellyfin.Plugin.Lastfm.Providers
             return id;
         }
 
-        public static string GetReleaseId(this AlbumInfo info)
+        public static string? GetReleaseId(this AlbumInfo info)
         {
             var id = info.GetProviderId(MetadataProvider.MusicBrainzAlbum);
 
@@ -45,9 +45,9 @@ namespace Jellyfin.Plugin.Lastfm.Providers
             return id;
         }
 
-        public static string GetMusicBrainzArtistId(this AlbumInfo info)
+        public static string? GetMusicBrainzArtistId(this AlbumInfo info)
         {
-            string id;
+            string? id;
             info.ProviderIds.TryGetValue(MetadataProvider.MusicBrainzAlbumArtist.ToString(), out id);
 
             if (string.IsNullOrEmpty(id))
@@ -59,9 +59,9 @@ namespace Jellyfin.Plugin.Lastfm.Providers
             return id;
         }
 
-        public static string GetMusicBrainzArtistId(this ArtistInfo info)
+        public static string? GetMusicBrainzArtistId(this ArtistInfo info)
         {
-            string id;
+            string? id;
             info.ProviderIds.TryGetValue(MetadataProvider.MusicBrainzArtist.ToString(), out id);
 
             return id;

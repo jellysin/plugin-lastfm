@@ -1,290 +1,277 @@
-namespace Jellyfin.Plugin.Lastfm
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Jellyfin.Plugin.Lastfm.Api;
+using Jellyfin.Plugin.Lastfm.Utils;
+using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Session;
+using MediaBrowser.Model.Entities;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
+namespace Jellyfin.Plugin.Lastfm;
+
+public class ServerEntryPoint : IHostedService, IDisposable
 {
-    using System;
-    using System.Linq;
-    using System.Net.Http;
-    using System.Threading;
-    using System.Threading.Tasks;
-    using Api;
-    using MediaBrowser.Controller.Entities.Audio;
-    using MediaBrowser.Controller.Library;
-    using MediaBrowser.Controller.Session;
-    using MediaBrowser.Model.Entities;
-    using Microsoft.Extensions.Hosting;
-    using Microsoft.Extensions.Logging;
+    private const int MaxPendingOperations = 256;
+    private static readonly TimeSpan CapacityWarningInterval = TimeSpan.FromMinutes(1);
+    private readonly ISessionManager _sessionManager;
+    private readonly IUserDataManager _userDataManager;
+    private readonly LastfmApiClient _apiClient;
+    private readonly PlaybackTracker _playbackTracker;
+    private readonly ILogger<ServerEntryPoint> _logger;
+    private readonly TimeProvider _timeProvider;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly SemaphoreSlim _concurrency = new(4, 4);
+    private readonly HashSet<Task> _pending = [];
+    private readonly object _lifecycleLock = new();
+    private Task? _shutdownTask;
+    private DateTimeOffset? _lastCapacityWarning;
+    private bool _started;
+    private bool _disposed;
 
-    /// <summary>
-    /// Class ServerEntryPoint
-    /// </summary>
-    public class ServerEntryPoint : IHostedService, IDisposable
+    public static ServerEntryPoint? Instance { get; private set; }
+
+    public ServerEntryPoint(ISessionManager sessionManager, IHttpClientFactory httpClientFactory, ILoggerFactory loggerFactory, IUserDataManager userDataManager, TimeProvider? timeProvider = null)
     {
+        _logger = loggerFactory.CreateLogger<ServerEntryPoint>();
+        _sessionManager = sessionManager;
+        _userDataManager = userDataManager;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _apiClient = new LastfmApiClient(httpClientFactory, _logger, timeProvider: _timeProvider);
+        _playbackTracker = new PlaybackTracker(_timeProvider);
+        Instance = this;
+    }
 
-        // if the length of the song is >= 30 seconds, allow scrobble.
-        private const long minimumSongLengthToScrobbleInTicks = 30 * TimeSpan.TicksPerSecond;
-        // if a song reaches >= 4 minutes  in playtime, allow scrobble.
-        private const long minimumPlayTimeToScrobbleInTicks = 4 * TimeSpan.TicksPerMinute;
-        // if a song reaches >= 50% played, allow scrobble.
-        private const double minimumPlayPercentage = 50.00;
-
-        private readonly ISessionManager _sessionManager;
-        private readonly IUserDataManager _userDataManager;
-
-        private LastfmApiClient _apiClient;
-        private readonly ILogger<ServerEntryPoint> _logger;
-
-        /// <summary>
-        /// Gets the instance.
-        /// </summary>
-        /// <value>The instance.</value>
-        public static ServerEntryPoint Instance { get; private set; }
-
-        public ServerEntryPoint(
-            ISessionManager sessionManager,
-            IHttpClientFactory httpClientFactory,
-            ILoggerFactory loggerFactory,
-            IUserDataManager userDataManager)
+    private void PlaybackStart(object? sender, PlaybackProgressEventArgs args)
+    {
+        lock (_lifecycleLock)
         {
-            _logger = loggerFactory.CreateLogger<ServerEntryPoint>();
-
-            _sessionManager = sessionManager;
-            _userDataManager = userDataManager;
-            _apiClient = new LastfmApiClient(httpClientFactory, _logger);
-            Instance = this;
+            if (!_started || args.Item is not Audio item)
+            {
+                return;
+            }
+            _playbackTracker.Start(args);
+            Queue(async token =>
+            {
+                foreach (var user in args.Users)
+                {
+                    var configured = UserHelpers.GetUser(user);
+                    if (configured is { Options.Scrobble: true } && !string.IsNullOrWhiteSpace(configured.SessionKey))
+                    {
+                        await _apiClient.NowPlaying(item, configured, token).ConfigureAwait(false);
+                    }
+                }
+            });
         }
+    }
 
-        /// <summary>
-        /// Let last fm know when a user favourites or unfavourites a track
-        /// </summary>
-        async void UserDataSaved(object sender, UserDataSaveEventArgs e)
+    private void PlaybackStopped(object? sender, PlaybackStopEventArgs args)
+    {
+        lock (_lifecycleLock)
+        {
+            if (_started)
+            {
+                Submit(_playbackTracker.Stop(args));
+            }
+        }
+    }
+
+    private void PlaybackProgress(object? sender, PlaybackProgressEventArgs args)
+    {
+        lock (_lifecycleLock)
+        {
+            if (_started)
+            {
+                _playbackTracker.Progress(args);
+            }
+        }
+    }
+
+    private void Submit(IReadOnlyList<PlaybackScrobble> candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            var configured = UserHelpers.GetUser(candidate.UserId);
+            if (configured is { Options.Scrobble: true } && configured.Options.AlternativeMode == candidate.AlternativeMode
+                && !string.IsNullOrWhiteSpace(configured.SessionKey))
+            {
+                Queue(token => _apiClient.Scrobble(candidate.Item, configured, token, candidate.StartedAt));
+            }
+        }
+    }
+
+    private void UserDataSaved(object? sender, UserDataSaveEventArgs args)
+    {
+        lock (_lifecycleLock)
+        {
+            if (!_started || args.Item is not Audio item)
+            {
+                return;
+            }
+            var configured = UserHelpers.GetUser(args.UserId);
+            if (configured?.Options is null || string.IsNullOrWhiteSpace(configured.SessionKey))
+            {
+                return;
+            }
+            if (args.SaveReason == UserDataSaveReason.UpdateUserRating && configured.Options.SyncFavourites && !Plugin.Syncing)
+            {
+                Queue(token => _apiClient.LoveTrack(item, configured, args.UserData.IsFavorite, token));
+            }
+            else if (args.SaveReason == UserDataSaveReason.PlaybackFinished && configured.Options.Scrobble && configured.Options.AlternativeMode)
+            {
+                Submit(_playbackTracker.UserDataSaved(args.UserId, item.Id));
+            }
+        }
+    }
+
+    private void Queue(Func<CancellationToken, Task> operation)
+    {
+        lock (_lifecycleLock)
+        {
+            if (!_started || _disposed)
+            {
+                return;
+            }
+            if (_pending.Count >= MaxPendingOperations)
+            {
+                var now = _timeProvider.GetUtcNow();
+                if (!_lastCapacityWarning.HasValue || now - _lastCapacityWarning.Value >= CapacityWarningInterval)
+                {
+                    _lastCapacityWarning = now;
+                    _logger.LogWarning("Last.fm playback event capacity reached; skipping excess events");
+                }
+                return;
+            }
+            var token = _lifetime.Token;
+            var task = Task.Run(async () =>
+            {
+                var acquired = false;
+                try
+                {
+                    await _concurrency.WaitAsync(token).ConfigureAwait(false);
+                    acquired = true;
+                    token.ThrowIfCancellationRequested();
+                    await operation(token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                }
+                catch (Exception exception)
+                {
+                    _logger.LogError("Last.fm playback event failed ({FailureType})", exception.GetType().Name);
+                }
+                finally
+                {
+                    if (acquired)
+                    {
+                        _concurrency.Release();
+                    }
+                }
+            });
+            _pending.Add(task);
+            _ = task.ContinueWith(completed =>
+            {
+                lock (_lifecycleLock)
+                {
+                    _pending.Remove(completed);
+                }
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_lifecycleLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_shutdownTask is not null)
+            {
+                throw new InvalidOperationException("The Last.fm hosted service cannot be restarted after stopping.");
+            }
+            if (!_started)
+            {
+                _sessionManager.PlaybackStart += PlaybackStart;
+                _sessionManager.PlaybackProgress += PlaybackProgress;
+                _sessionManager.PlaybackStopped += PlaybackStopped;
+                _userDataManager.UserDataSaved += UserDataSaved;
+                _started = true;
+            }
+        }
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        Task shutdown;
+        lock (_lifecycleLock)
+        {
+            shutdown = BeginShutdown();
+        }
+        await shutdown.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private Task BeginShutdown()
+    {
+        Unsubscribe();
+        return _shutdownTask ??= DrainAsync(_pending.ToArray());
+    }
+
+    private async Task DrainAsync(Task[] pending)
+    {
+        try
         {
             try
             {
-                // We only care about audio
-                if (e.Item is not Audio)
-                    return;
-
-                var lastfmUser = Utils.UserHelpers.GetUser(e.UserId);
-                if (lastfmUser == null)
-                {
-                    _logger.LogDebug("Could not find user");
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(lastfmUser.SessionKey))
-                {
-                    _logger.LogInformation("No session key present, aborting");
-                    return;
-                }
-
-                var item = e.Item as Audio;
-
-                // Dont do if syncing
-                if (Plugin.Syncing)
-                    return;
-
-                if (e.SaveReason.Equals(UserDataSaveReason.UpdateUserRating))
-                {
-                    if (!lastfmUser.Options.SyncFavourites)
-                    {
-                        _logger.LogDebug("{0} does not want to sync liked songs", lastfmUser.Username);
-                        return;
-                    }
-                    await _apiClient.LoveTrack(item, lastfmUser, e.UserData.IsFavorite).ConfigureAwait(false);
-                }
-
-                if (e.SaveReason.Equals(UserDataSaveReason.PlaybackFinished))
-                {
-                    if (!lastfmUser.Options.Scrobble)
-                    {
-                        _logger.LogDebug("{0} does not want to scrobble", lastfmUser.Username);
-                        return;
-                    }
-                    if (!lastfmUser.Options.AlternativeMode)
-                    {
-                        _logger.LogDebug("{0} does not use AlternativeMode", lastfmUser.Username);
-                        return;
-                    }
-                    if (string.IsNullOrWhiteSpace(item.Artists.FirstOrDefault()) || string.IsNullOrWhiteSpace(item.Name))
-                    {
-                        _logger.LogInformation("track {0} is missing  artist ({1}) or track name ({2}) metadata. Not submitting", item.Path, item.Artists.FirstOrDefault(), item.Name);
-                        return;
-                    }
-                    await _apiClient.Scrobble(item, lastfmUser).ConfigureAwait(false);
-                }
+                await _lifetime.CancelAsync().ConfigureAwait(false);
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                _logger.LogError(ex, "Error in UserDataSaved event handler");
+                _logger.LogError("Last.fm shutdown cancellation failed ({FailureType})", exception.GetType().Name);
             }
+            await Task.WhenAll(pending).ConfigureAwait(false);
         }
-
-
-        /// <summary>
-        /// Let last.fm know when a track has finished.
-        /// Playback stopped is run when a track is finished.
-        /// </summary>
-        private async void PlaybackStopped(object sender, PlaybackStopEventArgs e)
+        finally
         {
-            try
-            {
-                // We only care about audio
-                if (e.Item is not Audio)
-                    return;
-
-                var item = e.Item as Audio;
-
-                if (e.PlaybackPositionTicks == null)
-                {
-                    _logger.LogDebug("Playback ticks for {0} is null", item.Name);
-                    return;
-                }
-
-                // Required checkpoints before scrobbling noted at https://www.last.fm/api/scrobbling#when-is-a-scrobble-a-scrobble .
-                // A track should only be scrobbled when the following conditions have been met:
-                //   * The track must be longer than 30 seconds.
-                //   * And the track has been played for at least half its duration, or for 4 minutes (whichever occurs earlier.)
-                // is the track length greater than 30 seconds.
-                if (item.RunTimeTicks < minimumSongLengthToScrobbleInTicks)
-                {
-                    _logger.LogDebug("{0} - played {1} ticks which is less minimumSongLengthToScrobbleInTicks ({2}), won't scrobble.", item.Name, item.RunTimeTicks, minimumSongLengthToScrobbleInTicks);
-                    return;
-                }
-
-                // the track must have played the minimum percentage (minimumPlayPercentage = 50%) or played for at least 4 minutes (minimumPlayTimeToScrobbleInTicks).
-                var playPercent = ((double)e.PlaybackPositionTicks / item.RunTimeTicks) * 100;
-                if (playPercent < minimumPlayPercentage && e.PlaybackPositionTicks < minimumPlayTimeToScrobbleInTicks)
-                {
-                    _logger.LogDebug("{0} - played {1}%, Last.Fm requires minplayed={2}% . played {3} ticks of minimumPlayTimeToScrobbleInTicks ({4}), won't scrobble", item.Name, playPercent, minimumPlayPercentage, e.PlaybackPositionTicks, minimumPlayTimeToScrobbleInTicks);
-                    return;
-                }
-
-                var user = e.Users.FirstOrDefault();
-                if (user == null)
-                {
-                    return;
-                }
-
-                var lastfmUser = Utils.UserHelpers.GetUser(user);
-                if (lastfmUser == null)
-                {
-                    _logger.LogDebug("Could not find last.fm user");
-                    return;
-                }
-
-                // User doesn't want to scrobble
-                if (!lastfmUser.Options.Scrobble)
-                {
-                    _logger.LogDebug("{0} ({1}) does not want to scrobble", user.Username, lastfmUser.Username);
-                    return;
-                }
-                if (lastfmUser.Options.AlternativeMode)
-                {
-                    _logger.LogDebug("{0} uses AlternativeMode", lastfmUser.Username);
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(lastfmUser.SessionKey))
-                {
-                    _logger.LogInformation("No session key present, aborting");
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(item.Artists.FirstOrDefault()) || string.IsNullOrWhiteSpace(item.Name))
-                {
-                    _logger.LogInformation("track {0} is missing  artist ({1}) or track name ({2}) metadata. Not submitting", item.Path, item.Artists.FirstOrDefault(), item.Name);
-                    return;
-                }
-                await _apiClient.Scrobble(item, lastfmUser).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in PlaybackStopped event handler");
-            }
+            _playbackTracker.Clear();
+            _apiClient.Dispose();
+            _concurrency.Dispose();
+            _lifetime.Dispose();
         }
+    }
 
-        /// <summary>
-        /// Let Last.fm know when a user has started listening to a track
-        /// </summary>
-        private async void PlaybackStart(object sender, PlaybackProgressEventArgs e)
+    private void Unsubscribe()
+    {
+        if (_started)
         {
-            try
-            {
-                // We only care about audio
-                if (e.Item is not Audio)
-                    return;
-
-                var user = e.Users.FirstOrDefault();
-                if (user == null)
-                {
-                    return;
-                }
-
-                var lastfmUser = Utils.UserHelpers.GetUser(user);
-                if (lastfmUser == null)
-                {
-                    _logger.LogDebug("Could not find last.fm user");
-                    return;
-                }
-
-                // User doesn't want to scrobble
-                if (!lastfmUser.Options.Scrobble)
-                {
-                    _logger.LogDebug("{0} ({1}) does not want to scrobble", user.Username, lastfmUser.Username);
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(lastfmUser.SessionKey))
-                {
-                    _logger.LogInformation("No session key present, aborting");
-                    return;
-                }
-
-                var item = e.Item as Audio;
-                if (string.IsNullOrWhiteSpace(item.Artists.FirstOrDefault()) || string.IsNullOrWhiteSpace(item.Name))
-                {
-                    _logger.LogInformation("track {0} is missing artist ({1}) or track name ({2}) metadata. Not submitting", item.Path, item.Artists.FirstOrDefault(), item.Name);
-                    return;
-                }
-                await _apiClient.NowPlaying(item, lastfmUser).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in PlaybackStart event handler");
-            }
-        }
-
-        /// <summary>
-        /// Runs this instance.
-        /// </summary>
-        public Task StartAsync(CancellationToken cancellationToken)
-        {
-            //Bind events
-            _sessionManager.PlaybackStart += PlaybackStart;
-            _sessionManager.PlaybackStopped += PlaybackStopped;
-            _userDataManager.UserDataSaved += UserDataSaved;
-            return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
-        /// </summary>
-        public Task StopAsync(CancellationToken cancellationToken)
-        {
-            // Unbind events
             _sessionManager.PlaybackStart -= PlaybackStart;
+            _sessionManager.PlaybackProgress -= PlaybackProgress;
             _sessionManager.PlaybackStopped -= PlaybackStopped;
             _userDataManager.UserDataSaved -= UserDataSaved;
-
-            // Clean up
-            _apiClient?.Dispose();
-            _apiClient = null;
-            return Task.CompletedTask;
+            _started = false;
         }
+    }
 
-        public void Dispose()
+    public void Dispose()
+    {
+        lock (_lifecycleLock)
         {
-            _apiClient?.Dispose();
-            GC.SuppressFinalize(this);
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+            _ = BeginShutdown();
+            if (ReferenceEquals(Instance, this))
+            {
+                Instance = null;
+            }
         }
+        GC.SuppressFinalize(this);
     }
 }

@@ -1,213 +1,155 @@
-namespace Jellyfin.Plugin.Lastfm.ScheduledTasks
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Entities;
+using Jellyfin.Plugin.Lastfm.Api;
+using Jellyfin.Plugin.Lastfm.Models;
+using Jellyfin.Plugin.Lastfm.Utils;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.Tasks;
+using Microsoft.Extensions.Logging;
+
+namespace Jellyfin.Plugin.Lastfm.ScheduledTasks;
+
+public class ImportLastfmData : IScheduledTask, IDisposable
 {
-    using System;
-    using System.Collections.Generic;
-    using System.Linq;
-    using System.Net.Http;
-    using System.Threading;
-    using System.Threading.Tasks;
-    using Api;
-    using Jellyfin.Data.Enums;
-    using Jellyfin.Database.Implementations.Entities;
-    using MediaBrowser.Controller.Entities;
-    using MediaBrowser.Controller.Entities.Audio;
-    using MediaBrowser.Controller.Library;
-    using MediaBrowser.Model.Entities;
-    using MediaBrowser.Model.Tasks;
-    using Microsoft.Extensions.Logging;
-    using Models;
-    using Utils;
+    private readonly IUserManager _userManager;
+    private readonly IUserDataManager _userDataManager;
+    private readonly ILibraryManager _libraryManager;
+    private readonly ILogger<ImportLastfmData> _logger;
+    private readonly LastfmApiClient _apiClient;
 
-    /// <summary>
-    /// Task that will sync each users LastFM loved songs with their local library.
-    /// </summary>
-    public class ImportLastfmData : IScheduledTask
+    public ImportLastfmData(IHttpClientFactory httpClientFactory, IUserManager userManager, IUserDataManager userDataManager, ILibraryManager libraryManager, ILoggerFactory loggerFactory)
     {
-        private readonly IUserManager _userManager;
-        private readonly IUserDataManager _userDataManager;
-        private ILibraryManager _libraryManager;
-        private readonly ILogger<ImportLastfmData> _logger;
-        private readonly LastfmApiClient _apiClient;
+        _userManager = userManager;
+        _userDataManager = userDataManager;
+        _libraryManager = libraryManager;
+        _logger = loggerFactory.CreateLogger<ImportLastfmData>();
+        _apiClient = new LastfmApiClient(httpClientFactory, _logger);
+    }
 
-        public ImportLastfmData(IHttpClientFactory httpClientFactory, IUserManager userManager, IUserDataManager userDataManager, ILibraryManager libraryManager, ILoggerFactory loggerFactory)
+    public string Name => "Import Last.fm Loved Tracks";
+    public string Category => "Last.fm";
+    public string Key => "ImportLastfmData";
+    public string Description => "Import favourite tracks for each user with a Last.fm account configured";
+    public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => [];
+
+    public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var users = _userManager.GetUsers()
+            .Where(user => UserHelpers.GetUser(user) is { Options.SyncFavourites: true } configured && !string.IsNullOrWhiteSpace(configured.SessionKey))
+            .ToArray();
+        Plugin.Syncing = true;
+        try
         {
-            _userManager = userManager;
-            _userDataManager = userDataManager;
-            _libraryManager = libraryManager;
-            _logger = loggerFactory.CreateLogger<ImportLastfmData>();
-            _apiClient = new LastfmApiClient(httpClientFactory, loggerFactory.CreateLogger<ImportLastfmData>());
-        }
-
-        public string Name => "Import Last.fm Loved Tracks";
-
-        public string Category => "Last.fm";
-
-        public string Key => "ImportLastfmData";
-
-        public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() => Enumerable.Empty<TaskTriggerInfo>();
-
-        public string Description => "Import favourite tracks for each user with Last.fm accounted configured";
-
-        /// <summary>
-        /// Gather users information and calls <see cref="SyncDataforUserByArtistBulk"/>
-        /// </summary>
-        /// <param name="cancellationToken"></param>
-        /// <param name="progress"></param>
-        public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
-        {
-            //Get all users
-            var users = _userManager.GetUsers().Where(u =>
-            {
-                var user = UserHelpers.GetUser(u);
-                return user != null && !String.IsNullOrWhiteSpace(user.SessionKey);
-            }).ToList();
-
-            if (users.Count == 0)
-            {
-                _logger.LogInformation("No users found");
-                return;
-            }
-
-            Plugin.Syncing = true;
-
-            var usersProcessed = 0;
-            var totalUsers = users.Count;
-
-            foreach (var user in users)
+            for (var index = 0; index < users.Length; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                var progressOffset = ((double)usersProcessed++ / totalUsers);
-                var maxProgressForStage = ((double)usersProcessed / totalUsers);
-
-
-                await SyncDataforUserByArtistBulk(user, progress, cancellationToken, maxProgressForStage, progressOffset);
+                await SyncUser(users[index], cancellationToken).ConfigureAwait(false);
+                progress.Report((index + 1.0) / users.Length * 100);
             }
-
+            progress.Report(100);
+        }
+        finally
+        {
             Plugin.Syncing = false;
         }
+    }
 
-        private async Task SyncDataforUserByArtistBulk(User user, IProgress<double> progress, CancellationToken cancellationToken, double maxProgress, double progressOffset)
+    private async Task SyncUser(User user, CancellationToken cancellationToken)
+    {
+        var configured = UserHelpers.GetUser(user);
+        if (configured is not { Options.SyncFavourites: true } || string.IsNullOrWhiteSpace(configured.SessionKey))
         {
-
-            LastfmUser lastFmUser = UserHelpers.GetUser(user);
-            if (!lastFmUser.Options.SyncFavourites)
+            return;
+        }
+        var lovedTracks = await GetLovedTracks(configured, cancellationToken).ConfigureAwait(false);
+        var byArtist = lovedTracks
+            .Where(track => !string.IsNullOrWhiteSpace(track.Artist?.MusicBrainzId) && !string.IsNullOrWhiteSpace(track.Name))
+            .GroupBy(track => track.Artist!.MusicBrainzId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        if (byArtist.Count == 0)
+        {
+            return;
+        }
+        var artists = _libraryManager.GetArtists(new InternalItemsQuery(user) { EnableTotalRecordCount = false })
+            .Items.Select(item => item.Item1).OfType<MusicArtist>();
+        var matched = 0;
+        foreach (var artist in artists)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var artistId = Helpers.GetMusicBrainzArtistId(artist);
+            if (artistId is null || !byArtist.TryGetValue(artistId, out var tracks))
             {
-                return;
+                continue;
             }
-
-            _logger.LogInformation("Syncing LastFM favourties for {0}", user.Username);
-
-            List<MusicArtist> artists = _libraryManager.GetArtists(new InternalItemsQuery(user))
-                .Items
-                .Select(i => i.Item1)
-                .Cast<MusicArtist>()
-                .ToList();
-
-            int matchedSongs = 0;
-
-            // Fetch the user's loved tracks from LastFM API.
-            List<LastfmLovedTrack> lovedTracks = await GetLovedTracksLibrary(lastFmUser, progress, cancellationToken, maxProgress, progressOffset);
-
-            if (lovedTracks.Count == 0)
+            // GetTaggedItems does not set ArtistIds when IncludeItemTypes is supplied.
+            var songs = _libraryManager.GetItemList(new InternalItemsQuery(user)
             {
-                _logger.LogInformation("User {0} has no loved tracks in last.fm", user.Username);
-                return;
-            }
-
-            // remove any results from last fm loved tracks that do _not_ have an associated musicbrainz id
-            lovedTracks.RemoveAll(t => String.IsNullOrEmpty(t.Artist.MusicBrainzId));
-            _logger.LogInformation("User {User} has {SongCount} loved tracks in last.fm that have an associated musicbrainz Artist id", user.Username, lovedTracks.Count);
-            if (lovedTracks.Count == 0)
-                return;
-
-            var lovedTracksGroupedByArtist = lovedTracks.GroupBy(t => t.Artist.MusicBrainzId).ToDictionary(t => t.Key, t => t.ToList());
-
-            // Iterate over each artist in user's library
-            // iterate over each song by artist
-            // for each song, compare against the list of song/track in the lastfm loved track list
-            foreach (MusicArtist artist in artists)
+                ArtistIds = [artist.Id],
+                IncludeItemTypes = [BaseItemKind.Audio],
+                EnableTotalRecordCount = false
+            }).OfType<Audio>();
+            foreach (var song in songs)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                string artistMBid = Helpers.GetMusicBrainzArtistId(artist);
-                if (String.IsNullOrEmpty(artistMBid))
-                    continue;
-
-                if (!lovedTracksGroupedByArtist.ContainsKey(artistMBid))
-                    continue;
-
-                // Loop through each song
-                foreach (Audio song in artist.GetTaggedItems(new InternalItemsQuery(user)
+                if (string.IsNullOrWhiteSpace(song.Name) || !tracks.Any(track => StringHelper.IsLike(song.Name, track.Name)))
                 {
-                    IncludeItemTypes = new[] { BaseItemKind.Audio },
-                    EnableTotalRecordCount = false
-                }).OfType<Audio>().ToList())
-                {
-                    LastfmLovedTrack matchedSong = null;
-
-                    foreach (LastfmLovedTrack artistTrack in lovedTracksGroupedByArtist[artistMBid])
-                    {
-                        if (StringHelper.IsLike(song.Name, artistTrack.Name))
-                        {
-                            _logger.LogInformation("Match Found: {Artist}-{Song} <== LastFM :: Library ==> {LovedArtist}-{LovedSong}",
-                            artistTrack.Artist.Name, artistTrack.Name,
-                            artist.Name, song.Name);
-                            matchedSong = artistTrack;
-                        }
-                    }
-
-                    if (matchedSong == null)
-                        continue;
-
-                    // We have found a match
-                    matchedSongs++;
-
-                    var userData = _userDataManager.GetUserData(user, song);
-                    userData.IsFavorite = true;
-                    _userDataManager.SaveUserData(user, song, userData, UserDataSaveReason.UpdateUserRating, cancellationToken);
+                    continue;
                 }
+                var userData = _userDataManager.GetUserData(user, song);
+                if (userData is null || userData.IsFavorite)
+                {
+                    continue;
+                }
+                userData.IsFavorite = true;
+                _userDataManager.SaveUserData(user, song, userData, UserDataSaveReason.UpdateUserRating, cancellationToken);
+                matched++;
             }
-
-            _logger.LogInformation("Finished Last.fm lovedTracks sync for {User}. Matched Songs: {MatchCount}", user.Username, matchedSongs);
         }
+        _logger.LogInformation("Imported {MatchCount} Last.fm favourites for Jellyfin user {UserId}", matched, user.Id);
+    }
 
-        /// <summary>
-        /// Returns a list of a target user's loved tracks from the Last.FM API. See https://www.last.fm/api/show/user.getLovedTracks
-        /// </summary>
-        /// <param name="lastfmUser"></param>
-        /// <param name="progress"></param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="maxProgress"></param>
-        /// <param name="progressOffset"></param>
-        private async Task<List<LastfmLovedTrack>> GetLovedTracksLibrary(LastfmUser lastfmUser, IProgress<double> progress, CancellationToken cancellationToken, double maxProgress, double progressOffset)
+    private async Task<List<LastfmLovedTrack>> GetLovedTracks(LastfmUser user, CancellationToken cancellationToken)
+    {
+        var tracks = new List<LastfmLovedTrack>();
+        for (var page = 1; ; page++)
         {
-            var tracks = new List<LastfmLovedTrack>();
-            int page = 1;
-            bool moreTracks;
-
-            do
+            cancellationToken.ThrowIfCancellationRequested();
+            var response = await _apiClient.GetLovedTracks(user, cancellationToken, page).ConfigureAwait(false);
+            if (response is null || response.IsError())
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var response = await _apiClient.GetLovedTracks(lastfmUser, cancellationToken, page++).ConfigureAwait(false);
-
-                if (response == null || !response.HasLovedTracks())
-                    break;
-
-                tracks.AddRange(response.LovedTracks.Tracks);
-
-                moreTracks = !response.LovedTracks.Metadata.IsLastPage();
-
-                // Only report progress in download because it will be 90% of the time taken
-                var currentProgress = ((double)response.LovedTracks.Metadata.Page / response.LovedTracks.Metadata.TotalPages) * (maxProgress - progressOffset) + progressOffset;
-
-                _logger.LogDebug("Progress: " + currentProgress * 100);
-
-                progress.Report(currentProgress * 100);
-            } while (moreTracks);
-            _logger.LogInformation("Retrieved {0} lovedTracks from LastFM for user {1}", tracks.Count(), lastfmUser.Username);
-            return tracks;
+                throw new InvalidOperationException("Unable to retrieve Last.fm favourites. Please try again.");
+            }
+            var loved = response.LovedTracks;
+            if (loved?.Tracks is not { Count: > 0 })
+            {
+                break;
+            }
+            tracks.AddRange(loved.Tracks);
+            if (loved.Metadata is null || loved.Metadata.TotalPages <= page)
+            {
+                break;
+            }
+            if (loved.Metadata.Page != page || page >= 10000)
+            {
+                throw new InvalidOperationException("Last.fm returned invalid pagination information.");
+            }
         }
+        return tracks;
+    }
+
+    public void Dispose()
+    {
+        _apiClient.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

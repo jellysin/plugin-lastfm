@@ -5,7 +5,7 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
     public class BaseResponse
     {
         [JsonPropertyName("message")]
-        public string Message { get; set; }
+        public string Message { get; set; } = string.Empty;
 
         [JsonPropertyName("error")]
         public int ErrorCode { get; set; }

@@ -5,6 +5,6 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
     public class ScrobbleResponse : BaseResponse
     {
         [JsonPropertyName("scrobbles")]
-        public Scrobbles Scrobbles { get; set; }
+        public Scrobbles? Scrobbles { get; set; }
     }
 }

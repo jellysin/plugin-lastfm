@@ -6,7 +6,7 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
     public class LovedTracksResponse : BaseResponse
     {
         [JsonPropertyName("lovedtracks")]
-        public LovedTracks LovedTracks { get; set; }
+        public LovedTracks? LovedTracks { get; set; }
 
         public bool HasLovedTracks()
         {
@@ -17,11 +17,11 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
     public class LovedTracks
     {
         [JsonPropertyName("track")]
-        public List<LastfmLovedTrack> Tracks { get; set; }
+        public List<LastfmLovedTrack> Tracks { get; set; } = [];
 
 
         [JsonPropertyName("@attr")]
-        public LovedTracksMeta Metadata { get; set; }
+        public LovedTracksMeta? Metadata { get; set; }
     }
 
 
@@ -38,7 +38,7 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
 
         public bool IsLastPage()
         {
-            return Page.Equals(TotalPages);
+            return TotalPages <= 0 || Page >= TotalPages;
         }
     }
 }

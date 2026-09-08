@@ -6,7 +6,7 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
     public class GetTracksResponse : BaseResponse
     {
         [JsonPropertyName("tracks")]
-        public GetTracksTracks Tracks { get; set; }
+        public GetTracksTracks? Tracks { get; set; }
 
         public bool HasTracks()
         {
@@ -17,10 +17,10 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
     public class GetTracksTracks
     {
         [JsonPropertyName("track")]
-        public List<LastfmTrack> Tracks { get; set; }
+        public List<LastfmTrack> Tracks { get; set; } = [];
 
         [JsonPropertyName("@attr")]
-        public GetTracksMeta Metadata { get; set; }
+        public GetTracksMeta? Metadata { get; set; }
     }
 
     public class GetTracksMeta
@@ -36,7 +36,7 @@ namespace Jellyfin.Plugin.Lastfm.Models.Responses
 
         public bool IsLastPage()
         {
-            return Page.Equals(TotalPages);
+            return TotalPages <= 0 || Page >= TotalPages;
         }
     }
 }

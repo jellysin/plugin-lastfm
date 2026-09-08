@@ -6,12 +6,12 @@ namespace Jellyfin.Plugin.Lastfm.Models.Requests
     [DataContract]
     public class NowPlayingRequest : BaseAuthedRequest
     {
-        public string Track { get; set; }
-        public string Album { get; set; }
-        public string Artist { get; set; }
-        public string AlbumArtist { get; set; }
+        public string Track { get; set; } = string.Empty;
+        public string Album { get; set; } = string.Empty;
+        public string Artist { get; set; } = string.Empty;
+        public string AlbumArtist { get; set; } = string.Empty;
         public int Duration { get; set; }
-        public string MbId { get; set; }
+        public string MbId { get; set; } = string.Empty;
 
         public override Dictionary<string, string> ToDictionary()
         {

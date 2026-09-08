@@ -5,7 +5,7 @@ namespace Jellyfin.Plugin.Lastfm.Models
     public class Scrobbles
     {
         [JsonPropertyName("@attr")]
-        public ScrobbleAttributes Attributes { get; set; }
+        public ScrobbleAttributes? Attributes { get; set; }
     }
 
     public class ScrobbleAttributes

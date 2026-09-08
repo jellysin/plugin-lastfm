@@ -5,22 +5,22 @@ namespace Jellyfin.Plugin.Lastfm.Models
     public class BaseLastfmTrack
     {
         [JsonPropertyName("artist")]
-        public LastfmArtist Artist { get; set; }
+        public LastfmArtist? Artist { get; set; }
 
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [JsonPropertyName("mbid")]
-        public string MusicBrainzId { get; set; }
+        public string MusicBrainzId { get; set; } = string.Empty;
     }
 
     public class LastfmArtist
     {
         [JsonPropertyName("name")]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         [JsonPropertyName("mbid")]
-        public string MusicBrainzId { get; set; }
+        public string MusicBrainzId { get; set; } = string.Empty;
     }
 
     public class LastfmLovedTrack : BaseLastfmTrack

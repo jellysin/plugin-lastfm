@@ -1,0 +1,55 @@
+name: CodeQL
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+  schedule:
+    - cron: '31 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze C#
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+          persist-credentials: false
+      - name: Attribute analysis to the checked source
+        id: source
+        env:
+          SOURCE_REF: ${{ inputs.source_ref || github.ref }}
+        run: |
+          if [[ "$SOURCE_REF" != refs/* ]]; then
+            SOURCE_REF="refs/tags/$SOURCE_REF"
+          fi
+          printf 'ref=%s\n' "$SOURCE_REF" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: csharp
+          build-mode: manual
+          queries: security-extended
+      - run: dotnet restore --locked-mode
+      - run: dotnet build --configuration Release --no-restore
+      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          output: build/codeql
+          ref: ${{ steps.source.outputs.ref }}
+          sha: ${{ steps.source.outputs.sha }}
+      - name: Reject high and critical static analysis findings
+        run: python tools/release.py audit-sarif build/codeql
