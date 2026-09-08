@@ -1,0 +1,18 @@
+name: Release automation
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-automation
+  cancel-in-progress: false
+jobs:
+  release:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    uses: jellysin/plugin-tooling/.github/workflows/release-please.yml@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1

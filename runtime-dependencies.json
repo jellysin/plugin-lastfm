@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "targetFramework": "net10.0",
+  "runtimeDependencies": [
+    { "id": "Jellyfin.Controller", "version": "12.0.0", "providedBy": "jellyfin" }
+  ]
+}
