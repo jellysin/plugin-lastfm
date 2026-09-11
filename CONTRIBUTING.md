@@ -47,12 +47,20 @@ and never merges old runs or trusts summary percentages from the report header.
 
 ## Release and compatibility
 
+Publication is disabled while the plugin is in development. Ordinary pushes and
+PR merges must not create or publish releases. Release automation is manual-only
+and does not dispatch publication. The separate publication workflow also requires
+`RELEASE_PUBLICATION_ENABLED=true`; that repository variable is currently false.
+Re-enabling publication and selecting a release version require a separate,
+explicit maintainer decision. The existing build version is a development target,
+not evidence of an approved release. No replacement release or tag has been created.
+
 Release-please owns `version.txt`, web package versions, tags and changelogs.
 Stable `vX.Y.Z` tags map to assembly/catalog `X.Y.Z.0`; the minimum Jellyfin ABI
 is separately recorded in `plugin.json`. Do not ship host-provided assemblies.
 
-The release automation creates a draft and tag, then explicitly dispatches
-`release.yml` **on the tag ref**. This binds GitHub provenance to the source tag.
+When publication is approved, create a draft and tag through release-please, then
+explicitly dispatch `release.yml` **on the tag ref**. This binds GitHub provenance to the source tag.
 That workflow reruns CI and builds production bytes. Packaging verifies the NuGet
 production graph against the committed lock and restored assets, then creates a
 deterministic ZIP, SPDX file/dependency inventory and checksums. Independent builds
@@ -62,21 +70,8 @@ Immutable releases must be
 enabled before publication. Retry by dispatching the same workflow on the same tag;
 never use an upload replacement option or change already published bytes.
 
-The first `v1.0.0` publication stopped before upload because tooling 1.0.1 used
-GitHub's published-release lookup for a draft. Its source tag remains unchanged.
-For that tag, dispatch `recover-release.yml` on reviewed `main`. This narrowly
-scoped recovery rebuilds the original source with its original packaging tools,
-checks reproducibility, and requires all four existing `release.yml` attestations
-to match the original tag and commit before any upload. It has no permission to
-create attestations. The corrected publisher resolves the draft by its numeric
-release ID and preserves all byte checks. Retrying this recovery verifies the
-complete immutable release without replacing assets. Normal later releases use
-the corrected publisher directly from their own tag workflow.
 Draft asset checks use authenticated numeric API identities; GitHub assigns their
 canonical public download URLs when the release is published.
-Renovate excludes this historical recovery recipe so its original source, tool
-versions and recorded artifact digests stay fixed. Normal release, CI and security
-workflows continue receiving dependency updates.
 
 Production builds require the project-owned `LASTFM_API_KEY` and
 `LASTFM_SHARED_SECRET` repository secrets. CI and fork PR builds do not receive them.

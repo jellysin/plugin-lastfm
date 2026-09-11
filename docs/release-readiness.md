@@ -1,11 +1,11 @@
-# First-release acceptance
+# Development validation and release readiness
 
-Version 1.0.0 passed local, native-host and hosted validation, immutable publication,
-release retry and actual installation through the public Jellyfin catalog on
-2026-09-08. The signed source tag remains unchanged. Historical release and catalog
-artifacts are preserved during legacy migration.
+The plugin remains in development. The premature `v1.0.0` release and tag were
+deleted on 2026-09-08 at the maintainer's request, and its catalog entry was
+withdrawn. No release is approved or available. The results below record tests
+that ran; they do not establish maintainer acceptance or authorize publication.
 
-## Acceptance evidence
+## Recorded validation
 
 | Requirement | Evidence / outstanding verification |
 | --- | --- |
@@ -26,8 +26,8 @@ artifacts are preserved during legacy migration.
 | Release tooling | Shared tooling 1.0.3 published; 88 tests with two distinct plugin fixtures, SBOM inventory, real draft identity/URL behavior and interrupted-upload retry |
 | Reproducibility | Two independent checkouts matched the actual selected ZIP, release metadata, SBOM and checksums locally and in hosted CI; production tag repeats the gate with embedded credentials |
 | Repository checks | PR/squash protections, pinned Actions, locks, Renovate and read-only defaults configured; candidate CI and all four CodeQL analyses passed |
-| Publication and installation | All four original signed artifacts verified; immutable retry preserved asset IDs/bytes; native catalog installation matched the signed DLL and passed ordinary-user access plus two restarts |
-| Legacy migration | Both old repositories have migration notices and are archived; published assets, tags and catalog blobs are unchanged; unfinished modernization PRs remain unmerged |
+| Historical packaging and installation test | The withdrawn build passed artifact verification and a disposable native catalog installation test; this is historical evidence, not an available release |
+| Legacy repositories | Deleted by the maintainer; development continues in jellysin/plugin-lastfm |
 
 The Last.fm API terms and data-use limits are documented in
 [API research](lastfm-api.md). Registration and successful API calls do not grant

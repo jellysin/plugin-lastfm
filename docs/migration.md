@@ -4,7 +4,8 @@ JellySin Last.fm is a new plugin for Jellyfin 12, with a new GUID:
 `2034650d-a290-4a16-b195-89fb44cfb932`. It has its own catalog and release history.
 It does not replace an older plugin automatically and cannot run on Jellyfin 10.11.
 
-Version 1.0.0 is available in the verified public catalog:
+The plugin is in development and has no available release. After a release is
+approved, the planned migration is:
 
 1. Back up the Jellyfin configuration and plugin data directories.
 2. Disable the previous Last.fm plugin's scrobbling and favourite synchronization,
@@ -21,9 +22,9 @@ Old XML fields, inherited application credentials and user session keys are not
 silently copied. The project-owned Last.fm application needs a fresh authorization.
 Existing Last.fm history remains on Last.fm; installing this plugin does not erase it.
 
-Old repositories, published artifacts and catalog URLs are historical records;
-this plugin does not rewrite them. The new catalog preserves all versions it
-publishes. A new plugin release uses SemVer independently of Jellyfin's ABI.
+The maintainer deleted the old repositories. Fresh development is at
+https://github.com/jellysin/plugin-lastfm. A future plugin release uses SemVer
+independently of Jellyfin's ABI.
 
 To stop using JellySin, disconnect the account in the dashboard and disable the
 plugin. Disconnect cancels account work and removes the plugin's local account data.
