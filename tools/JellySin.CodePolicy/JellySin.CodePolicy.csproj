@@ -3,7 +3,7 @@
   <ItemGroup>
     <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll" />
     <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll" />
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.33.0.1635" GeneratePathProperty="true" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385" GeneratePathProperty="true" PrivateAssets="all" />
     <Reference Include="SonarAnalyzer.CSharp" HintPath="$(PkgSonarAnalyzer_CSharp)/analyzers/SonarAnalyzer.CSharp.dll" />
     <None Include="SonarLint.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
