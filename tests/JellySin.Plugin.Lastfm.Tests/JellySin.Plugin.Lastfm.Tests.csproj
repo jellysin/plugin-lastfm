@@ -3,7 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj" />
     <PackageReference Include="Jellyfin.Controller" Version="12.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageReference Include="xunit.v3.mtp-off" Version="4.0.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" PrivateAssets="all" />
     <PackageReference Include="coverlet.collector" Version="10.0.1" PrivateAssets="all" />
