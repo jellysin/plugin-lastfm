@@ -18,8 +18,8 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^tools/smoke\\.py$/", "/^\\.github/workflows/ci\\.yml$/"],
-      "matchStrings": ["jellyfin/jellyfin:(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)@(?<currentDigest>sha256:[a-f0-9]{64})"],
+      "managerFilePatterns": ["/^tools/smoke\\.py$/"],
+      "matchStrings": ["\"(?<depType>floor|newest)\":\\s*\"jellyfin/jellyfin:(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)@(?<currentDigest>sha256:[a-f0-9]{64})\""],
       "depNameTemplate": "jellyfin/jellyfin",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
@@ -34,6 +34,12 @@
       "matchDatasources": ["nuget"],
       "matchPackageNames": ["/^Jellyfin\\./"],
       "enabled": false
+    },
+    {
+      "description": "The floor server image keeps the release named by targetAbi in plugin.json; only its digest moves. tools/abi_floor.py compares this pattern with the descriptor.",
+      "matchPackageNames": ["jellyfin/jellyfin"],
+      "matchDepTypes": ["floor"],
+      "allowedVersions": "/^12\\.0(?:\\.|$)/"
     }
   ]
 }

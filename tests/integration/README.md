@@ -37,8 +37,13 @@ dotnet restore tests/integration/JellySin.NativeProbe/JellySin.NativeProbe.cspro
 dotnet build tests/integration/JellySin.NativeProbe/JellySin.NativeProbe.csproj -c Release --no-restore
 python tests/integration/native_userdata.py \
   --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
-  --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll
+  --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll \
+  --server floor
 ```
+
+`--server` takes `floor` (the oldest supported Jellyfin) or `newest`, the two images
+pinned in `tools/smoke.py`; without it the newest runs. CI runs both. The report
+records the image and the release the server reported.
 
 The host and generated volumes are removed after success or failure. Diagnostic
 reports contain only synthetic userdata values, plugin identities and check results.
