@@ -344,6 +344,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin", required=True, type=Path)
     parser.add_argument("--probe", required=True, type=Path)
+    parser.add_argument("--image", default=DEFAULT_IMAGE)
     parser.add_argument(
         "--report", type=Path, default=ROOT / "build" / "native-userdata-report.json"
     )
@@ -356,13 +357,13 @@ def main() -> int:
             "A plugin input is missing, unsafe or exceeds 64 MiB.",
         )
     host = DockerHost(
-        args.plugin.resolve(), DEFAULT_IMAGE, probe_plugin=args.probe.resolve()
+        args.plugin.resolve(), args.image, probe_plugin=args.probe.resolve()
     )
     (ROOT / "build").mkdir(exist_ok=True)
     try:
         result = run(host)
         result["artifacts"] = {
-            "image": DEFAULT_IMAGE,
+            "image": args.image,
             "production_sha256": hashlib.sha256(args.plugin.read_bytes()).hexdigest(),
             "fixture_sha256": hashlib.sha256(args.probe.read_bytes()).hexdigest(),
         }
