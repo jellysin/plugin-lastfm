@@ -6,6 +6,11 @@ keeps reviewed changes attributable in release notes. Required checks use
 Jellyfin 12 only, using the .NET SDK pinned in `global.json` and committed exact
 NuGet locks.
 
+Commit messages and pull request texts credit people and bots only. A co-author
+trailer or a generated-with footer that names a model or coding tool is refused by
+`python tools/attribution.py`, which CI runs over the whole history and over the
+title and text of each pull request.
+
 ## Build and validate
 
 Use the Node and Python versions pinned in `.node-version` and `.python-version` for
