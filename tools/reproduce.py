@@ -56,7 +56,7 @@ def build(source: Path, commit: str, destination: Path, tooling: Path, tag: str 
     packaging = [sys.executable, str(tooling / "tools.py"), "package", "--publish-directory", str(PROJECT / "bin/Release/net10.0"),
                  "--nuget-lock-path", str(PROJECT / "packages.lock.json"),
                  "--nuget-assets-path", str(PROJECT / "obj/project.assets.json"),
-                 "--runtime-dependencies-path", "runtime-dependencies.json"]
+                 "--runtime-dependencies-path", "runtime-dependencies.json", "--changelog-path", "CHANGELOG.md"]
     if tag:
         packaging.extend(["--tag", tag])
     run(packaging, destination)
