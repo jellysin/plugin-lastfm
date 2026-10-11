@@ -38,8 +38,10 @@ python -m unittest discover -s tests/python
 CI also audits npm/NuGet dependencies, checks repository policy and Action pins,
 runs actionlint and Gitleaks, packages the DLL, and exercises real Jellyfin 12
 containers, the oldest supported and the newest, through `tools/smoke.py`
-(`--server floor` or `--server newest`), and the native userdata check also on
-Jellyfin 12.1 (`--server 12.1`). CodeQL scans source and Actions separately.
+(`--server floor` or `--server newest`, the newest started with a published
+server address that the Last.fm sign-in must name as its return), and the native
+userdata check also on Jellyfin 12.1 (`--server 12.1`). CodeQL scans source and
+Actions separately.
 The secret scan covers every fetched ref. An exception is one full fingerprint in
 `.gitleaksignore` with a reason and an expiry date; from that date the finding fails
 again. `tools/secret_scan.py --self-test` plants keys and an expired exception first.
@@ -129,6 +131,9 @@ versioned `0.0.<run>`, below every release, and its archive is named
 application as a release does. `tools/canary.py` refuses a build without the application
 or under another version, and the Python tests fail when the workflow gains a trigger,
 a write permission, a longer retention or a script that names the application.
+A plugin copied in by hand is listed in no Plugin Repository, so Jellyfin's page for it
+shows "An error occurred while getting the plugin details from the repository." This is
+expected for a canary and says nothing about the plugin itself.
 
 Only the built-in repository token is used. Bot PR CI is explicitly dispatched;
 publication requires the separate maintainer action described above.

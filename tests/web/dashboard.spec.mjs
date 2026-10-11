@@ -158,25 +158,36 @@ test('an approval that Last.fm then refuses is reported and not repeated', async
 
 const back = path => `cb=${encodeURIComponent(`${path}?attempt=1`)}`;
 const home = back('http://127.0.0.1:4177/JellySin/Lastfm/Callback');
-// Each address breaks one rule only, so that every rule is needed to refuse its case.
-for (const [reason, address] of [
+const notStarted = 'Last.fm sign-in could not start.';
+const askAdministrator = `${notStarted} Ask the administrator of this server to check the server address setting.`;
+const namedReturn = (server, expected) => `${notStarted} The server names ${server} as the return address, but this page expects ${expected}. Set the published server address (start option published-server-url) to the address users open, or add the proxy under Networking, Known proxies. Then restart Jellyfin.`;
+// Each address breaks one rule only, so that every rule is needed to refuse its case. The third entry is the return
+// address the server named, where that is the reason: a server behind a proxy that does not know its public scheme and
+// host name produces it. A user is sent to the administrator; the administrator reads both addresses and the setting.
+const refusedAddresses = [
   ['another host', `https://last.fm.attacker.example/api/auth/?api_key=fixture&${home}`],
   ['an unencrypted address', `http://www.last.fm/api/auth/?api_key=fixture&${home}`],
   ['another page of Last.fm', `https://www.last.fm/user/someone?api_key=fixture&${home}`],
-  ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://attacker.example/JellySin/Lastfm/Callback')}`],
-  ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/JellySin/Lastfm/')}`],
-  ['no return address', 'https://www.last.fm/api/auth/?api_key=fixture'],
-]) {
-  test(`the page does not leave for ${reason}`, async ({ page }) => {
-    const state = await installServer(page);
-    state.connected = false;
-    state.authorizationUrl = address;
-    await passwordLogin(page);
-    await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
-    await expect(page.locator('#status')).toHaveText('Last.fm sign-in could not start.');
-    expect(page.url()).toBe('http://127.0.0.1:4177/JellySin/Lastfm/');
-    expect(state.lastfm).toHaveLength(0);
-  });
+  ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://attacker.example/JellySin/Lastfm/Callback')}`, 'https://attacker.example/JellySin/Lastfm/Callback'],
+  ['a return over another scheme', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://127.0.0.1:4177/JellySin/Lastfm/Callback')}`, 'https://127.0.0.1:4177/JellySin/Lastfm/Callback'],
+  ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/JellySin/Lastfm/')}`, 'http://127.0.0.1:4177/JellySin/Lastfm/'],
+  ['no return address', 'https://www.last.fm/api/auth/?api_key=fixture', 'http://127.0.0.1:4177/'],
+];
+for (const [reason, address, named] of refusedAddresses) {
+  for (const administrator of named ? [false, true] : [false]) {
+    test(administrator ? `an administrator reads why the page does not leave for ${reason}` : `the page does not leave for ${reason}`, async ({ page }) => {
+      const state = await installServer(page, { administrator });
+      state.connected = false;
+      state.authorizationUrl = address;
+      await passwordLogin(page);
+      await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+      const text = !named ? notStarted : administrator ? namedReturn(named, 'http://127.0.0.1:4177/JellySin/Lastfm/Callback') : askAdministrator;
+      await expect(page.locator('#status')).toHaveText(text);
+      await expect(page.locator('#status')).toHaveAttribute('role', 'alert');
+      expect(page.url()).toBe('http://127.0.0.1:4177/JellySin/Lastfm/');
+      expect(state.lastfm).toHaveLength(0);
+    });
+  }
 }
 
 test('administrators open native Jellyfin settings from the user page', async ({ page }) => {
@@ -358,21 +369,20 @@ for (const refusal of refusals) {
 }
 
 const settingsHome = back('http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback');
-// As on the dashboard: each address breaks one rule only. A return to another server is what a server behind a proxy
-// produces when it does not see its public scheme and host name.
-for (const [reason, address] of [
+// As on the dashboard: each address breaks one rule only. Whoever opens this page is an administrator and reads both addresses.
+for (const [reason, address, named] of [
   ['another host', `https://last.fm.attacker.example/api/auth/?api_key=fixture&${settingsHome}`],
   ['an unencrypted address', `http://www.last.fm/api/auth/?api_key=fixture&${settingsHome}`],
   ['another page of Last.fm', `https://www.last.fm/user/someone?api_key=fixture&${settingsHome}`],
-  ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://10.0.0.5:8096/jellyfin/JellySin/Lastfm/Callback')}`],
-  ['a return over another scheme', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback')}`],
-  ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/')}`],
-  ['no return address', 'https://www.last.fm/api/auth/?api_key=fixture'],
+  ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://10.0.0.5:8096/jellyfin/JellySin/Lastfm/Callback')}`, 'http://10.0.0.5:8096/jellyfin/JellySin/Lastfm/Callback'],
+  ['a return over another scheme', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback')}`, 'https://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback'],
+  ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/')}`, 'http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/'],
+  ['no return address', 'https://www.last.fm/api/auth/?api_key=fixture', 'http://127.0.0.1:4177/'],
 ]) {
   test(`the settings page does not leave for ${reason}`, async ({ page }) => {
     await openSettings(page, { authorizationUrl: address });
     await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
-    await expect(page.locator('#jellysin-connection-status')).toHaveText('Last.fm sign-in could not start.');
+    await expect(page.locator('#jellysin-connection-status')).toHaveText(named ? namedReturn(named, 'http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback') : notStarted);
     await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeEnabled();
     expect(page.url()).toContain('http://127.0.0.1:4177/native');
   });

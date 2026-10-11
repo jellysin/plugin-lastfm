@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace JellySin.Plugin.Lastfm.Api;
 
 [Route("JellySin/Lastfm/Me")]
-public sealed class AccountController(AccountService accounts) : PrivateController
+public sealed class AccountController(AccountService accounts, ServerAddress server) : PrivateController
 {
     [HttpGet]
     public async Task<object> GetMe(CancellationToken cancellationToken) => new
@@ -20,9 +20,9 @@ public sealed class AccountController(AccountService accounts) : PrivateControll
     [HttpPost("Connection/Begin")]
     public async Task<ConnectionStart> Begin(ConnectionBegin request, CancellationToken cancellationToken)
     {
-        var attempt = await accounts.BeginAsync(CallerId, ConnectionCallback.Address(Request), request.ReturnToSettings, cancellationToken).ConfigureAwait(false);
+        var attempt = await accounts.BeginAsync(CallerId, ConnectionCallback.Address(Request, server), request.ReturnToSettings, cancellationToken).ConfigureAwait(false);
         // The binding goes to the browser only, out of reach of page script; the response names the Last.fm address alone.
-        ConnectionCallback.Bind(HttpContext, attempt.BrowserBinding);
+        ConnectionCallback.Bind(HttpContext, server, attempt.BrowserBinding);
         return new ConnectionStart(attempt.AuthorizationUrl, attempt.ExpiresAt);
     }
 

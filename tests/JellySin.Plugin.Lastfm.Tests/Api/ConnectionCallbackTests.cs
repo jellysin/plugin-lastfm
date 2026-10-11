@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
@@ -130,6 +131,90 @@ public sealed class ConnectionCallbackTests
         Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
     }
 
+    // The server behind a proxy that ends TLS sees plain HTTP and its own inner host name; the published address is what browsers use.
+    [Theory]
+    [InlineData("https://media.example", "http", "jellyfin-internal:8096", "", "https://media.example/JellySin/Lastfm/Callback", true)]
+    [InlineData(" https://media.example/ ", "http", "jellyfin-internal:8096", "/jellyfin", "https://media.example/jellyfin/JellySin/Lastfm/Callback", true)]
+    [InlineData("https://media.example:8920/a/path?and=query", "http", "jellyfin-internal:8096", "/jellyfin", "https://media.example:8920/jellyfin/JellySin/Lastfm/Callback", true)]
+    [InlineData("https://proxy-user:proxy-word@media.example", "http", "jellyfin-internal:8096", "", "https://media.example/JellySin/Lastfm/Callback", true)]
+    [InlineData("HTTPS://MEDIA.example:443", "http", "jellyfin-internal:8096", "", "https://media.example/JellySin/Lastfm/Callback", true)]
+    [InlineData("http://media.example:8096", "https", "attacker.example", "/jellyfin", "http://media.example:8096/jellyfin/JellySin/Lastfm/Callback", false)]
+    public async Task APublishedAddressDecidesTheReturnAndTheCookieWhateverTheRequestSays(string published, string scheme, string host, string prefix, string expected, bool encrypted)
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        var account = Account(fixture, scheme, prefix, published: published, host: host);
+        var start = await account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
+        var callback = System.Web.HttpUtility.ParseQueryString(new Uri(start.AuthorizationUrl).Query)["cb"]!;
+        Assert.StartsWith($"{expected}?attempt=", callback, StringComparison.Ordinal);
+        Assert.DoesNotContain(host, start.AuthorizationUrl, StringComparison.Ordinal);
+        Assert.DoesNotContain("proxy-", start.AuthorizationUrl, StringComparison.Ordinal);
+        var issued = SetCookieHeaderValue.Parse(Assert.Single(account.Response.Headers.SetCookie)!);
+        Assert.Equal(encrypted ? "__Host-JellySinLastfmAttempt" : "JellySinLastfmAttempt", issued.Name.Value);
+        Assert.Equal(encrypted, issued.Secure);
+        Assert.Equal(encrypted ? "/" : $"{prefix}/JellySin/Lastfm/Callback", issued.Path.Value);
+        Assert.False(issued.Domain.HasValue);
+        // The return arrives the same way as the start did: the cookie is found under the name the published scheme gave it.
+        var returned = Callback(fixture, scheme, prefix, issued, published, host);
+        var redirect = Assert.IsType<LocalRedirectResult>(await returned.Approve(CoreFixture.AttemptOf(start.AuthorizationUrl), Token, TestContext.Current.CancellationToken));
+        Assert.Equal($"{prefix}/JellySin/Lastfm/", redirect.Url);
+        AssertCleared(returned, issued);
+        Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task WithoutAPublishedAddressTheRequestNamesTheReturn(string? published)
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        var account = Account(fixture, "http", "/jellyfin", published: published, host: "192.168.1.20:8096");
+        var start = await account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
+        Assert.StartsWith("http://192.168.1.20:8096/jellyfin/JellySin/Lastfm/Callback?attempt=",
+            System.Web.HttpUtility.ParseQueryString(new Uri(start.AuthorizationUrl).Query)["cb"]!, StringComparison.Ordinal);
+        Assert.Equal("JellySinLastfmAttempt", SetCookieHeaderValue.Parse(Assert.Single(account.Response.Headers.SetCookie)!).Name.Value);
+    }
+
+    // A published address that is set but unusable is not replaced by the request's address without a word.
+    [Theory]
+    [InlineData("media.example")]
+    [InlineData("//media.example")]
+    [InlineData("ftp://media.example")]
+    [InlineData("https://")]
+    [InlineData("https:///jellyfin")]
+    public async Task AnUnusablePublishedAddressRefusesTheSignInAndIsNamedOnceInTheLogWithoutItsValue(string published)
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        var warnings = new Warnings();
+        var server = new ServerAddress(published, warnings);
+        var http = Request("POST", "https", "", "jellyfin.example");
+        http.Items[typeof(CallerFilter)] = CallerSecurityTests.Identity(fixture.UserId);
+        var account = new AccountController(fixture.Accounts, server) { ControllerContext = new ControllerContext { HttpContext = http } };
+        await Assert.ThrowsAsync<ArgumentException>(() => account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
+        Assert.False(account.Response.Headers.ContainsKey("Set-Cookie"));
+        Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
+        var line = Assert.Single(warnings.Lines);
+        Assert.Contains("published-server-url", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("media.example", line, StringComparison.Ordinal);
+        // The anonymous return answers as for any attempt that never began.
+        var returned = new CallbackController(fixture.Accounts, server) { ControllerContext = new ControllerContext { HttpContext = Request("GET", "https", "", "jellyfin.example") } };
+        Assert.Equal("/JellySin/Lastfm/?connection=failed",
+            Assert.IsType<LocalRedirectResult>(await returned.Approve("0123456789abcdef0123456789abcdef", Token, TestContext.Current.CancellationToken)).Url);
+    }
+
+    [Fact]
+    public void AUsablePublishedAddressLeavesTheLogQuiet()
+    {
+        var warnings = new Warnings();
+        _ = new ServerAddress("https://media.example", warnings);
+        _ = new ServerAddress(null, warnings);
+        Assert.Empty(warnings.Lines);
+    }
+
     [Fact]
     public void TheCallbackIsOneAnonymousGetOutsideThePrivateSurface()
     {
@@ -154,27 +239,41 @@ public sealed class ConnectionCallbackTests
         Assert.True(cleared.Expires < DateTimeOffset.UnixEpoch.AddDays(1));
     }
 
-    private static AccountController Account(CoreFixture fixture, string scheme, string prefix, Guid? user = null)
+    private static AccountController Account(CoreFixture fixture, string scheme, string prefix, Guid? user = null, string? published = null, string host = "jellyfin.example")
     {
-        var http = Request("POST", scheme, prefix);
+        var http = Request("POST", scheme, prefix, host);
         http.Items[typeof(CallerFilter)] = CallerSecurityTests.Identity(user ?? fixture.UserId);
-        return new AccountController(fixture.Accounts) { ControllerContext = new ControllerContext { HttpContext = http } };
+        return new AccountController(fixture.Accounts, new ServerAddress(published)) { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
-    private static CallbackController Callback(CoreFixture fixture, string scheme, string prefix, SetCookieHeaderValue? cookie)
+    private static CallbackController Callback(CoreFixture fixture, string scheme, string prefix, SetCookieHeaderValue? cookie, string? published = null, string host = "jellyfin.example")
     {
-        var http = Request("GET", scheme, prefix);
+        var http = Request("GET", scheme, prefix, host);
         if (cookie is not null) http.Request.Headers.Cookie = $"{cookie.Name.Value}={cookie.Value.Value}";
-        return new CallbackController(fixture.Accounts) { ControllerContext = new ControllerContext { HttpContext = http } };
+        return new CallbackController(fixture.Accounts, new ServerAddress(published)) { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
-    private static DefaultHttpContext Request(string method, string scheme, string prefix)
+    private static DefaultHttpContext Request(string method, string scheme, string prefix, string host)
     {
         var http = new DefaultHttpContext();
         http.Request.Method = method;
         http.Request.Scheme = scheme;
-        http.Request.Host = new HostString("jellyfin.example");
+        http.Request.Host = new HostString(host);
         http.Request.PathBase = prefix;
         return http;
+    }
+
+    private sealed class Warnings : ILogger<ServerAddress>
+    {
+        public List<string> Lines { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning) Lines.Add(formatter(state, exception));
+        }
     }
 }
