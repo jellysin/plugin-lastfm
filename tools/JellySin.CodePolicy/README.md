@@ -38,4 +38,4 @@ Primary references:
 
 - [Official cognitive-complexity rule](https://rules.sonarsource.com/csharp/RSPEC-3776/)
 - [Analyzer implementation and parameters](https://github.com/SonarSource/sonar-dotnet/blob/master/analyzers/src/SonarAnalyzer.Core/Rules/CognitiveComplexityBase.cs)
-- [Pinned analyzer release](https://github.com/SonarSource/sonar-dotnet/releases/tag/10.33.0.1635)
+- [Pinned analyzer release](https://github.com/SonarSource/sonar-dotnet/releases/tag/10.35.0.4138)

@@ -23,10 +23,23 @@
       "depNameTemplate": "jellyfin/jellyfin",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^tools/JellySin\\.CodePolicy/README\\.md$/"],
+      "matchStrings": ["https://github\\.com/SonarSource/sonar-dotnet/releases/tag/(?<currentValue>[0-9]+(?:\\.[0-9]+){3})"],
+      "depNameTemplate": "SonarAnalyzer.CSharp",
+      "datasourceTemplate": "nuget",
+      "versioningTemplate": "nuget"
     }
   ],
   "packageRules": [
     {"matchManagers": ["github-actions"], "groupName": "GitHub Actions"},
+    {
+      "description": "The code policy README links the analyzer release its project file pins; one pull request moves both. The Python tests compare the two.",
+      "matchPackageNames": ["SonarAnalyzer.CSharp"],
+      "groupName": "SonarAnalyzer.CSharp"
+    },
     {"matchUpdateTypes": ["major"], "groupName": null},
     {"matchPackageNames": ["/^Jellyfin\\./", "jellyfin/jellyfin"], "allowedVersions": "/^12(?:\\.|$)/", "groupName": "Jellyfin 12"},
     {
