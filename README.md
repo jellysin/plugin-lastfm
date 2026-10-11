@@ -39,6 +39,22 @@ restart Jellyfin and reconnect their accounts in this plugin. The new GUID is
 `2034650d-a290-4a16-b195-89fb44cfb932`; old credentials and XML settings are not
 silently copied. See [migration](docs/migration.md).
 
+## Jellyfin versions and clients
+
+The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
+up. Every change is checked on Jellyfin 12.0.0 and 12.2.0, and the playlist fixture
+also on 12.1.0; [release readiness](docs/release-readiness.md) names what each check
+covers. Jellyfin 10.11 is unsupported.
+
+Scrobbling reads the playback reports the server receives, whichever client sends
+them; a client that reports no playback to the server produces no listen. The checks
+send these reports through the server's API. The account dashboard is a web page of
+the server and was checked in a Chromium browser and in Jellyfin's web interface;
+Jellyfin's TV, mobile and desktop clients were not checked.
+
+Planned work is listed in the repository's
+[milestones](https://github.com/jellysin/plugin-lastfm/milestones).
+
 ## Boundaries
 
 Generated playlists contain items the user can access in Jellyfin. External
