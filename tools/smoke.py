@@ -32,9 +32,12 @@ import wave
 
 PLUGIN_ID = "2034650d-a290-4a16-b195-89fb44cfb932"
 # The only place that names the server images. The floor is the release named by targetAbi in
-# plugin.json and keeps its tag; the newest follows Jellyfin 12. Renovate updates both pins.
+# plugin.json and keeps its tag; the newest follows Jellyfin 12. An entry named after a release
+# keeps that release: 12.1 is the first one that hides a playlist whose tracks a parental limit
+# blocks. Renovate updates every pin.
 IMAGES = {
     "floor": "jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5",
+    "12.1": "jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e",
     "newest": "jellyfin/jellyfin:12.2@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037",
 }
 DEFAULT_SERVER = "newest"
