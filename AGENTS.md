@@ -16,6 +16,8 @@ Read CONTRIBUTING.md before changing release or branch behavior.
 - Fix nullable/compiler/analyzer/linter findings. Narrow suppressions require a concrete justification.
 - Keep functions focused: backend at most 120 lines/60 statements/cognitive complexity 30, frontend at most 100 lines.
 - Conventional Commit PR titles, squash merges, release-please-owned SemVer, separate host ABI.
+- Release-please only collects version and changelog changes in a PR. Never create tags or publish releases from ordinary pushes or PR merges.
+- Keep publication a separate, explicitly requested maintainer action on an exact version tag.
 - Full-SHA Actions, read-only workflow defaults, job-scoped writes, explicit timeouts; no untrusted PR code with write tokens.
 - Build releases from exact tags, require project application credentials, attest all artifacts, preserve published bytes.
 - Required CI uses strict: false. Verify live settings and explicitly dispatch bot checks.
