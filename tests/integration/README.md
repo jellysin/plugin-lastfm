@@ -88,7 +88,10 @@ Chromium then uses the plugin the way a person does:
   Last.fm**, save a preference, ask for a Quick Connect code, and select the
   button on the plugin's settings page in the server's own web interface. The
   browser must arrive at `https://www.last.fm/api/auth/` with a return address
-  under the published address and hold the host-only secure cookie of the attempt;
+  under the published address and hold the host-only secure cookie of the attempt.
+  The dashboard offers its preferences to a connected account only, and the run
+  connects none, so the script shows that section itself before it selects
+  **Save preference**;
 - at a second address, the server's own HTTP port: the dashboard and the settings
   page must stay where they are, name both addresses to an administrator and send
   an ordinary user to the administrator.

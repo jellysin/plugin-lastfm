@@ -66,7 +66,7 @@ function finish(state) {
   return json(connection(state));
 }
 
-const connection = state => ({ Connected: state.connected, Username: state.connected ? 'Listener' : null, NeedsReconnect: false, ScrobblingEnabled: true, ApprovalPending: state.approvalPending });
+const connection = state => ({ Connected: state.connected, Username: state.connected ? 'Listener' : null, NeedsReconnect: Boolean(state.needsReconnect), ScrobblingEnabled: true, ApprovalPending: state.approvalPending });
 
 function respond(path, method, body, url, state) {
   if (path === '/JellySin/Lastfm/Bootstrap') return json({ BasePath: state.prefix, ServerId: 'fixture-server', Version: '1.0.0' });

@@ -64,6 +64,12 @@ async function approval(context, page, click, status) {
   return `https://www.last.fm/api/auth/?api_key=[32 hex]&cb=${back.origin}${back.pathname}?attempt=[${back.searchParams.get('attempt').length} characters]`;
 }
 
+/** The status of the answer to the page's next such request, 0 for none. Never rejects: a rejection nobody awaits yet ends the whole run without a result. */
+function answered(page, path, method) {
+  return page.waitForResponse(response => response.url().endsWith(path) && response.request().method() === method, { timeout: wait })
+    .then(response => response.status(), () => 0);
+}
+
 /** The page stays where it is and names both addresses, or sends an ordinary user to the administrator. */
 async function refusal(page, click, status, expected) {
   await page.click(click);
@@ -84,9 +90,12 @@ const scenarios = {
   'published address, user page, a saved preference': async context => {
     const page = await context.newPage();
     await signIn(page, run.published, run.listener);
-    const saved = page.waitForResponse(response => response.url().endsWith('/Me/Favourites') && response.request().method() === 'PUT', { timeout: wait });
+    // The page offers this section to a connected account only, and this run connects none: nothing here contacts Last.fm.
+    // The section is shown by hand, so that the page's own request for a write other than the sign-in passes the proxy.
+    await page.evaluate(() => { document.getElementById('favourites').hidden = false; });
+    const saved = answered(page, '/Me/Favourites', 'PUT');
     await page.click('#favourites-save');
-    const status = (await saved).status();
+    const status = await saved;
     require(status >= 200 && status < 300, `saving a preference answered HTTP ${status}; the page says: ${JSON.stringify((await page.locator('#status').textContent() ?? '').trim())}`);
     return `PUT Me/Favourites -> ${status}`;
   },
@@ -95,9 +104,9 @@ const scenarios = {
     await page.goto(run.published + '/JellySin/Lastfm/');
     // The page binds its buttons once it has read its configuration; right after, it rewrites the link back to the server.
     await page.locator('#jellyfin-link:not([href^=".."])').waitFor({ timeout: wait });
-    const asked = page.waitForResponse(response => response.url().endsWith('/Auth/QuickConnect/Status') && response.request().method() === 'POST', { timeout: wait });
+    const asked = answered(page, '/Auth/QuickConnect/Status', 'POST');
     await page.click('#quick-connect');
-    const status = await asked.then(response => response.status(), () => 0);
+    const status = await asked;
     require(status === 200, `asking whether the code was approved answered HTTP ${status}; the page says: ${JSON.stringify((await page.locator('#status').textContent() ?? '').trim())}`);
     require(/^[A-Za-z0-9]{4,12}$/.test((await page.locator('#quick-code').textContent() ?? '').trim()), 'the page shows no Quick Connect code');
     await page.click('#quick-cancel');

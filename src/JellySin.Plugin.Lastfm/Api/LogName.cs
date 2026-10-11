@@ -10,6 +10,7 @@ namespace JellySin.Plugin.Lastfm.Api;
 internal static class LogName
 {
     private static readonly string[] Methods = ["POST", "PUT", "DELETE"];
+    private static readonly string[] AllowedMethods = ["GET", "POST", "PUT", "DELETE"];
 
     /// <summary>The same short value for the same account, from which the account cannot be read.</summary>
     public static string Of(Guid userId) => Convert.ToHexStringLower(SHA256.HashData(userId.ToByteArray()))[..12];
@@ -17,6 +18,10 @@ internal static class LogName
     /// <summary>The method of a write the plugin declares, or a phrase that reads the same way before a route.</summary>
     public static string Method(HttpRequest request)
         => Array.Find(Methods, method => HttpMethods.Equals(method, request.Method)) ?? "a request to";
+
+    /// <summary>The method of a failed request when it is one the plugin declares, else a fixed phrase; never text the caller chose.</summary>
+    public static string RequestMethod(HttpRequest request)
+        => Array.Find(AllowedMethods, method => HttpMethods.Equals(method, request.Method)) ?? "another method";
 
     /// <summary>The scheme over which the request reached this server.</summary>
     public static string Scheme(HttpRequest request)

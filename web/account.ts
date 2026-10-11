@@ -65,6 +65,7 @@ function show(client: Client, me: Me): void {
   element('connection-status').textContent = me.connection.connected
     ? `Connected as ${me.connection.username ?? ''}${me.connection.needsReconnect ? ' · reconnect required' : ''}`
     : 'Connect Last.fm to start.';
+  for (const el of document.querySelectorAll<HTMLElement>('[data-needs-connection]')) el.hidden = !me.connection.connected;
   element<HTMLInputElement>('scrobbling').checked = me.connection.scrobblingEnabled;
   element<HTMLInputElement>('scrobbling').disabled = !me.connection.connected;
   element('administrator').hidden = !me.isAdministrator;

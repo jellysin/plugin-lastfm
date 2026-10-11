@@ -205,6 +205,14 @@ def seed(host: DockerHost, configured: bool) -> dict[str, Any]:
     }
 
 
+def read_results(path: Path, status: int) -> list[dict[str, Any]]:
+    """What the browser half wrote; nothing when it ended on an error of its own, which is a failure and not a crash of this half."""
+    if status in (0, 1) and path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    print(f"FAIL: the browser half ended with status {status} and left no result.", flush=True)
+    return []
+
+
 def run(host: DockerHost, configured: bool, report: Path, only: str) -> int:
     print("Starting isolated Jellyfin 12 with the published address " + PUBLISHED + " and no trusted proxy.", flush=True)
     host.start()
@@ -216,8 +224,10 @@ def run(host: DockerHost, configured: bool, report: Path, only: str) -> int:
             settings.touch(mode=0o600)
             settings.write_text(json.dumps({**accounts, "host": HOST, "published": PUBLISHED, "proxyPort": port,
                                             "direct": host.origin, "report": str(report), "only": only}), encoding="utf-8")
+            # The result of an earlier run must not stand in for a browser half that ended without one.
+            (report / "result.json").unlink(missing_ok=True)
             browser = subprocess.run(["node", str(Path(__file__).with_suffix(".mjs")), str(settings)], cwd=ROOT, timeout=600, check=False)
-    results = json.loads((report / "result.json").read_text(encoding="utf-8")) if browser.returncode in (0, 1) else []
+    results = read_results(report / "result.json", browser.returncode)
     logged = bool(results) and check_log(host, accounts, [result["name"] for result in results], report)
     writes = [entry for entry in seen if entry["path"].startswith(PREFIX) and entry["method"] != "GET"]
     (report / "requests-through-proxy.json").write_text(json.dumps(writes, indent=1) + "\n", encoding="utf-8")

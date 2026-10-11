@@ -104,6 +104,61 @@ test('favourite removals and disconnect need explicit review', async ({ page }) 
   expect(state.disconnected).toBe(true);
 });
 
+// What the page offers only with a connected Last.fm account. The list is written out: an element that loses its mark fails here.
+const sections = ['overview', 'history', 'favourites', 'discovery', 'playlists'];
+const needsConnection = [
+  ...sections.map(id => `#${id}`), ...sections.map(id => `nav.section-nav a[href="#${id}"]`),
+  '#disconnect-lastfm', 'label:has(#scrobbling)', 'details:has(#delivery-status)',
+];
+
+async function expectOffered(page, offered) {
+  await expect(page.locator('[data-needs-connection]')).toHaveCount(needsConnection.length);
+  for (const selector of needsConnection) {
+    if (offered) await expect(page.locator(selector)).toBeVisible();
+    else await expect(page.locator(selector)).toBeHidden();
+  }
+  await expect(page.locator('#connect-lastfm')).toBeVisible();
+}
+
+test('without a Last.fm connection the page offers only Connect, until connected and again after Disconnect', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = false;
+  // As delivered, before the server said anything about the account.
+  for (const selector of needsConnection) await expect(page.locator(selector)).toHaveJSProperty('hidden', true);
+  await passwordLogin(page);
+  await expect(page.locator('#connection-status')).toHaveText('Connect Last.fm to start.');
+  await expectOffered(page, false);
+  await expect(page.locator('#signed-in button:visible')).toHaveText(['Sign out', 'Connect Last.fm']);
+
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await expect(page.locator('#status')).toHaveText('Last.fm connected.');
+  await expectOffered(page, true);
+
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page.getByRole('button', { name: 'Disconnect and clear plugin data' }).click();
+  await expect(page.locator('#connection-status')).toHaveText('Connect Last.fm to start.');
+  await expectOffered(page, false);
+});
+
+test('an account that must reconnect keeps its sections', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = true;
+  state.needsReconnect = true;
+  await passwordLogin(page);
+  await expect(page.locator('#connection-status')).toContainText('reconnect required');
+  await expectOffered(page, true);
+});
+
+test('signing out withdraws the sections before the next account is known', async ({ page }) => {
+  await installServer(page);
+  await passwordLogin(page);
+  await expectOffered(page, true);
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.locator('#sign-in')).toBeVisible();
+  // The next user's connection is unknown until the server answered; the mark itself must be withdrawn, not only its container.
+  for (const selector of needsConnection) await expect(page.locator(selector)).toHaveJSProperty('hidden', true);
+});
+
 for (const prefix of ['', '/jellyfin']) {
   test(`one button connects Last.fm and returns to the page at ${prefix || 'root'}`, async ({ page }) => {
     const state = await installServer(page, { prefix });

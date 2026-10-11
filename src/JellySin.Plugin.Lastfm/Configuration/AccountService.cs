@@ -330,7 +330,7 @@ public sealed class AccountService(
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, authorization.Token);
         cancellationToken = linked.Token;
         using var lease = await _connectionGates.AcquireAsync(userId, cancellationToken).ConfigureAwait(false);
-        var account = await store.UpdateAsync<StoredAccount>(userId, "account", current => (current ?? throw new InvalidOperationException("Connect Last.fm first.")) with { ScrobblingEnabled = enabled }, cancellationToken).ConfigureAwait(false);
+        var account = await store.UpdateAsync<StoredAccount>(userId, "account", current => (current ?? throw new NotConnectedException()) with { ScrobblingEnabled = enabled }, cancellationToken).ConfigureAwait(false);
         if (enabled && await GetAsync(userId, cancellationToken).ConfigureAwait(false) is { NeedsReconnect: false })
             operation.Publish(authorization, () => _captures[userId] = new(account.Generation, Guid.NewGuid()));
         else _captures.TryRemove(userId, out _);

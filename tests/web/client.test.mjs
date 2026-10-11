@@ -194,3 +194,22 @@ test('a superseded request cannot return a session even when the transport compl
   await assert.rejects(request, error => error.name === 'AbortError');
   assert.equal(client.signedIn, false);
 });
+
+test('a conflict is explained as a missing connection only when the answer carries the mark', async context => {
+  const client = new Client(bootstrap);
+  const mark = 'urn:jellysin:lastfm:not-connected';
+  const conflict = 'This action is unavailable or its preview expired. Refresh and try again.';
+  const answers = [
+    [JSON.stringify({ type: mark, title: 'Text the page must not show.' }), 'Connect Last.fm first.'],
+    [JSON.stringify({ Type: mark }), 'Connect Last.fm first.'],
+    [JSON.stringify({ title: 'Connect Last.fm first.' }), conflict],
+    [JSON.stringify({ type: `${mark}-other` }), conflict],
+    [JSON.stringify({ type: mark, padding: 'x'.repeat(5000) }), conflict],
+    ['null', conflict],
+    ['not JSON', conflict],
+  ];
+  for (const [body, expected] of answers) {
+    context.mock.method(globalThis, 'fetch', async () => new Response(body, { status: 409 }));
+    await assert.rejects(client.api('Me/Overview'), error => error.message === expected, body.slice(0, 60));
+  }
+});

@@ -46,6 +46,7 @@ REMOVE_PAUSE_SECONDS = 5
 IMAGE_TAG = re.compile(r"jellyfin/jellyfin:(\d+\.\d+)(?:\.\d+)?@sha256:[a-f0-9]{64}")
 PREFIX = "/JellySin/Lastfm"
 MAX_RESPONSE = 8_000_000
+NOT_CONNECTED = "urn:jellysin:lastfm:not-connected"
 
 
 class SmokeFailure(RuntimeError):
@@ -418,6 +419,20 @@ def check_authentication(admin: Client, listener: Client, listener_id: str, expe
     quick.request(PREFIX + "/Me", expected=401, raw=True)
 
 
+def conflict_mark(payload: bytes) -> Any:
+    try:
+        answer = json.loads(payload)
+    except ValueError:
+        return None
+    return lower_keys(answer).get("type") if isinstance(answer, dict) else None
+
+
+def check_conflict_marks(view: bytes, other: bytes) -> None:
+    """A view asked without a Last.fm account says so with its own mark, which the page reads; no other conflict carries it."""
+    require(conflict_mark(view) == NOT_CONNECTED, "A view asked without a Last.fm account must carry the missing-connection mark.")
+    require(conflict_mark(other) != NOT_CONNECTED, "A conflict of another kind must not carry the missing-connection mark.")
+
+
 def check_user_isolation(admin: Client, listener: Client, admin_id: str) -> None:
     # Connecting Last.fm is intentionally omitted. Opt-in intent is stored before
     # the absent-account error, which provides distinct private state to inspect.
@@ -428,7 +443,9 @@ def check_user_isolation(admin: Client, listener: Client, admin_id: str) -> None
     require(admin.request(PREFIX + "/Me/Favourites")["enabled"], "A body-supplied identity changed another user's settings.")
     require(not listener.request(PREFIX + "/Me/Favourites")["enabled"], "The caller's own preference changed unexpectedly.")
     admin.request(PREFIX + "/Me/Favourites", "PUT", {"Enabled": False})
-    listener.request(PREFIX + "/Me/History/Import", "POST", {"PreviewId": str(uuid.uuid4())}, 409, raw=True)
+    expired, _, _ = listener.request(PREFIX + "/Me/History/Import", "POST", {"PreviewId": str(uuid.uuid4())}, 409, raw=True)
+    view, _, _ = listener.request(PREFIX + "/Me/Overview", expected=409, raw=True)
+    check_conflict_marks(view, expired)
     listener.request(PREFIX + "/Me/Playlists", "POST", {"Id": str(uuid.UUID(int=0)), "Name": "", "Source": 0, "Limit": 0}, 400, raw=True)
 
 

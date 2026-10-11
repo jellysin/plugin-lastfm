@@ -1,6 +1,9 @@
 export interface Bootstrap { basePath: string; serverId: string; version: string }
 export interface Session { accessToken: string; user: { name: string }; serverId: string }
 
+/** The server marks the conflict "no Last.fm account connected" with this value (ApiExceptionFilter.NotConnectedType). */
+export const notConnectedType = 'urn:jellysin:lastfm:not-connected';
+
 /** Stop reading as soon as the byte budget is exhausted, including chunked responses. */
 export async function readJson(response: Response, limit = 4_000_000): Promise<unknown> {
   const reader = response.body?.getReader();
@@ -37,6 +40,12 @@ export function normalize(value: unknown, depth = 0): unknown {
     return result;
   }
   return value;
+}
+
+/** Whether a conflict says that no Last.fm account is connected. Only the mark is compared; no text of the answer is shown. */
+async function notConnected(response: Response): Promise<boolean> {
+  try { return (await readJson(response, 4096) as { type?: unknown } | null)?.type === notConnectedType; }
+  catch { return false; }
 }
 
 export class Client extends EventTarget {
@@ -121,7 +130,7 @@ export class Client extends EventTarget {
     if (response.status === 401) { this.clearSession(); throw new Error('Your Jellyfin session expired. Sign in again.'); }
     if (!response.ok) throw new Error(response.status === 403 ? 'Your account cannot perform this action.'
       : response.status === 507 ? 'JellySin reached its data storage limit. Any saved progress is retained; check storage before retrying.'
-      : response.status === 409 ? 'This action is unavailable or its preview expired. Refresh and try again.'
+      : response.status === 409 ? await notConnected(response) ? 'Connect Last.fm first.' : 'This action is unavailable or its preview expired. Refresh and try again.'
       : `The request could not be completed (HTTP ${response.status}).`);
     if (response.status === 204) return undefined as T;
     const result = await readJson(response) as T;

@@ -178,4 +178,11 @@ public sealed class AccountTests
         using var fixture = new CoreFixture();
         await Assert.ThrowsAsync<ArgumentException>(() => fixture.Credentials.SetAsync(new ApplicationCredentials(key, secret), TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task SetScrobblingThrowsWhenNotConnected()
+    {
+        using var fixture = new CoreFixture();
+        await Assert.ThrowsAsync<NotConnectedException>(() => fixture.Accounts.SetScrobblingAsync(fixture.UserId, true, TestContext.Current.CancellationToken));
+    }
 }
