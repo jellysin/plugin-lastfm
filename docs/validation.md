@@ -12,36 +12,33 @@ is the release the image tag names.
 
 A third pinned image, Jellyfin 12.1.0
 (`jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e`),
-was added after the run recorded below, because 12.1 is the first release with the
-playlist visibility rule described further down. The native fixture passed on it
-locally on 2026-10-11 and runs on it in CI from that change on. The smoke harness and
+is used by the native fixture only, because 12.1 is the first release with the
+playlist visibility rule described further down. The smoke harness and
 the library load check were not run on 12.1.
 
-The table records the hosted run for `5489d0a` with Python 3.14.8. The run pages show
-that commit as `b79a87d`, its id before the commit messages on `main` were rewritten
-on 2026-10-11; the files of both are identical. The .NET, Python
-and server checks were repeated locally the same day in the pinned SDK container, with
-Python 3.14.7, and gave the same results except where the table says otherwise. GitHub
+The table records the hosted run for `1cd8e91` with Python 3.14.8; every number in it
+is read from the log of that run. The checks were not repeated locally for that
+commit. GitHub
 CI uses the versions pinned in `global.json`, `.node-version` and `.python-version` and
 repeats the automated checks on proposed changes and release tags.
 
 | Check | Observed result |
 | --- | --- |
-| .NET tests | 228 passed, none skipped |
-| Unique production line coverage | 92.09% overall; 94.23% across API, configuration and transport. The local run and the hosted run of the same tree before the merge measured 92.18% overall |
+| .NET tests | 336 passed, none skipped |
+| Unique production line coverage | 92.56% overall; 95.58% across API, configuration and transport |
 | Restore, formatting, Release build | Locked restore; no formatting changes; zero warnings/errors |
-| C# policy | 43 source files; no size or cognitive-complexity findings; analyzer self-tests passed |
-| Dependency audits | No reported vulnerable dependencies in the five .NET projects. The npm production tree is empty, so the gating audit has nothing to check; six planted audit cases behaved as required. A local audit of the complete npm tree with npm 11.19.0 found no vulnerabilities |
-| Browser client unit tests | 16 passed, including byte limits, credential handling, immediate local logout and cancelled account requests |
-| Browser scenarios | 18 passed: root/prefixed paths, both sign-in races, late history responses, reviewed operations, safe metadata, layout and performance |
+| C# policy | 46 source files; no size or cognitive-complexity findings; analyzer self-tests passed |
+| Dependency audits | No reported vulnerable dependencies in the five .NET projects. The npm production tree is empty, so the gating audit has nothing to check; six planted audit cases behaved as required. The installation of the complete npm tree, 86 packages, reported no vulnerabilities |
+| Browser client unit tests | 18 passed, including byte limits, credential handling, immediate local logout and cancelled account requests |
+| Browser scenarios | 55 passed in headless Chromium: root/prefixed paths, both sign-in races, late history responses, reviewed operations, safe metadata, the Last.fm sign-in with its return and every refused address on the dashboard and on the settings page, layout and performance |
 | Accessibility | No axe violations in the tested signed-out and populated signed-in views at 320 and 1280 px |
-| Frontend budget | Eight JavaScript modules total 11,963 bytes gzip; limit 150,000 bytes |
-| Python helper tests | 66 passed: coverage validity, exact-tag/rebuild/upload-artifact comparison failures, the ABI floor, server choice and release check, dependency audit, secret scan and the library matching comparison |
-| Repository configuration | Actionlint 1.7.12 and the shared release-helper check passed; `renovate.json` passed the published Renovate JSON schema locally |
+| Frontend budget | Eight JavaScript modules total 13,362 bytes gzip; limit 150,000 bytes |
+| Python helper tests | 142 passed: coverage validity, exact-tag/rebuild/upload-artifact comparison failures, the ABI floor and its proof against the release helper, server choice and release check, release preparation, the canary build, dependency audit, secret scan, commit-message attribution, the pinned helper and analyzer references, the proxied sign-in check and the library matching comparison |
+| Repository configuration | Actionlint 1.7.12 and the shared release-helper check passed; `renovate.json` passed the published Renovate JSON schema in a local check, which is not part of the hosted run |
 | Secret scans | Every fetched ref passed Gitleaks 8.30.1 with no blocking finding; four findings are allowed by unexpired single-fingerprint exceptions; six planted cases behaved as required |
 | Reproducibility | Two clean checkouts reproduced all four artifacts and matched the selected upload set |
-| Server checks | Smoke and native fixture passed on Jellyfin 12.0.0 and 12.2.0; the library load budget passed on 12.2.0 |
-| Hosted run | [CI 38104687980](https://github.com/jellysin/plugin-lastfm/actions/runs/38104687980) and [CodeQL 38104687846](https://github.com/jellysin/plugin-lastfm/actions/runs/38104687846) passed for `5489d0a` (shown there as `b79a87d`) |
+| Server checks | Smoke passed on Jellyfin 12.0.0 and 12.2.0; the native fixture on 12.0.0, 12.1.0 and 12.2.0; the proxied sign-in check and the library load budget on 12.2.0 |
+| Hosted run | [CI 38170795371](https://github.com/jellysin/plugin-lastfm/actions/runs/38170795371) and [CodeQL 38170795369](https://github.com/jellysin/plugin-lastfm/actions/runs/38170795369) passed for `1cd8e91` |
 
 The real Docker smoke harness loaded the plugin as UID 1000 on both servers and
 verified embedded resources, security headers, ordinary-user password and Quick
