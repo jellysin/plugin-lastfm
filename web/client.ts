@@ -102,15 +102,16 @@ export class Client extends EventTarget {
     return header + (this.token ? `, Token="${this.token}"` : '');
   }
 
-  async api<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
-    return this.request<T>(`/JellySin/Lastfm/${path}`, method, body, signal);
+  async api<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal, cookies = false): Promise<T> {
+    return this.request<T>(`/JellySin/Lastfm/${path}`, method, body, signal, cookies);
   }
 
-  async request<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
+  /** Requests carry no browser cookies. The start of a Last.fm sign-in is the exception: its response sets the cookie that ties the return to this browser. */
+  async request<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal, cookies = false): Promise<T> {
     if (!path.startsWith('/') || path.startsWith('//') || /[\r\n\\]/.test(path)) throw new Error('Invalid API path.');
     const requestSignal = AbortSignal.any([this.sessionRequests.signal, AbortSignal.timeout(90_000), ...(signal ? [signal] : [])]);
     const response = await fetch(this.root + path, {
-      method, credentials: 'omit', redirect: 'error', cache: 'no-store',
+      method, credentials: cookies ? 'same-origin' : 'omit', redirect: 'error', cache: 'no-store',
       headers: { Authorization: this.authorizationHeader(),
         Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),

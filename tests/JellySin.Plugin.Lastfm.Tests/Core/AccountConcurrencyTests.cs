@@ -10,7 +10,7 @@ public sealed class AccountConcurrencyTests
     {
         using var fixture = new CoreFixture();
         await fixture.ConnectAsync();
-        var attempt = await fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var attempt = await fixture.ApproveAsync(fixture.UserId);
         var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Client.AsyncHandler = async (_, _, token) =>
@@ -21,7 +21,7 @@ public sealed class AccountConcurrencyTests
             return JsonDocument.Parse("{\"session\":{\"name\":\"StaleListener\",\"key\":\"stale-key\"}}");
         };
         var background = fixture.Accounts.GetOperationToken(fixture.UserId);
-        var finish = fixture.Accounts.FinishAsync(fixture.UserId, attempt.AttemptId, TestContext.Current.CancellationToken);
+        var finish = fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
         var authorization = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         var disconnect = fixture.Accounts.DisconnectAsync(fixture.UserId, TestContext.Current.CancellationToken);
         try
@@ -43,30 +43,32 @@ public sealed class AccountConcurrencyTests
     }
 
     [Fact]
-    public async Task DisconnectInvalidatesPendingTokenRequestAndCancelledGateWaiters()
+    public async Task DisconnectInvalidatesPendingExchangeAndCancelledGateWaiters()
     {
         using var fixture = new CoreFixture();
         await fixture.ConnectAsync();
+        var attempt = await fixture.ApproveAsync(fixture.UserId);
         var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.Client.AsyncHandler = async (_, _, token) =>
         {
             entered.SetResult(token);
             await release.Task;
-            return JsonDocument.Parse("{\"token\":\"stale-token\"}");
+            return JsonDocument.Parse("{\"session\":{\"name\":\"StaleListener\",\"key\":\"stale-key\"}}");
         };
-        var begin = fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var finish = fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
         var authorization = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        var second = fixture.Accounts.BeginAsync(fixture.UserId, waiting.Token);
+        var second = fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, waiting.Token);
         await waiting.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => second);
         var disconnect = fixture.Accounts.DisconnectAsync(fixture.UserId, TestContext.Current.CancellationToken);
         try { Assert.True(authorization.IsCancellationRequested); }
         finally { release.TrySetResult(); }
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => begin);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finish);
         await disconnect;
         Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
+        Assert.False((await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, CoreFixture.AttemptOf(attempt), "late-token", TestContext.Current.CancellationToken)).Accepted);
         fixture.Client.AsyncHandler = null;
         await fixture.ConnectAsync();
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
@@ -80,8 +82,8 @@ public sealed class AccountConcurrencyTests
         for (var index = 0; index < 300; index++)
         {
             var userId = Guid.NewGuid();
-            var attempt = await fixture.Accounts.BeginAsync(userId, TestContext.Current.CancellationToken);
-            Assert.NotEqual(Guid.Empty, attempt.AttemptId);
+            var attempt = await fixture.Accounts.BeginAsync(userId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
+            Assert.NotEmpty(attempt.BrowserBinding);
             await fixture.Accounts.DisconnectAsync(userId, TestContext.Current.CancellationToken);
         }
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Connected);

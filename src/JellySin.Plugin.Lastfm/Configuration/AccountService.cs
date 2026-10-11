@@ -16,10 +16,12 @@ public sealed record LinkedAccount(string Username, string SessionKey, bool Need
     public override string ToString() => "Linked Last.fm account (credentials redacted)";
 }
 
-public sealed record AccountStatus(bool Connected, string? Username, bool NeedsReconnect, bool ScrobblingEnabled);
+public sealed record AccountStatus(bool Connected, string? Username, bool NeedsReconnect, bool ScrobblingEnabled, bool ApprovalPending = false);
 public sealed record CaptureBinding(Guid AccountGeneration, Guid CaptureGeneration);
 
-public sealed record ConnectionAttempt(Guid AttemptId, string AuthorizationUrl, DateTimeOffset ExpiresAt)
+public sealed record ConnectionApproval(bool Accepted, bool ReturnToSettings);
+
+public sealed record ConnectionAttempt(string AuthorizationUrl, DateTimeOffset ExpiresAt, string BrowserBinding)
 {
     public override string ToString() => "Last.fm browser authorization attempt (URL redacted)";
 }
@@ -32,7 +34,11 @@ public sealed class AccountService(
     TimeProvider clock,
     IUserManager? users = null) : IDisposable
 {
+    private const int MaximumBindingLength = 1024;
+    private static readonly TimeSpan AttemptLifetime = TimeSpan.FromMinutes(10);
     private readonly IDataProtector _protector = protection.CreateProtector("JellySin.Lastfm.Account.v1");
+    // A separate purpose: a value protected for accounts can never be presented as a browser binding.
+    private readonly IDataProtector _attemptProtector = protection.CreateProtector("JellySin.Lastfm.Attempt.v1");
     private readonly AccountGatePool _connectionGates = new();
     private readonly object _operationSync = new();
     private readonly ConcurrentDictionary<Guid, AccountOperation> _operations = new();
@@ -70,27 +76,81 @@ public sealed class AccountService(
         return GetOperation(userId).Token;
     }
 
-    public async Task<ConnectionAttempt> BeginAsync(Guid userId, CancellationToken cancellationToken)
+    /// <summary>Opens a sign-in for one user and one browser. Last.fm is not contacted; the browser is sent there.</summary>
+    public async Task<ConnectionAttempt> BeginAsync(Guid userId, Uri callback, bool returnToSettings, CancellationToken cancellationToken)
     {
         RequireUser(userId);
         RequireHostAccess(userId);
+        if (!callback.IsAbsoluteUri || callback.Scheme != Uri.UriSchemeHttps && callback.Scheme != Uri.UriSchemeHttp
+            || callback.Query.Length > 0 || callback.Fragment.Length > 0 || callback.UserInfo.Length > 0 || callback.AbsoluteUri.Length > 1024)
+            throw new ArgumentException("The return address must be a plain web address of this server.", nameof(callback));
         var authorization = GetOperation(userId).Authorization;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, authorization.Token);
         cancellationToken = linked.Token;
         using var lease = await _connectionGates.AcquireAsync(userId, cancellationToken).ConfigureAwait(false);
         var app = await credentials.GetAsync(cancellationToken).ConfigureAwait(false);
-        var application = ApplicationCredentialService.Identity(app);
-        using var response = await client.CallForApplicationAsync("auth.getToken", new Dictionary<string, string>(), null, application, RequestPriority.Interactive, cancellationToken).ConfigureAwait(false);
-        var token = response.RootElement.GetProperty("token").GetString();
-        if (string.IsNullOrEmpty(token) || token.Length > 256) throw new LastfmException(8);
+        if (!app.IsConfigured) throw new LastfmException(10);
         cancellationToken.ThrowIfCancellationRequested();
         RequireHostAccess(userId);
-        var attempt = new StoredAttempt(Guid.NewGuid(), _protector.Protect(token), clock.GetUtcNow().AddMinutes(10), application, authorization.Id);
+        var attempt = new StoredAttempt(Guid.NewGuid(), string.Empty, clock.GetUtcNow().Add(AttemptLifetime), ApplicationCredentialService.Identity(app), authorization.Id);
         await store.WriteAsync(userId, "attempt", attempt, cancellationToken).ConfigureAwait(false);
-        return new ConnectionAttempt(attempt.Id, $"https://www.last.fm/api/auth/?api_key={Uri.EscapeDataString(app.ApiKey)}&token={Uri.EscapeDataString(token)}", attempt.ExpiresAt);
+        // The attempt named in the return address is the state value of this flow; the shared secret is never part of an address.
+        var target = $"{callback.AbsoluteUri}?attempt={attempt.Id:N}";
+        var binding = _attemptProtector.Protect($"{userId:N}{attempt.Id:N}{(returnToSettings ? '1' : '0')}");
+        return new ConnectionAttempt($"https://www.last.fm/api/auth/?api_key={Uri.EscapeDataString(app.ApiKey)}&cb={Uri.EscapeDataString(target)}", attempt.ExpiresAt, binding);
     }
 
-    public async Task<AccountStatus> FinishAsync(Guid userId, Guid attemptId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Accepts the return from Last.fm for the browser that began the attempt and parks the token, protected, for that user.
+    /// Called without a signed-in caller: the binding is the only proof of who began, so nothing here contacts Last.fm.
+    /// </summary>
+    public async Task<ConnectionApproval> ApproveAsync(string? binding, string? attempt, string? token, CancellationToken cancellationToken)
+    {
+        if (ReadBinding(binding) is not { } bound) return new ConnectionApproval(false, false);
+        var refused = new ConnectionApproval(false, bound.ReturnToSettings);
+        if (!Guid.TryParseExact(attempt, "N", out var named) || named != bound.AttemptId || !IsToken(token)) return refused;
+        if (!HasHostAccess(bound.UserId) || !_operations.TryGetValue(bound.UserId, out var operation)) return refused;
+        var authorization = operation.Authorization;
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, authorization.Token);
+            using var lease = await _connectionGates.AcquireAsync(bound.UserId, linked.Token).ConfigureAwait(false);
+            var pending = await store.ReadAsync<StoredAttempt>(bound.UserId, "attempt", linked.Token).ConfigureAwait(false);
+            if (pending is null || pending.Id != bound.AttemptId || pending.ExpiresAt <= clock.GetUtcNow()
+                || pending.Revision != authorization.Id || !string.IsNullOrEmpty(pending.ProtectedToken)) return refused;
+            await store.WriteAsync(bound.UserId, "attempt", pending with { ProtectedToken = _protector.Protect(token!) }, linked.Token).ConfigureAwait(false);
+            return new ConnectionApproval(true, bound.ReturnToSettings);
+        }
+        catch (Exception error) when (error is JsonException or IOException || error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return refused;
+        }
+    }
+
+    private (Guid UserId, Guid AttemptId, bool ReturnToSettings)? ReadBinding(string? binding)
+    {
+        if (string.IsNullOrEmpty(binding) || binding.Length > MaximumBindingLength) return null;
+        string value;
+        try { value = _attemptProtector.Unprotect(binding); }
+        catch (Exception error) when (error is CryptographicException or FormatException) { return null; }
+        if (value.Length != 65 || value[64] is not ('0' or '1')
+            || !Guid.TryParseExact(value.AsSpan(0, 32), "N", out var userId) || !Guid.TryParseExact(value.AsSpan(32, 32), "N", out var attemptId)) return null;
+        return (userId, attemptId, value[64] == '1');
+    }
+
+    // The documented token is an opaque value; anything outside this alphabet is not forwarded to Last.fm.
+    private static bool IsToken(string? token)
+        => token is { Length: > 0 and <= 256 } && token.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+
+    private async Task<StoredAttempt?> ReadApprovedAsync(Guid userId, Guid revision, CancellationToken cancellationToken)
+    {
+        StoredAttempt? pending;
+        try { pending = await store.ReadAsync<StoredAttempt>(userId, "attempt", cancellationToken).ConfigureAwait(false); }
+        catch (Exception error) when (error is JsonException or StorageBudgetException) { return null; }
+        return pending is null || string.IsNullOrEmpty(pending.ProtectedToken) || pending.ExpiresAt <= clock.GetUtcNow() || pending.Revision != revision ? null : pending;
+    }
+
+    public async Task<AccountStatus> FinishAsync(Guid userId, CancellationToken cancellationToken)
     {
         RequireUser(userId);
         RequireHostAccess(userId);
@@ -101,10 +161,12 @@ public sealed class AccountService(
         using var lease = await _connectionGates.AcquireAsync(userId, cancellationToken).ConfigureAwait(false);
         try
         {
-            var pending = await store.ReadAsync<StoredAttempt>(userId, "attempt", cancellationToken).ConfigureAwait(false);
-            if (pending is null || pending.Id != attemptId || pending.ExpiresAt <= clock.GetUtcNow() || pending.Revision != authorization.Id)
-                throw new InvalidOperationException("Connection attempt is missing or expired. Start again.");
-            using var response = await client.CallForApplicationAsync("auth.getSession", new Dictionary<string, string> { ["token"] = _protector.Unprotect(pending.ProtectedToken) }, null, pending.ApplicationIdentity, RequestPriority.Interactive, cancellationToken).ConfigureAwait(false);
+            var pending = await ReadApprovedAsync(userId, authorization.Id, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Connection attempt is missing or expired. Start again.");
+            string token;
+            try { token = _protector.Unprotect(pending.ProtectedToken); }
+            catch (CryptographicException) { throw new InvalidOperationException("Connection attempt is missing or expired. Start again."); }
+            using var response = await client.CallForApplicationAsync("auth.getSession", new Dictionary<string, string> { ["token"] = token }, null, pending.ApplicationIdentity, RequestPriority.Interactive, cancellationToken).ConfigureAwait(false);
             var session = response.RootElement.GetProperty("session");
             var username = session.GetProperty("name").GetString();
             var key = session.GetProperty("key").GetString();
@@ -137,8 +199,9 @@ public sealed class AccountService(
             });
             return await GetStatusAsync(userId, cancellationToken).ConfigureAwait(false);
         }
-        catch (LastfmException exception) when (exception.Code is 4 or 15)
+        catch (LastfmException exception) when (exception.Code is 4 or 14 or 15)
         {
+            // Last.fm refused this token for good; a temporary failure keeps the approval for another try.
             await store.DeleteAsync(userId, "attempt", cancellationToken).ConfigureAwait(false);
             throw;
         }
@@ -209,7 +272,10 @@ public sealed class AccountService(
     public async Task<AccountStatus> GetStatusAsync(Guid userId, CancellationToken cancellationToken)
     {
         var account = await GetAsync(userId, cancellationToken).ConfigureAwait(false);
-        return new AccountStatus(account is not null, string.IsNullOrEmpty(account?.Username) ? null : account.Username, account?.NeedsReconnect ?? false, account?.ScrobblingEnabled ?? false);
+        // Only a user with a live operation can hold an attempt of this process, so other status reads touch no attempt file.
+        var approved = _operations.TryGetValue(userId, out var operation)
+            && await ReadApprovedAsync(userId, operation.Authorization.Id, cancellationToken).ConfigureAwait(false) is not null;
+        return new AccountStatus(account is not null, string.IsNullOrEmpty(account?.Username) ? null : account.Username, account?.NeedsReconnect ?? false, account?.ScrobblingEnabled ?? false, approved);
     }
 
     public async Task<IReadOnlyList<Guid>> GetAccountsAsync(CancellationToken cancellationToken)

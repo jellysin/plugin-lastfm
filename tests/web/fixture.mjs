@@ -2,22 +2,28 @@ import { readFile } from 'node:fs/promises';
 
 export const token = 'a'.repeat(32);
 export const track = { Artist: 'Massive Attack', Title: 'Teardrop', Album: 'Mezzanine', PlayCount: 42, Url: 'https://www.last.fm/music/Massive+Attack/_/Teardrop', NowPlaying: false };
+export const lastfmToken = 'fixture-lastfm-token';
+const binding = 'fixture-binding';
 const item = '11111111-1111-4111-8111-111111111111';
 const previewId = '22222222-2222-4222-8222-222222222222';
 const json = body => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 const empty = () => ({ status: 204 });
+// The test runner does not route the request that follows a redirect it answered itself, so each hop is a navigation of its own.
+const forward = address => ({ status: 200, contentType: 'text/html', body: `<!doctype html><meta http-equiv="refresh" content="0;url=${address.replaceAll('&', '&amp;').replaceAll('"', '%22')}">` });
 const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url);
 
 export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0 } = {}) {
-  const state = { requests: [], prefix, administrator, connected: true, favourites: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
+  const state = { requests: [], lastfm: [], approvalPending: false, lastfmAnswer: 'token', prefix, administrator, connected: true, favourites: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
     historyTracks: [track], delivery: { Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0, Rejected: 0, PendingPersistence: 0 } };
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
+    if (url.origin === 'https://www.last.fm' && url.pathname === '/api/auth/') return route.fulfill(lastfm(url, state));
     if (url.origin !== 'http://127.0.0.1:4177' || !url.pathname.startsWith(prefix + '/')) return route.abort();
     const path = url.pathname.slice(prefix.length);
     if (latencyMs) await new Promise(resolve => setTimeout(resolve, latencyMs));
     state.requests.push({ path, url: url.href, method: request.method(), headers: request.headers(), body: request.postDataJSON() });
+    if (path === '/JellySin/Lastfm/Callback') return route.fulfill(await callback(page, url, state));
     if (path === '/JellySin/Lastfm/') return route.fulfill({ contentType: 'text/html', body: await readFile(new URL('index.html', webRoot), 'utf8') });
     if (path.startsWith('/JellySin/Lastfm/Assets/')) {
       const name = path.split('/').at(-1);
@@ -31,6 +37,37 @@ export async function installServer(page, { prefix = '', administrator = false, 
   return state;
 }
 
+/** Last.fm sends the browser back to the address it was given, with a token appended. */
+function lastfm(url, state) {
+  state.lastfm.push(url.href);
+  const back = url.searchParams.get('cb');
+  return forward(state.lastfmAnswer === 'token' ? `${back}&token=${lastfmToken}` : back);
+}
+
+/** Like the server: the return counts only in the browser that holds the cookie of the attempt, and the token is not passed on. */
+async function callback(page, url, state) {
+  const cookies = await page.context().cookies(url.href);
+  const bound = cookies.some(cookie => cookie.name === 'JellySinLastfmAttempt' && cookie.value === binding && cookie.httpOnly);
+  state.approvalPending = bound && url.searchParams.get('token') === lastfmToken && url.searchParams.get('attempt') === previewId.replaceAll('-', '');
+  return forward(`${state.prefix}/JellySin/Lastfm/${state.approvalPending ? '' : '?connection=failed'}`);
+}
+
+function begin(url, state) {
+  const back = `${url.origin}${state.prefix}/JellySin/Lastfm/Callback?attempt=${previewId.replaceAll('-', '')}`;
+  return { ...json({ AuthorizationUrl: state.authorizationUrl ?? `https://www.last.fm/api/auth/?api_key=fixture&cb=${encodeURIComponent(back)}`, ExpiresAt: '2026-09-08T15:10:00Z' }),
+    headers: { 'Set-Cookie': `JellySinLastfmAttempt=${binding}; Path=${state.prefix}/JellySin/Lastfm/Callback; Max-Age=600; HttpOnly; SameSite=Lax` } };
+}
+
+function finish(state) {
+  if (!state.approvalPending) return { status: 409, body: 'No approved attempt' };
+  state.approvalPending = false;
+  if (state.finishFails) return { status: 502, body: 'Last.fm refused' };
+  state.connected = true;
+  return json(connection(state));
+}
+
+const connection = state => ({ Connected: state.connected, Username: state.connected ? 'Listener' : null, NeedsReconnect: false, ScrobblingEnabled: true, ApprovalPending: state.approvalPending });
+
 function respond(path, method, body, url, state) {
   if (path === '/JellySin/Lastfm/Bootstrap') return json({ BasePath: state.prefix, ServerId: 'fixture-server', Version: '1.0.0' });
   if (path === '/Users/AuthenticateByName' || path === '/Users/AuthenticateWithQuickConnect') return json({ AccessToken: token, ServerId: 'fixture-server', User: { Name: 'listener' } });
@@ -39,10 +76,10 @@ function respond(path, method, body, url, state) {
   if (path === '/JellySin/Lastfm/Auth/QuickConnect/Status') return json({ Authenticated: true });
   if (path === '/Sessions/Logout') return empty();
   const endpoint = path.replace('/JellySin/Lastfm/', '');
-  if (endpoint === 'Me') return json({ UserName: 'listener', IsAdministrator: state.administrator, Connection: { Connected: state.connected, Username: 'Listener', ScrobblingEnabled: true } });
-  if (endpoint === 'Admin/Application') return method === 'GET' ? json({ Configured: true }) : empty();
-  if (endpoint === 'Me/Connection/Begin') return json({ AttemptId: previewId, AuthorizationUrl: 'https://www.last.fm/api/auth/?api_key=fixture&token=fixture' });
-  if (endpoint === 'Me/Connection/Finish') { state.connected = true; return empty(); }
+  if (endpoint === 'Me') return json({ UserName: 'listener', IsAdministrator: state.administrator, Connection: connection(state) });
+  if (endpoint === 'Admin/Application') return method === 'GET' ? json({ Configured: true, Source: 'Project' }) : empty();
+  if (endpoint === 'Me/Connection/Begin') return begin(url, state);
+  if (endpoint === 'Me/Connection/Finish') return finish(state);
   if (endpoint === 'Me/Connection' && method === 'DELETE') { state.connected = false; state.disconnected = true; return empty(); }
   if (endpoint === 'Me/Scrobbling') return empty();
   if (endpoint === 'Me/Delivery') return json(state.delivery);

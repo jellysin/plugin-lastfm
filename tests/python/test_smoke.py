@@ -3,9 +3,11 @@
 import argparse
 import contextlib
 import copy
+import http.server
 import io
 import json
 import re
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -142,6 +144,58 @@ class RemovalTests(unittest.TestCase):
     def test_removal_that_keeps_failing_is_reported_after_a_bounded_number_of_attempts(self):
         attempts = smoke.REMOVE_ATTEMPTS
         self.assertEqual((False, attempts, attempts - 1), removed([True] * (attempts + 5)))
+
+
+REFUSED = {"Location": "/jellyfin/JellySin/Lastfm/?connection=failed", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+
+
+def returned(status, headers):
+    """Run the return-address check against a local server that gives the planted answer; return what it was asked."""
+    asked = []
+
+    class Planted(http.server.BaseHTTPRequestHandler):
+        def log_message(self, _format, *arguments):
+            pass
+
+        def do_GET(self):
+            asked.append((self.path, self.headers.get("Authorization"), self.headers.get("Cookie")))
+            self.send_response(status)
+            for name, value in headers.items():
+                self.send_header(name, value)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        smoke.check_return_address(smoke.Client(f"http://127.0.0.1:{server.server_address[1]}", "/jellyfin", token="a" * 32))
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    return asked
+
+
+class ReturnAddressTests(unittest.TestCase):
+    def test_accepts_a_refusal_that_leads_back_to_the_page_and_asks_without_a_sign_in(self):
+        self.assertEqual([("/jellyfin/JellySin/Lastfm/Callback?attempt=" + "0" * 32 + "&token=smoke-return-token", None, None)], returned(302, REFUSED))
+
+    def test_refuses_a_return_address_that_needs_a_sign_in_or_shows_a_page(self):
+        for status in (200, 401, 404):
+            with self.subTest(status=status), self.assertRaisesRegex(SmokeFailure, "without a Jellyfin sign-in"):
+                returned(status, REFUSED)
+
+    def test_refuses_a_token_passed_on_a_lost_base_path_or_a_missing_refusal(self):
+        for location in ("/jellyfin/JellySin/Lastfm/?connection=failed&token=smoke-return-token", "/JellySin/Lastfm/?connection=failed",
+                         "/jellyfin/JellySin/Lastfm/", "https://attacker.example/JellySin/Lastfm/?connection=failed"):
+            with self.subTest(location=location), self.assertRaisesRegex(SmokeFailure, "marked as refused and without its token"):
+                returned(302, REFUSED | {"Location": location})
+
+    def test_refuses_an_answer_that_may_be_cached_or_names_its_address_to_the_next_page(self):
+        for name, value, expected in (("Cache-Control", "private", "must not be cached"), ("Referrer-Policy", "origin", "referrer leakage")):
+            with self.subTest(header=name), self.assertRaisesRegex(SmokeFailure, expected):
+                returned(302, REFUSED | {name: value})
 
 
 if __name__ == "__main__":

@@ -70,10 +70,14 @@ public sealed class CallerSecurityTests
         var otherUser = Guid.NewGuid();
         result.Context.HttpContext.Request.QueryString = new QueryString("?userId=" + otherUser);
         var controller = new AccountController(fixture.Accounts) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
-        var attempt = await controller.Begin(TestContext.Current.CancellationToken);
+        await fixture.ConfigureApplicationAsync();
+        var start = await controller.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
         Assert.NotNull(await fixture.Store.ReadAsync<JellySin.Plugin.Lastfm.Configuration.AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
         Assert.Null(await fixture.Store.ReadAsync<JellySin.Plugin.Lastfm.Configuration.AccountService.StoredAttempt>(otherUser, "attempt", TestContext.Current.CancellationToken));
-        var status = await controller.Finish(new ConnectionFinish(attempt.AttemptId), TestContext.Current.CancellationToken);
+        var binding = Microsoft.Net.Http.Headers.SetCookieHeaderValue.Parse(Assert.Single(controller.Response.Headers.SetCookie)!).Value.Value;
+        Assert.True((await fixture.Accounts.ApproveAsync(binding, CoreFixture.AttemptOf(start.AuthorizationUrl), "browser-test-token", TestContext.Current.CancellationToken)).Accepted);
+        Assert.False((await fixture.Accounts.GetStatusAsync(otherUser, TestContext.Current.CancellationToken)).ApprovalPending);
+        var status = await controller.Finish(TestContext.Current.CancellationToken);
         Assert.True(status.Connected);
         await controller.Scrobbling(new ToggleRequest(false), TestContext.Current.CancellationToken);
         var response = System.Text.Json.JsonSerializer.SerializeToElement(await controller.GetMe(TestContext.Current.CancellationToken));
@@ -90,6 +94,9 @@ public sealed class CallerSecurityTests
         var controller = new AdministrationController(fixture.Credentials) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => controller.Status(TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => controller.Save(new ApplicationInput(new string('a', 32), new string('b', 32)), TestContext.Current.CancellationToken));
+        await fixture.ConfigureApplicationAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => controller.Remove(TestContext.Current.CancellationToken));
+        Assert.True((await fixture.Credentials.GetAsync(TestContext.Current.CancellationToken)).IsConfigured);
     }
 
     [Fact]
@@ -102,8 +109,25 @@ public sealed class CallerSecurityTests
         var controller = new AdministrationController(fixture.Credentials) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
         var input = new ApplicationInput(new string('a', 32), new string('b', 32));
         Assert.IsType<NoContentResult>(await controller.Save(input, TestContext.Current.CancellationToken));
-        Assert.Equal("{\"Configured\":true}", System.Text.Json.JsonSerializer.Serialize(await controller.Status(TestContext.Current.CancellationToken)));
+        Assert.Equal("{\"Configured\":true,\"Source\":\"Override\"}", System.Text.Json.JsonSerializer.Serialize(await controller.Status(TestContext.Current.CancellationToken)));
         Assert.DoesNotContain(input.Secret, input.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AdministratorCanRemoveTheApplicationOverride()
+    {
+        using var fixture = new CoreFixture();
+        var identity = Identity();
+        identity.User!.SetPermission(PermissionKind.IsAdministrator, true);
+        var result = await RunFilter(identity, "DELETE", null, null);
+        var controller = new AdministrationController(fixture.Credentials) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
+        Assert.Equal("{\"Configured\":false,\"Source\":\"None\"}", System.Text.Json.JsonSerializer.Serialize(await controller.Status(TestContext.Current.CancellationToken)));
+        await fixture.ConfigureApplicationAsync();
+        Assert.IsType<NoContentResult>(await controller.Remove(TestContext.Current.CancellationToken));
+        Assert.Equal("{\"Configured\":false,\"Source\":\"None\"}", System.Text.Json.JsonSerializer.Serialize(await controller.Status(TestContext.Current.CancellationToken)));
+        Assert.IsType<NoContentResult>(await controller.Remove(TestContext.Current.CancellationToken));
+        var action = typeof(AdministrationController).GetMethod(nameof(AdministrationController.Remove))!;
+        Assert.Contains(action.GetCustomAttributes(false), attribute => attribute is HttpDeleteAttribute { Template: "Application" });
     }
 
     [Fact]

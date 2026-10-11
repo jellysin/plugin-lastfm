@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.DataProtection;
 
 namespace JellySin.Plugin.Lastfm.Configuration;
 
+public enum ApplicationSource { None, Project, Override }
+
 public sealed class ApplicationCredentialService(IStateStore store, IDataProtectionProvider protection)
 {
     private readonly IDataProtector _protector = protection.CreateProtector("JellySin.Lastfm.Application.v1");
@@ -25,6 +27,16 @@ public sealed class ApplicationCredentialService(IStateStore store, IDataProtect
             throw new ArgumentException("Last.fm application credentials must be 32 hexadecimal characters.", nameof(credentials));
         return store.WriteAsync(Guid.Empty, "credentials", new StoredCredentials(_protector.Protect(credentials.ApiKey), _protector.Protect(credentials.Secret)), cancellationToken);
     }
+
+    /// <summary>Where the application in use comes from: an administrator's override, the build, or nowhere.</summary>
+    public async Task<ApplicationSource> GetSourceAsync(CancellationToken cancellationToken)
+    {
+        if (await store.ReadAsync<StoredCredentials>(Guid.Empty, "credentials", cancellationToken).ConfigureAwait(false) is not null) return ApplicationSource.Override;
+        return ProjectCredentials().IsConfigured ? ApplicationSource.Project : ApplicationSource.None;
+    }
+
+    /// <summary>Removes the override. Accounts connected through it need a new sign-in, as after any application change.</summary>
+    public Task DeleteAsync(CancellationToken cancellationToken) => store.DeleteAsync(Guid.Empty, "credentials", cancellationToken);
 
     public sealed record StoredCredentials(string Key, string Secret);
 

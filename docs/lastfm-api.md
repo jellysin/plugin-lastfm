@@ -24,11 +24,22 @@ search takeover. No private Last.fm endpoints are scraped.
 
 ## Authentication
 
-The [desktop flow](https://www.last.fm/api/desktopauth) obtains an authorization
-token, sends the user to Last.fm in a browser and exchanges an approved token for
-a session. It supports private/LAN Jellyfin servers without requiring a public
-callback. The local pending attempt is bound to the current Jellyfin user and has
-a shorter expiry than Last.fm's token lifetime.
+The [web flow](https://www.last.fm/api/webauth) (read 2026-10-11) sends the user's
+browser to Last.fm with the application key and a return address on the Jellyfin
+server. After the user allows access, Last.fm sends the browser back to that
+address with a token, documented as single use and valid for 60 minutes, and the
+server exchanges it for a session through `auth.getSession`.
+
+The return address is opened by the user's own browser, so the server does not
+have to be reachable from the internet. Whether Last.fm accepts a private or LAN
+address as the return address is not stated in its documentation; it is confirmed
+by a live sign-in, recorded in [operations](operations.md#account-connection).
+
+The pending attempt is bound to the Jellyfin user who started it and, through a
+cookie that page script cannot read, to the browser that started it. It can be
+used once and expires after 10 minutes. The return address accepts the token
+without contacting Last.fm and sends the browser on to an address without it; the
+exchange happens afterwards, on a request of the signed-in user.
 
 [`auth.getMobileSession`](https://www.last.fm/api/show/auth.getMobileSession) is
 documented for standalone mobile devices and is not used. This plugin never asks

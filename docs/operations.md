@@ -3,20 +3,37 @@
 ## Account connection
 
 The dashboard lives at `/JellySin/Lastfm/`, prefixed by Jellyfin's configured base
-path. Sign in with Jellyfin credentials or Quick Connect. Last.fm connection is a
-separate browser authorization: begin, approve on Last.fm, then finish connecting
-in the dashboard. A pending attempt belongs to one Jellyfin user and expires after
-10 minutes. You never send a Last.fm password to this plugin.
+path. Sign in with Jellyfin credentials or Quick Connect, then select **Connect
+Last.fm**. The browser opens Last.fm; after you allow access it returns to the
+dashboard and the connection completes without a further step. You never send a
+Last.fm password to this plugin. An administrator can connect their own account
+the same way from the plugin's settings page in Jellyfin's web interface.
+
+A pending attempt belongs to one Jellyfin user and one browser, can be used once
+and expires after 10 minutes. If the return does not connect, start again:
+
+- Finish in the browser that started the attempt, with cookies allowed for the
+  Jellyfin server.
+- A restart of Jellyfin ends open attempts.
+- Behind a reverse proxy, Jellyfin must see the public scheme and host name
+  (forwarded headers and Jellyfin's known proxies), because the return address
+  given to Last.fm is built from them.
+- The button on the settings page is offered only when Jellyfin's web interface
+  is served by the same server address. Otherwise connect from the dashboard.
 
 JellySin's project Last.fm application is registered, and its credentials are
 configured in the repository secrets for production builds. Browser authorization,
 live history/charts/discovery and one explicitly authorized test scrobble were
-verified on 2026-09-08. The [API terms review](lastfm-api.md) records the storage,
+verified on 2026-09-08 with the token flow used at that time. The return flow
+described above is covered by automated tests; its live sign-in against Last.fm
+has not been recorded yet. The [API terms review](lastfm-api.md) records the storage,
 attribution and display requirements. The [optional clarification enquiry](lastfm-permission-request.md)
 is unsent; no separate written approval has been obtained or is implied by these
 tests. Account connection uses the registered application's documented API flow.
 
-An administrator can configure an application override in Jellyfin's plugin settings. Changing
+Release builds include the project application, so a server needs no application
+key. The **Advanced** section of the plugin's settings page shows which application
+is in use and lets an administrator store an override or remove it again. Changing
 applications requires reconnecting user accounts; old sessions cannot be assumed
 valid under another application's credentials.
 

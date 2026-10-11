@@ -41,6 +41,7 @@ checked at the API boundary.
 | Route group | Purpose |
 | --- | --- |
 | `Me/Connection`, `Me/Scrobbling` | User connection lifecycle and listening preference |
+| `Callback` | Anonymous return address of the Last.fm sign-in; keeps the approval for the user and browser that began it and makes no outbound request |
 | `Me/History`, `Me/Overview`, `Me/Charts` | Private history and listening insights |
 | `Me/History/Preview`, `Continue`, `Import` | Resumable preview and explicit aggregate import |
 | `Me/Discovery`, `Me/Library/Search` | Accessible local results, external suggestions and seed lookup |
@@ -51,7 +52,8 @@ checked at the API boundary.
 Public assets are served from embedded resources with no-store, a restrictive CSP,
 no-referrer and nosniff headers. URL composition respects Jellyfin's reverse-proxy
 base path. The dashboard uses Jellyfin sign-in or Quick Connect and a separate
-Last.fm browser grant; no Last.fm mobile/password authentication is used.
+Last.fm browser grant that returns to the plugin's callback; no Last.fm
+mobile/password authentication is used.
 
 ## Delivery
 

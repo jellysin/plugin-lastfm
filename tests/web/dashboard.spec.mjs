@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFile } from 'node:fs/promises';
-import { installServer, passwordLogin, token } from './fixture.mjs';
+import { installServer, lastfmToken, passwordLogin, token } from './fixture.mjs';
 
 for (const prefix of ['', '/jellyfin']) {
   test(`password access, safe discovery and private playlists at ${prefix || 'root'}`, async ({ page }) => {
@@ -104,6 +104,81 @@ test('favourite removals and disconnect need explicit review', async ({ page }) 
   expect(state.disconnected).toBe(true);
 });
 
+for (const prefix of ['', '/jellyfin']) {
+  test(`one button connects Last.fm and returns to the page at ${prefix || 'root'}`, async ({ page }) => {
+    const state = await installServer(page, { prefix });
+    state.connected = false;
+    await passwordLogin(page);
+    await expect(page.locator('#finish-connection, #finish-lastfm, #authorize-lastfm')).toHaveCount(0);
+    await expect(page.locator('#connection button.primary')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+    await expect(page.locator('#status')).toHaveText('Last.fm connected.');
+    await expect(page.locator('#connection-status')).toContainText('Connected as Listener');
+    await expect(page.getByRole('button', { name: 'Reconnect Last.fm', exact: true })).toBeVisible();
+    expect(page.url()).toBe(`http://127.0.0.1:4177${prefix}/JellySin/Lastfm/`);
+    expect(state.lastfm).toHaveLength(1);
+    const visit = new URL(state.lastfm[0]);
+    expect([...visit.searchParams.keys()]).toEqual(['api_key', 'cb']);
+    expect(visit.searchParams.get('cb')).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:4177${prefix}/JellySin/Lastfm/Callback\\?attempt=[0-9a-f]{32}$`));
+    const begin = state.requests.filter(request => request.path.endsWith('/Connection/Begin'));
+    expect(begin.map(request => request.body)).toEqual([{ returnToSettings: false }]);
+    const finish = state.requests.filter(request => request.path.endsWith('/Connection/Finish'));
+    expect(finish.map(request => request.body)).toEqual([null]);
+    // The token of Last.fm reaches the return address only; no page request or page address carries it.
+    expect(state.requests.filter(request => request.url.includes(lastfmToken)).map(request => request.path)).toEqual(['/JellySin/Lastfm/Callback']);
+    expect(await page.evaluate(() => globalThis.document.cookie)).toBe('');
+    expect(state.requests.every(request => !request.url.includes(token))).toBe(true);
+  });
+}
+
+test('a return that Last.fm did not approve says so, starts nothing and leaves a clean address', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = false;
+  state.lastfmAnswer = 'none';
+  await passwordLogin(page);
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await expect(page.locator('#status')).toHaveText('Last.fm did not connect. Start again.');
+  await expect(page.locator('#status')).toHaveAttribute('role', 'alert');
+  await expect(page.locator('#connection-status')).toContainText('Connect Last.fm to start');
+  expect(page.url()).toBe('http://127.0.0.1:4177/JellySin/Lastfm/');
+  expect(state.requests.filter(request => request.path.endsWith('/Connection/Finish'))).toHaveLength(0);
+});
+
+test('an approval that Last.fm then refuses is reported and not repeated', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = false;
+  state.finishFails = true;
+  await passwordLogin(page);
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await expect(page.locator('#status')).toHaveText('Last.fm did not confirm the connection. Start again.');
+  await expect(page.locator('#connection-status')).toContainText('Connect Last.fm to start');
+  await expect(page.locator('#signed-in')).toBeVisible();
+  expect(state.requests.filter(request => request.path.endsWith('/Connection/Finish'))).toHaveLength(1);
+});
+
+const back = path => `cb=${encodeURIComponent(`${path}?attempt=1`)}`;
+const home = back('http://127.0.0.1:4177/JellySin/Lastfm/Callback');
+// Each address breaks one rule only, so that every rule is needed to refuse its case.
+for (const [reason, address] of [
+  ['another host', `https://last.fm.attacker.example/api/auth/?api_key=fixture&${home}`],
+  ['an unencrypted address', `http://www.last.fm/api/auth/?api_key=fixture&${home}`],
+  ['another page of Last.fm', `https://www.last.fm/user/someone?api_key=fixture&${home}`],
+  ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://attacker.example/JellySin/Lastfm/Callback')}`],
+  ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/JellySin/Lastfm/')}`],
+  ['no return address', 'https://www.last.fm/api/auth/?api_key=fixture'],
+]) {
+  test(`the page does not leave for ${reason}`, async ({ page }) => {
+    const state = await installServer(page);
+    state.connected = false;
+    state.authorizationUrl = address;
+    await passwordLogin(page);
+    await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+    await expect(page.locator('#status')).toHaveText('Last.fm sign-in could not start.');
+    expect(page.url()).toBe('http://127.0.0.1:4177/JellySin/Lastfm/');
+    expect(state.lastfm).toHaveLength(0);
+  });
+}
+
 test('administrators open native Jellyfin settings from the user page', async ({ page }) => {
   await installServer(page, { administrator: true });
   await passwordLogin(page);
@@ -170,36 +245,139 @@ test('an interrupted playlist can be reviewed and cancelled without deleting the
   expect(deletes.map(request => request.path)).toEqual([`/JellySin/Lastfm/Me/Playlists/Pending/${operationId}`]);
 });
 
-test('native admin settings preserve host configuration and clear application secrets', async ({ page }) => {
-  await page.addInitScript(() => {
-    const state = { Enabled: true, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' };
+/** The administrator page as Jellyfin shows it: a fragment in the host's own interface, with the host's client. */
+async function openSettings(page, options = {}) {
+  const setup = { source: 'Project', connection: {}, server: '', hash: '#/configurationpage?name=jellysin-lastfm', authorizationUrl: 'https://www.last.fm/api/auth/?api_key=fixture&cb=http%3A%2F%2F127.0.0.1%3A4177%2Fjellyfin%2FJellySin%2FLastfm%2FCallback%3Fattempt%3D1', ...options };
+  await page.addInitScript(input => {
+    const config = { Enabled: true, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' };
+    const state = { calls: [], application: { Configured: input.source !== 'None', Source: input.source },
+      connection: { Connected: false, Username: null, NeedsReconnect: false, ScrobblingEnabled: true, ApprovalPending: false, ...input.connection } };
+    globalThis.fixture = state;
+    const answer = (path, type, data) => {
+      if (path === 'Admin/Application' && type === 'GET') return state.application;
+      if (path === 'Admin/Application') { state.application = { Configured: true, Source: type === 'PUT' ? 'Override' : 'Project' }; return undefined; }
+      if (path === 'Me') return { UserName: 'administrator', IsAdministrator: true, Connection: state.connection };
+      if (path === 'Me/Connection/Begin' && data?.ReturnToSettings === true) return { AuthorizationUrl: input.authorizationUrl, ExpiresAt: '2026-09-08T15:10:00Z' };
+      if (path === 'Me/Connection/Finish' && state.connection.ApprovalPending && !input.finishFails) {
+        state.connection = { ...state.connection, Connected: true, Username: 'Listener', ApprovalPending: false };
+        return state.connection;
+      }
+      throw new Error('No fixture response');
+    };
     globalThis.ApiClient = {
-      getUrl: path => '/jellyfin/' + path,
-      getPluginConfiguration: async () => ({ ...state }),
-      updatePluginConfiguration: async (_id, input) => { globalThis.savedConfig = input; },
-      ajax: async input => {
-        if (input.type === 'PUT') globalThis.savedApplication = JSON.parse(input.data);
-        return { Configured: true };
+      getUrl: path => input.server + '/jellyfin/' + path,
+      getPluginConfiguration: async () => ({ ...config }),
+      updatePluginConfiguration: async (_id, saved) => { state.savedConfig = saved; },
+      ajax: async request => {
+        const path = request.url.split('/JellySin/Lastfm/')[1];
+        const data = request.data ? JSON.parse(request.data) : null;
+        state.calls.push({ type: request.type, path, data });
+        return answer(path, request.type, data);
       },
     };
-  });
+  }, setup);
   const fragment = await readFile(new URL('../../src/JellySin.Plugin.Lastfm/Web/admin.html', import.meta.url), 'utf8');
   await page.route('http://127.0.0.1:4177/native', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="en"><title>Native settings test</title><body>' + fragment + '</body></html>' }));
-  await page.goto('http://127.0.0.1:4177/native');
+  await page.route('https://www.last.fm/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Last.fm</title>' }));
+  await page.goto('http://127.0.0.1:4177/native' + setup.hash);
   await page.locator('#jellysin-admin').dispatchEvent('pageshow');
-  await expect(page.locator('#jellysin-application-status')).toHaveText('Application credentials are configured.');
+}
+
+const calls = (page, path) => page.evaluate(wanted => globalThis.fixture.calls.filter(call => call.path === wanted), path);
+
+test('native admin settings preserve host configuration and clear application secrets', async ({ page }) => {
+  await openSettings(page);
   await expect(page.locator('#jellysin-enabled')).toBeChecked();
   await page.locator('#jellysin-enabled').uncheck();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.savedConfig)).toEqual({ Enabled: false, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' });
+  // The application fields are for the rare server with its own application: closed until asked for.
+  await expect(page.locator('#jellysin-advanced')).not.toHaveAttribute('open');
+  await expect(page.getByLabel('Application API key', { exact: true })).toBeHidden();
+  await page.locator('#jellysin-advanced > summary').click();
+  await expect(page.locator('#jellysin-application-status')).toHaveText('In use: the Last.fm application included with this build.');
+  await expect(page.getByRole('button', { name: 'Remove override', exact: true })).toBeHidden();
   await page.getByLabel('Application API key', { exact: true }).fill('b'.repeat(32));
   await page.getByLabel('Application shared secret').fill('c'.repeat(32));
   await page.getByRole('button', { name: 'Save application override' }).click();
-  await expect(page.locator('#jellysin-application-status')).toContainText('Application credentials saved');
+  await expect(page.locator('#jellysin-application-status')).toHaveText('In use: an application override stored on this server. Connected accounts must connect again after a change.');
   await expect(page.locator('#jellysin-api-key')).toHaveValue('');
   await expect(page.locator('#jellysin-api-secret')).toHaveValue('');
-  expect(await page.evaluate(() => globalThis.savedApplication.Secret)).toBe('c'.repeat(32));
+  expect((await calls(page, 'Admin/Application')).find(call => call.type === 'PUT').data).toEqual({ ApiKey: 'b'.repeat(32), Secret: 'c'.repeat(32) });
+  await expect(page.getByRole('button', { name: 'Remove override', exact: true })).toBeVisible();
+});
+
+test('an application override is removed only after a second, explicit step', async ({ page }) => {
+  await openSettings(page, { source: 'Override' });
+  await page.locator('#jellysin-advanced > summary').click();
+  await expect(page.locator('#jellysin-application-status')).toContainText('In use: an application override stored on this server.');
+  await page.getByRole('button', { name: 'Remove override', exact: true }).click();
+  await expect(page.locator('#jellysin-remove-confirmation')).toContainText('Connected accounts must connect again');
+  await expect(page.locator('#jellysin-confirm-remove')).toBeFocused();
+  await page.getByRole('button', { name: 'Keep the override' }).click();
+  await expect(page.locator('#jellysin-remove-confirmation')).toBeHidden();
+  expect((await calls(page, 'Admin/Application')).filter(call => call.type === 'DELETE')).toHaveLength(0);
+  await page.getByRole('button', { name: 'Remove override', exact: true }).click();
+  await page.locator('#jellysin-confirm-remove').click();
+  await expect(page.locator('#jellysin-application-status')).toHaveText('In use: the Last.fm application included with this build.');
+  await expect(page.getByRole('button', { name: 'Remove override', exact: true })).toBeHidden();
+  await expect(page.locator('#jellysin-remove-confirmation')).toBeHidden();
+  expect((await calls(page, 'Admin/Application')).filter(call => call.type === 'DELETE')).toHaveLength(1);
+});
+
+test('the administrator connects the own account with one button on the settings page', async ({ page }) => {
+  await openSettings(page);
+  await expect(page.locator('#jellysin-connection-status')).toHaveText('Last.fm is not connected.');
+  await expect(page.locator('#jellysin-admin button.button-submit:visible')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await page.waitForURL('https://www.last.fm/api/auth/?api_key=fixture&cb=**');
+  await page.goBack();
+  expect(await calls(page, 'Me/Connection/Finish')).toHaveLength(0);
+});
+
+test('the settings page finishes an approved sign-in by itself after the return', async ({ page }) => {
+  await openSettings(page, { connection: { ApprovalPending: true } });
+  await expect(page.locator('#jellysin-connection-status')).toHaveText('Last.fm is connected as Listener.');
+  await expect(page.getByRole('button', { name: 'Reconnect Last.fm', exact: true })).toBeVisible();
+  expect(await calls(page, 'Me/Connection/Finish')).toEqual([{ type: 'POST', path: 'Me/Connection/Finish', data: null }]);
+  expect(await calls(page, 'Me/Connection/Begin')).toHaveLength(0);
+});
+
+const refusals = [
+  { name: 'a refused return', options: { hash: '#/configurationpage?name=jellysin-lastfm&connection=failed' }, text: 'Last.fm did not connect. Start again.', finishes: 0 },
+  { name: 'an approval that Last.fm then refuses', options: { connection: { ApprovalPending: true }, finishFails: true }, text: 'Last.fm did not confirm the connection. Start again.', finishes: 1 },
+];
+for (const refusal of refusals) {
+  test(`the settings page reports ${refusal.name} and stays ready for a new start`, async ({ page }) => {
+    await openSettings(page, refusal.options);
+    await expect(page.locator('#jellysin-connection-status')).toHaveText(refusal.text);
+    await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeEnabled();
+    expect(await calls(page, 'Me/Connection/Finish')).toHaveLength(refusal.finishes);
+  });
+}
+
+for (const address of ['https://last.fm.attacker.example/api/auth/?api_key=fixture', 'http://www.last.fm/api/auth/?api_key=fixture', 'https://www.last.fm/user/someone']) {
+  test(`the settings page does not leave for ${address}`, async ({ page }) => {
+    await openSettings(page, { authorizationUrl: address });
+    await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+    await expect(page.locator('#jellysin-connection-status')).toHaveText('Last.fm sign-in could not start.');
+    await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeEnabled();
+    expect(page.url()).toContain('http://127.0.0.1:4177/native');
+  });
+}
+
+test('the settings page offers no sign-in that cannot return: no application, or an interface served from elsewhere', async ({ page, context }) => {
+  await openSettings(page, { source: 'None' });
+  await expect(page.locator('#jellysin-connection-status')).toHaveText('Add a Last.fm application under Advanced before connecting.');
+  await expect(page.locator('#jellysin-connect')).toBeHidden();
+  await expect(page.locator('#jellysin-advanced')).toHaveAttribute('open');
+  await expect(page.locator('#jellysin-application-status')).toHaveText('No Last.fm application is available on this server.');
+  const elsewhere = await context.newPage();
+  await openSettings(elsewhere, { server: 'https://media.example' });
+  await expect(elsewhere.locator('#jellysin-connection-status')).toHaveText('Last.fm is not connected. Connect from the music dashboard of this server.');
+  await expect(elsewhere.locator('#jellysin-connect')).toBeHidden();
+  await expect(elsewhere.locator('#jellysin-dashboard-link')).toHaveAttribute('href', 'https://media.example/jellyfin/JellySin/Lastfm/');
 });
 
 for (const width of [320, 1280]) {
