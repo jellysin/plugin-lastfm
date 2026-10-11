@@ -5,7 +5,7 @@
   "minimumReleaseAge": "3 days",
   "rangeStrategy": "pin",
   "automerge": false,
-  "prConcurrentLimit": 10,
+  "prConcurrentLimit": 5,
   "labels": ["dependencies"],
   "vulnerabilityAlerts": {"enabled": true, "minimumReleaseAge": null},
   "customManagers": [
