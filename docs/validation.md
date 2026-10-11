@@ -17,7 +17,9 @@ playlist visibility rule described further down. The native fixture passed on it
 locally on 2026-10-11 and runs on it in CI from that change on. The smoke harness and
 the library load check were not run on 12.1.
 
-The table records the hosted run for `b79a87d` with Python 3.14.8. The .NET, Python
+The table records the hosted run for `5489d0a` with Python 3.14.8. The run pages show
+that commit as `b79a87d`, its id before the commit messages on `main` were rewritten
+on 2026-10-11; the files of both are identical. The .NET, Python
 and server checks were repeated locally the same day in the pinned SDK container, with
 Python 3.14.7, and gave the same results except where the table says otherwise. GitHub
 CI uses the versions pinned in `global.json`, `.node-version` and `.python-version` and
@@ -39,7 +41,7 @@ repeats the automated checks on proposed changes and release tags.
 | Secret scans | Every fetched ref passed Gitleaks 8.30.1 with no blocking finding; four findings are allowed by unexpired single-fingerprint exceptions; six planted cases behaved as required |
 | Reproducibility | Two clean checkouts reproduced all four artifacts and matched the selected upload set |
 | Server checks | Smoke and native fixture passed on Jellyfin 12.0.0 and 12.2.0; the library load budget passed on 12.2.0 |
-| Hosted run | [CI 38104687980](https://github.com/jellysin/plugin-lastfm/actions/runs/38104687980) and [CodeQL 38104687846](https://github.com/jellysin/plugin-lastfm/actions/runs/38104687846) passed for `b79a87d` |
+| Hosted run | [CI 38104687980](https://github.com/jellysin/plugin-lastfm/actions/runs/38104687980) and [CodeQL 38104687846](https://github.com/jellysin/plugin-lastfm/actions/runs/38104687846) passed for `5489d0a` (shown there as `b79a87d`) |
 
 The real Docker smoke harness loaded the plugin as UID 1000 on both servers and
 verified embedded resources, security headers, ordinary-user password and Quick

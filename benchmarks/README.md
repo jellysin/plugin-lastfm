@@ -14,7 +14,7 @@ fails on queue overflow, failed writes, p95 above 50 microseconds, p99 above 200
 microseconds or allocation above 1,024 bytes per callback. These are regression
 budgets; no network, disk or library query runs inside the playback callback.
 
-Measured on 2026-10-11 for `b79a87d`. The harness runs in one process against the
+Measured on 2026-10-11 for `5489d0a`. The harness runs in one process against the
 Jellyfin 12.0.0 interfaces the plugin is compiled with; no server takes part, so
 these numbers do not depend on the server release.
 
@@ -44,7 +44,7 @@ generated track, delivery state must remain empty and healthy, and HTTP p95 must
 stay below 1,000 ms. No Last.fm account is connected or external music API called.
 Only this harness's uniquely owned container, volumes and fixtures are cleaned up.
 
-Measured on 2026-10-11 for `b79a87d`, one run each. CI enforces the budget on
+Measured on 2026-10-11 for `5489d0a`, one run each. CI enforces the budget on
 Jellyfin 12.2.0 only; the 12.0.0 row is a local run for comparison on the same host.
 
 | Run | Server | Scan | Request | Median | p95 | p99 |
