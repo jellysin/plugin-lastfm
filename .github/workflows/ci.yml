@@ -44,7 +44,12 @@ jobs:
           npm test
           npx --no-install playwright install --with-deps chromium
           npm run test:e2e
-          npm audit --audit-level=low
+          # Only production dependencies gate a pull request. The production tree is empty
+          # today, so this audit passes without checking anything until a runtime dependency
+          # is added; the self-test proves that it would fail on one. Advisories in development
+          # dependencies are reported by the daily run in audit.yml.
+          python tools/dependency_audit.py --self-test
+          npm audit --omit=dev --audit-level=low
       - name: Restore, format and build with strict analyzers
         run: |
           dotnet restore --locked-mode

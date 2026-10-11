@@ -34,6 +34,10 @@ container through `tools/smoke.py`. CodeQL scans source and Actions separately.
 The secret scan covers every fetched ref. An exception is one full fingerprint in
 `.gitleaksignore` with a reason and an expiry date; from that date the finding fails
 again. `tools/secret_scan.py --self-test` plants keys and an expired exception first.
+Pull requests fail on advisories in production dependencies only; that tree is empty
+today. `.github/workflows/audit.yml` audits the whole lock every day, fails on a finding
+and keeps one open issue for it. `tools/dependency_audit.py --self-test` plants a
+vulnerable lock first. Renovate raises security fixes without the three-day wait.
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,
