@@ -4,6 +4,9 @@ Last.fm music integration for **Jellyfin 12**: scrobbling, favourites, listening
 insights, discovery and playlists. This is a new implementation with its own
 plugin identity. The plugin is in development; no published release is available.
 
+It is a project of the [JellySin](https://github.com/jellysin) organisation.
+JellySin: Jellyfin plus sin, a little temptation for your media server; said JELLY-sin.
+
 ## Music features
 
 - Now-playing updates and scrobbles based on observed listening, with a bounded
