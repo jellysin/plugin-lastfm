@@ -1,0 +1,16 @@
+# Exceptions for tools/secret_scan.py. One `# expires YYYY-MM-DD: reason` line
+# precedes each full commit:path:rule:line fingerprint. An entry stops applying on
+# its expiry date, and the finding then fails the scan like any unlisted finding.
+#
+# The four findings are the two public application key strings of the upstream
+# Last.fm plugin. They are in the kept branch feature/jellyfin12 and are published
+# unchanged in MediaBrowser/Last.fm and jesseward/jellyfin-plugin-lastfm.
+
+# expires 2027-01-06: upstream public plugin key, 2018 commit in MediaBrowser/Last.fm
+cb1c949f6d8a21f2511cd4635c8dba9d9eaf222f:Lastfm/Resources/Strings.cs:generic-api-key:24
+# expires 2027-01-06: upstream public plugin key, 2018 commit in MediaBrowser/Last.fm
+14705953f3cbd1a09ccf845927c82d6cbd35fa08:Lastfm/Providers/LastfmArtistProvider.cs:generic-api-key:27
+# expires 2027-01-06: same value as cb1c949, carried by the kept branch feature/jellyfin12
+e31af5fb405f954e99323d10e1f5e2624fa5cafa:Jellyfin.Plugin.Lastfm/Resources/Strings.cs:generic-api-key:25
+# expires 2027-01-06: same value as 1470595, carried by the kept branch feature/jellyfin12
+62dc0841c3cd4aa1fd511fa461d0c7a0c04eab7f:Jellyfin.Plugin.Lastfm/Providers/LastfmArtistProvider.cs:generic-api-key:24

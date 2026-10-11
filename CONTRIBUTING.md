@@ -31,6 +31,9 @@ python -m unittest discover -s tests/python
 CI also audits npm/NuGet dependencies, checks repository policy and Action pins,
 runs actionlint and Gitleaks, packages the DLL, and exercises a real Jellyfin 12
 container through `tools/smoke.py`. CodeQL scans source and Actions separately.
+The secret scan covers every fetched ref. An exception is one full fingerprint in
+`.gitleaksignore` with a reason and an expiry date; from that date the finding fails
+again. `tools/secret_scan.py --self-test` plants keys and an expired exception first.
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,
