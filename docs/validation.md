@@ -2,8 +2,9 @@
 
 Local validation on 2026-09-08 used .NET SDK 10.0.400, Node 24.19.0, the repository
 lockfiles and Jellyfin image `jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5`.
-Python helper tests passed under 3.13.13 and 3.14.0. GitHub CI pins Node 24.20.0 and
-Python 3.14.7 and repeats automated checks on proposed changes and release tags.
+Python helper tests passed under 3.13.13 and 3.14.0. GitHub CI uses the versions pinned
+in `.node-version` and `.python-version` and repeats automated checks on proposed
+changes and release tags.
 
 | Check | Observed result |
 | --- | --- |
