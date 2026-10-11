@@ -17,7 +17,14 @@ and expires after 10 minutes. If the return does not connect, start again:
 - A restart of Jellyfin ends open attempts.
 - Behind a reverse proxy, Jellyfin must see the public scheme and host name
   (forwarded headers and Jellyfin's known proxies), because the return address
-  given to Last.fm is built from them.
+  given to Last.fm is built from them. If Jellyfin sees another scheme or host,
+  both pages show "Last.fm sign-in could not start." and do not open Last.fm:
+  each compares the return address with the address the browser itself uses
+  before it leaves, so Last.fm issues no token and none is sent to the other
+  address. The browser tests "the page does not leave for a return to another
+  server" and "the settings page does not leave for a return to another server"
+  (and "over another scheme") in `tests/web/dashboard.spec.mjs` cover this
+  refusal. Correct the proxy headers, then start again.
 - The button on the settings page is offered only when Jellyfin's web interface
   is served by the same server address. Otherwise connect from the dashboard.
 

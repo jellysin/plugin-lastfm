@@ -357,8 +357,19 @@ for (const refusal of refusals) {
   });
 }
 
-for (const address of ['https://last.fm.attacker.example/api/auth/?api_key=fixture', 'http://www.last.fm/api/auth/?api_key=fixture', 'https://www.last.fm/user/someone']) {
-  test(`the settings page does not leave for ${address}`, async ({ page }) => {
+const settingsHome = back('http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback');
+// As on the dashboard: each address breaks one rule only. A return to another server is what a server behind a proxy
+// produces when it does not see its public scheme and host name.
+for (const [reason, address] of [
+  ['another host', `https://last.fm.attacker.example/api/auth/?api_key=fixture&${settingsHome}`],
+  ['an unencrypted address', `http://www.last.fm/api/auth/?api_key=fixture&${settingsHome}`],
+  ['another page of Last.fm', `https://www.last.fm/user/someone?api_key=fixture&${settingsHome}`],
+  ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://10.0.0.5:8096/jellyfin/JellySin/Lastfm/Callback')}`],
+  ['a return over another scheme', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback')}`],
+  ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/')}`],
+  ['no return address', 'https://www.last.fm/api/auth/?api_key=fixture'],
+]) {
+  test(`the settings page does not leave for ${reason}`, async ({ page }) => {
     await openSettings(page, { authorizationUrl: address });
     await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
     await expect(page.locator('#jellysin-connection-status')).toHaveText('Last.fm sign-in could not start.');

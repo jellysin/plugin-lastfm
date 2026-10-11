@@ -100,7 +100,11 @@
       try {
         const start = await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Begin'), contentType: 'application/json', data: JSON.stringify({ ReturnToSettings: true }), dataType: 'json' });
         const target = new URL(read(start, 'AuthorizationUrl'));
-        if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new Error('Unexpected sign-in address.');
+        // A server that does not see its public address names a return elsewhere; the token from Last.fm must not go there.
+        const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
+        const expected = new URL(api('Callback'), location.href);
+        if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/'
+          || back.origin !== expected.origin || back.pathname !== expected.pathname) throw new Error('Unexpected sign-in address.');
         byId('jellysin-connection-status').textContent = 'Opening Last.fm…';
         location.assign(target.href);
       } catch {
