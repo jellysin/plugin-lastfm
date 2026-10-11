@@ -1,0 +1,39 @@
+name: Prepare release
+# Creates the exact tag on a merged release commit of main and one unpublished draft. It publishes
+# nothing: publication stays the separate dispatch of release.yml on the new tag. The release helper
+# accepts this file only, dispatched by hand on main. tests/python/test_prepare_release.py holds the limits.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, v followed by the version the release commit records.
+        required: true
+        type: string
+      commit:
+        description: Full SHA of the merged release commit on main.
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    name: Tag and draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create the tag and one unpublished draft
+        uses: jellysin/release-helper/actions/prepare@1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
+        with:
+          tag: ${{ inputs.tag }}
+          commit: ${{ inputs.commit }}
+          token: ${{ github.token }}
+          changelog-path: CHANGELOG.md
