@@ -3,11 +3,13 @@
 Use a feature branch from main and a Conventional Commit PR title. Squash merging
 keeps reviewed changes attributable in release notes. Required checks use
 `strict: false`; there is no branch-up-to-date requirement. This repository targets
-Jellyfin 12 only, using .NET SDK 10.0.400 and committed exact NuGet locks.
+Jellyfin 12 only, using the .NET SDK pinned in `global.json` and committed exact
+NuGet locks.
 
 ## Build and validate
 
-Use Node 24.20.0 and Python 3.14.7 for the web build and validation helpers. Web
+Use the Node and Python versions pinned in `.node-version` and `.python-version` for
+the web build and validation helpers. Web
 JavaScript is generated into the plugin's embedded-resource directory and is not
 committed. Build it before compiling .NET:
 
