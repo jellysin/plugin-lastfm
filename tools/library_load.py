@@ -15,7 +15,7 @@ import urllib.parse
 import uuid
 import wave
 
-from smoke import Client, DEFAULT_IMAGE, DockerHost, PREFIX, SmokeFailure, add_library, create_user, plugin_settings, require, setup_server
+from smoke import Client, DockerHost, PREFIX, SmokeFailure, add_library, add_server_options, chosen_image, create_user, plugin_settings, require, setup_server
 
 
 def fixtures(root: Path, count: int) -> None:
@@ -107,7 +107,7 @@ def exercise(host: DockerHost, count: int) -> dict:
     delivery = listener.request(PREFIX + "/Me/Delivery")
     require(delivery["pending"] == 0 and delivery["failedwrites"] == 0 and delivery["droppedsnapshots"] == 0,
             "The unconnected load-test account must have no queued scrobbles or failed observations.")
-    return {"image": host.image, "libraryTracks": count, "scanSeconds": scan_seconds,
+    return {"image": host.image, "server": host.version, "libraryTracks": count, "scanSeconds": scan_seconds,
             "containerCpus": 2, "containerMemoryMiB": 1536, "parallelHttpWorkers": 8,
             "hostNetworkIncluded": True, "lastfmCalls": 0, "p95BudgetMilliseconds": 1000, "metrics": metrics}
 
@@ -115,13 +115,12 @@ def exercise(host: DockerHost, count: int) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin", type=Path, required=True)
-    parser.add_argument("--image", default=DEFAULT_IMAGE)
+    add_server_options(parser)
     parser.add_argument("--tracks", type=int, default=10000, help="Generated library size, from 1000 to 20000 tracks.")
     parser.add_argument("--report", type=Path, default=Path("build/library-load.json"))
     args = parser.parse_args()
     require(1000 <= args.tracks <= 20000, "Library size must be between 1000 and 20000 tracks.")
-    require("@sha256:" in args.image, "The Jellyfin image must be pinned to a digest.")
-    host = DockerHost(args.plugin.resolve(strict=True), args.image)
+    host = DockerHost(args.plugin.resolve(strict=True), chosen_image(parser, args))
     try:
         report = exercise(host, args.tracks)
         args.report.parent.mkdir(parents=True, exist_ok=True)

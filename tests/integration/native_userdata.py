@@ -15,10 +15,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 from smoke import (  # noqa: E402
     Client,
-    DEFAULT_IMAGE,
     DockerHost,
     SmokeFailure,
     add_library,
+    add_server_options,
+    chosen_image,
     docker,
     fixture_music,
     plugin_settings,
@@ -344,6 +345,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin", required=True, type=Path)
     parser.add_argument("--probe", required=True, type=Path)
+    add_server_options(parser)
     parser.add_argument(
         "--report", type=Path, default=ROOT / "build" / "native-userdata-report.json"
     )
@@ -355,14 +357,14 @@ def main() -> int:
             and 0 < path.stat().st_size <= 64 * 1024 * 1024,
             "A plugin input is missing, unsafe or exceeds 64 MiB.",
         )
-    host = DockerHost(
-        args.plugin.resolve(), DEFAULT_IMAGE, probe_plugin=args.probe.resolve()
-    )
+    image = chosen_image(parser, args)
+    host = DockerHost(args.plugin.resolve(), image, probe_plugin=args.probe.resolve())
     (ROOT / "build").mkdir(exist_ok=True)
     try:
         result = run(host)
         result["artifacts"] = {
-            "image": DEFAULT_IMAGE,
+            "image": image,
+            "server": host.version,
             "production_sha256": hashlib.sha256(args.plugin.read_bytes()).hexdigest(),
             "fixture_sha256": hashlib.sha256(args.probe.read_bytes()).hexdigest(),
         }

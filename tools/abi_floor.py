@@ -1,4 +1,4 @@
-"""Keep every Jellyfin package reference at the ABI floor recorded in plugin.json."""
+"""Keep every Jellyfin package reference and the floor test server at the ABI floor recorded in plugin.json."""
 
 import argparse
 import json
@@ -10,8 +10,11 @@ from xml.etree import ElementTree
 
 DESCRIPTOR = "plugin.json"
 RUNTIME = "runtime-dependencies.json"
+SERVERS = "tools/smoke.py"
+UPDATES = "renovate.json"
 HOST_PREFIX = "Jellyfin."
 TARGET_ABI = re.compile(r"(\d+\.\d+\.\d+)\.0")
+FLOOR_IMAGE = re.compile(r'"floor":\s*"jellyfin/jellyfin:(\d+\.\d+(?:\.\d+)?)@sha256:[a-f0-9]{64}"')
 SKIPPED = {"bin", "obj", "build", "dist", "node_modules"}
 MAX_PROJECTS = 64
 MAX_FILE_BYTES = 1024 * 1024
@@ -66,10 +69,39 @@ def references(root):
     return listed
 
 
-def mismatches(root):
-    """Return the references that would bind the plugin to a newer server than the floor."""
+def update_rule(root):
+    """Return the version pattern the update bot applies to the floor server image."""
+    rules = [rule for rule in json.loads(read(Path(root) / UPDATES))["packageRules"] if rule.get("matchDepTypes") == ["floor"]]
+    pattern = rules[0].get("allowedVersions") if len(rules) == 1 else None
+    if not isinstance(pattern, str) or len(pattern) < 3 or not pattern.startswith("/") or not pattern.endswith("/"):
+        raise FloorError(f"{UPDATES} holds no single version pattern for the floor server image")
+    try:
+        return re.compile(pattern[1:-1])
+    except re.error as error:
+        raise FloorError(f"{UPDATES} holds an unreadable version pattern for the floor server image") from error
+
+
+def server_mismatches(root):
+    """Return what would let the floor test server run another release than the floor."""
     expected = floor(root)
-    return [f"{file}: {package} {version}, the floor is {expected}" for file, package, version in references(root) if version != expected]
+    major, minor, _ = expected.split(".")
+    line = f"{major}.{minor}"
+    image = FLOOR_IMAGE.search(read(Path(root) / SERVERS))
+    if not image:
+        raise FloorError(f"{SERVERS} names no pinned floor server image")
+    wrong = [] if image.group(1) in (line, expected) else [f"{SERVERS}: floor server image {image.group(1)}, the floor is {expected}"]
+    allowed = update_rule(root)
+    newer = (f"{major}.{int(minor) + 1}", f"{int(major) + 1}.0")
+    if not allowed.search(line) or not allowed.search(expected) or any(allowed.search(version) for version in newer):
+        wrong.append(f"{UPDATES}: the floor server image rule {allowed.pattern} does not hold updates to {line}")
+    return wrong
+
+
+def mismatches(root):
+    """Return the references that would bind the plugin or its floor test to a newer server than the floor."""
+    expected = floor(root)
+    packages = [f"{file}: {package} {version}, the floor is {expected}" for file, package, version in references(root) if version != expected]
+    return packages + server_mismatches(root)
 
 
 def main(arguments=None):
