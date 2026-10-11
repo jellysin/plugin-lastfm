@@ -1,4 +1,8 @@
-"""Keep every Jellyfin package reference and the floor test server at the ABI floor recorded in plugin.json."""
+"""Keep the Jellyfin references of the test projects and the floor test server at the ABI floor recorded in plugin.json.
+
+The plugin project's own references and runtime-dependencies.json are held by the release helper's package step;
+tools/floor_proof.py shows that the pinned helper refuses them above and below the floor.
+"""
 
 import argparse
 import json
@@ -9,7 +13,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 DESCRIPTOR = "plugin.json"
-RUNTIME = "runtime-dependencies.json"
+PLUGIN = "src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj"
 SERVERS = "tools/smoke.py"
 UPDATES = "renovate.json"
 HOST_PREFIX = "Jellyfin."
@@ -49,9 +53,15 @@ def projects(root):
 
 
 def references(root):
-    """Return (file, package, version) for every Jellyfin package a project or the runtime list names."""
+    """Return (file, package, version) for every Jellyfin package a project other than the plugin's names."""
+    found = projects(root)
+    # The split with the release helper holds only while the plugin project is where the helper is pointed.
+    if Path(root) / PLUGIN not in found:
+        raise FloorError(f"{PLUGIN} is not where the release helper checks it")
     listed = []
-    for path in projects(root):
+    for path in found:
+        if path == Path(root) / PLUGIN:
+            continue
         try:
             elements = ElementTree.fromstring(read(path)).iter("PackageReference")
         except ElementTree.ParseError as error:
@@ -59,13 +69,9 @@ def references(root):
         for element in elements:
             if element.get("Include", "").startswith(HOST_PREFIX):
                 listed.append((path.relative_to(root).as_posix(), element.get("Include"), element.get("Version")))
-    compiled = len(listed)
-    for entry in json.loads(read(Path(root) / RUNTIME))["runtimeDependencies"]:
-        if entry["id"].startswith(HOST_PREFIX):
-            listed.append((RUNTIME, entry["id"], entry.get("version")))
     # A check that finds nothing to compare would pass on a renamed package or a moved project.
-    if not compiled or compiled == len(listed):
-        raise FloorError("no Jellyfin reference found in the projects or in the runtime list")
+    if not listed:
+        raise FloorError("no Jellyfin reference found in the projects beside the plugin's")
     return listed
 
 
@@ -98,7 +104,7 @@ def server_mismatches(root):
 
 
 def mismatches(root):
-    """Return the references that would bind the plugin or its floor test to a newer server than the floor."""
+    """Return what would compile the plugin's tests against, or run its floor test on, another release than the floor."""
     expected = floor(root)
     packages = [f"{file}: {package} {version}, the floor is {expected}" for file, package, version in references(root) if version != expected]
     return packages + server_mismatches(root)
