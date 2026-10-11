@@ -65,6 +65,16 @@ Stable `vX.Y.Z` tags map to `X.Y.Z.0` for the assembly and Plugin Repository;
 the minimum Jellyfin ABI is separately recorded in `plugin.json`.
 Do not ship host-provided assemblies.
 
+`targetAbi` in `plugin.json` is the floor: the oldest Jellyfin server the plugin
+supports. Every `Jellyfin.*` package reference and `runtime-dependencies.json` stay
+at exactly that version. Jellyfin stamps each release into the versions of its
+assemblies, so a plugin compiled against a newer release is disabled as incompatible
+by an older server, while a plugin compiled against the floor loads on the releases
+above it. `python tools/abi_floor.py` and the Python tests fail on a reference that
+differs from the floor, and Renovate does not propose these packages. Raising the
+floor changes `targetAbi`, the references and the lockfiles in one pull request and
+ends support for the servers below it.
+
 A maintainer separately decides when to publish. After reviewing and merging the
 release PR, create the chosen version tag and an unpublished draft, then manually
 dispatch `release.yml` **on that tag ref**. This binds GitHub provenance to the
