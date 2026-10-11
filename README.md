@@ -44,7 +44,7 @@ silently copied. See [migration](docs/migration.md).
 The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
 up. Every change is checked on Jellyfin 12.0.0 and 12.2.0, and the playlist fixture
 also on 12.1.0; [release readiness](docs/release-readiness.md) names what each check
-covers. Jellyfin 10.11 is unsupported.
+covers.
 
 Scrobbling reads the playback reports the server receives, whichever client sends
 them; a client that reports no playback to the server produces no listen. The checks
@@ -54,6 +54,13 @@ Jellyfin's TV, mobile and desktop clients were not checked.
 
 Planned work is listed in the repository's
 [milestones](https://github.com/jellysin/plugin-lastfm/milestones).
+
+## Removing the plugin
+
+Removing the plugin in Jellyfin removes its program files only. Its data folder,
+which holds the account state and the key ring, and its settings file stay on the
+server, and Last.fm keeps each authorization until its user revokes it there.
+[Stored data](docs/operations.md#stored-data) names the places and what a check showed.
 
 ## Boundaries
 

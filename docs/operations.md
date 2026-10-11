@@ -167,6 +167,17 @@ session data, private caches and pending delivery. It does not delete data alrea
 sent to Last.fm or reverse changes applied to Jellyfin. Last.fm authorization can
 be revoked separately in its application settings.
 
+Removing the plugin in Jellyfin does not remove this data: the plugin has no step
+that runs at removal. Checked on 2026-10-11 with the Jellyfin 12.2.0 container image
+and a build of `1cd8e91` copied into the plugin folder by hand: after the removal the
+server no longer listed the plugin, also after a restart, and the folder with the
+plugin file was gone. Still present were `jellysin-lastfm` in the data directory,
+with a preference the plugin had stored for a user, and the settings file
+`configurations/JellySin.Plugin.Lastfm.xml` in Jellyfin's plugin directory.
+No Last.fm account was connected in that run, so the key ring folder was empty, and
+an installation from the Plugin Repository was not checked. To remove the data as
+well, delete that folder and that file while the server is stopped.
+
 ## Scrobbling
 
 Only observed listening counts. Pauses and seeks do not create listening time.
