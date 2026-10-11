@@ -130,19 +130,19 @@ def wait_ready(client: Client) -> None:
     raise SmokeFailure("Jellyfin did not become ready within 180 seconds.")
 
 
-def fixture_music(directory: Path, title: str) -> None:
+def fixture_music(directory: Path, title: str, artist: str = "JellySin Fixture Artist", album: str = "Smoke Album", name: str | None = None) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     directory.chmod(0o755)
-    path = directory / (title + ".wav")
+    path = directory / ((name or title) + ".wav")
     with wave.open(str(path), "wb") as audio:
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(8000)
         audio.writeframes(b"\0\0" * 8000 * 65)
     tags = b"INFO"
-    for name, value in ((b"INAM", title), (b"IART", "JellySin Fixture Artist"), (b"IPRD", "Smoke Album")):
+    for field, value in ((b"INAM", title), (b"IART", artist), (b"IPRD", album)):
         encoded = value.encode() + b"\0"
-        tags += name + struct.pack("<I", len(encoded)) + encoded + (b"\0" if len(encoded) % 2 else b"")
+        tags += field + struct.pack("<I", len(encoded)) + encoded + (b"\0" if len(encoded) % 2 else b"")
     with path.open("r+b") as audio:
         audio.seek(0, os.SEEK_END)
         audio.write(b"LIST" + struct.pack("<I", len(tags)) + tags)
@@ -373,10 +373,10 @@ def add_library(admin: Client, name: str) -> None:
     admin.request("/Library/VirtualFolders?" + query, "POST", {"LibraryOptions": options}, 204)
 
 
-def wait_music(admin: Client) -> list[dict[str, Any]]:
+def wait_music(admin: Client, count: int = 2) -> list[dict[str, Any]]:
     for _ in range(120):
         items = admin.request("/Items?recursive=true&includeItemTypes=Audio&fields=ProviderIds&limit=20")["items"]
-        if len(items) >= 2:
+        if len(items) >= count:
             return items
         time.sleep(0.5)
     raise SmokeFailure("Fixture music was not scanned within 60 seconds.")
