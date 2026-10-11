@@ -108,6 +108,9 @@ jobs:
       # The oldest server publishes no address, the newest publishes one: the sign-in must name the request's address there and the published one here.
       - name: Exercise load, account isolation and restart on the newest Jellyfin 12
         run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --published-address https://media.smoke.invalid
+      # The deployment in which the scheme the server sees differs from the one the browser names; the server log must name every click.
+      - name: Start the Last.fm sign-in in a browser behind a proxy that ends TLS on the newest Jellyfin 12
+        run: python tests/integration/proxied_sign_in.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --report build/proxied-sign-in
       - name: Verify native history writes and interrupted private playlist recovery on the oldest supported Jellyfin
         run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server floor --report build/native-userdata-floor.json
       - name: Verify native history writes and interrupted private playlist recovery on the newest Jellyfin 12

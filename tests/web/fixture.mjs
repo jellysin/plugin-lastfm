@@ -80,6 +80,7 @@ function respond(path, method, body, url, state) {
   if (endpoint === 'Admin/Application') return method === 'GET' ? json({ Configured: true, Source: 'Project' }) : empty();
   if (endpoint === 'Me/Connection/Begin') return begin(url, state);
   if (endpoint === 'Me/Connection/Finish') return finish(state);
+  if (endpoint === 'Me/Connection/Refusal') return state.refusalFails ? { status: 503, body: '' } : empty();
   if (endpoint === 'Me/Connection' && method === 'DELETE') { state.connected = false; state.disconnected = true; return empty(); }
   if (endpoint === 'Me/Scrobbling') return empty();
   if (endpoint === 'Me/Delivery') return json(state.delivery);

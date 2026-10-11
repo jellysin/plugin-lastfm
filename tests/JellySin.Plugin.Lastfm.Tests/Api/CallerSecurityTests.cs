@@ -9,7 +9,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
@@ -47,6 +49,69 @@ public sealed class CallerSecurityTests
         Assert.False(result.Called);
     }
 
+    // Behind a proxy that ends TLS the server sees plain HTTP, on its own name or an inner one, while the browser names
+    // the published address. A server reached at a second address sees that address in both places.
+    [Theory]
+    [InlineData("https://media.example", "https://media.example", "http", "media.example")]
+    [InlineData("https://media.example", "https://MEDIA.example", "http", "jellyfin-internal:8096")]
+    [InlineData("https://media.example:8920/jellyfin", "https://media.example:8920", "http", "jellyfin-internal:8096")]
+    [InlineData("https://media.example", "http://192.168.1.20:8096", "http", "192.168.1.20:8096")]
+    [InlineData(null, "http://192.168.1.20:8096", "http", "192.168.1.20:8096")]
+    [InlineData("not an address", "https://jellyfin.example", "https", "jellyfin.example")]
+    public async Task AWriteFromAPageAtThePublishedAddressOrAtTheAddressOfTheRequestIsAccepted(string? published, string origin, string scheme, string host)
+    {
+        var result = await RunFilter(Identity(), "POST", origin, "same-origin", published, scheme, host);
+        Assert.True(result.Called);
+        Assert.Null(result.Context.Result);
+        Assert.Empty(result.Log.Lines);
+    }
+
+    [Theory]
+    [InlineData("https://evil.example", null)]
+    [InlineData("https://media.example.evil.example", null)]
+    [InlineData("https://media.example:8443", null)]
+    [InlineData("http://media.example", null)]
+    [InlineData("https://jellyfin-internal:8096", null)]
+    [InlineData("http://jellyfin-internal", null)]
+    [InlineData("media.example", null)]
+    [InlineData("null", null)]
+    [InlineData("https://media.example", "cross-site")]
+    [InlineData("https://media.example", "same-site")]
+    public async Task APublishedAddressAdmitsNoOtherPage(string origin, string? fetchSite)
+    {
+        var result = await RunFilter(Identity(), "PUT", origin, fetchSite, "https://media.example", "http", "jellyfin-internal:8096");
+        Assert.Equal(403, Assert.IsType<StatusCodeResult>(result.Context.Result).StatusCode);
+        Assert.False(result.Called);
+        Assert.Single(result.Log.Lines);
+    }
+
+    [Theory]
+    [InlineData("https://evil.example", null, "https://media.example", "its origin is neither the published server address nor the address of the request", "the page is not at the published server address")]
+    [InlineData("https://media.example", "cross-site", "https://media.example", "the browser says another site sent it", "the page is at the published server address")]
+    [InlineData(null, "cross-site", "https://media.example", "the browser says another site sent it", "the request names no page")]
+    [InlineData("https://evil.example", null, null, "its origin is neither the published server address nor the address of the request", "no published server address is set")]
+    [InlineData("https://evil.example", null, "ftp://proxy-user:proxy-word@media.example", "its origin is neither the published server address nor the address of the request", "the published server address cannot be used")]
+    public async Task ARefusedWriteLeavesOneLineThatNamesTheCheckAndNothingTheBrowserSent(string? origin, string? fetchSite, string? published, string refusal, string page)
+    {
+        var result = await RunFilter(Identity(), "POST", origin, fetchSite, published, "http", "jellyfin-internal:8096");
+        Assert.Equal(403, Assert.IsType<StatusCodeResult>(result.Context.Result).StatusCode);
+        var line = Assert.Single(result.Log.Lines);
+        Assert.Equal(LogLevel.Warning, line.Level);
+        Assert.Equal($"Refused POST JellySin/Lastfm/Me/Connection/Begin: {refusal}. The request reached this server over http; {page}.", line.Text);
+        foreach (var secret in new[] { "evil", "media.example", "proxy-", "jellyfin-internal", "private-jellyfin-token", "userId" })
+            Assert.DoesNotContain(secret, line.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACallerWithoutASignInIsTurnedAwayWithoutALine()
+    {
+        var identity = Identity();
+        identity.IsAuthenticated = false;
+        var result = await RunFilter(identity, "POST", "https://evil.example", "cross-site");
+        Assert.IsType<UnauthorizedResult>(result.Context.Result);
+        Assert.Empty(result.Log.Lines);
+    }
+
     [Theory]
     [InlineData("POST", "https://jellyfin.example", "same-origin")]
     [InlineData("PUT", null, null)]
@@ -69,7 +134,7 @@ public sealed class CallerSecurityTests
         var result = await RunFilter(identity, "POST", null, null);
         var otherUser = Guid.NewGuid();
         result.Context.HttpContext.Request.QueryString = new QueryString("?userId=" + otherUser);
-        var controller = new AccountController(fixture.Accounts, new ServerAddress(null)) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
+        var controller = new AccountController(fixture.Accounts, new ServerAddress(null), new LogLines<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
         await fixture.ConfigureApplicationAsync();
         var start = await controller.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
         Assert.NotNull(await fixture.Store.ReadAsync<JellySin.Plugin.Lastfm.Configuration.AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
@@ -150,24 +215,27 @@ public sealed class CallerSecurityTests
         User = new User("listener", "authentication", "password") { Id = userId ?? Guid.NewGuid() }
     };
 
-    private static async Task<(ActionExecutingContext Context, bool Called)> RunFilter(AuthorizationInfo identity, string method, string? origin, string? fetchSite)
+    private static async Task<(ActionExecutingContext Context, bool Called, LogLines<CallerFilter> Log)> RunFilter(
+        AuthorizationInfo identity, string method, string? origin, string? fetchSite, string? published = null, string scheme = "https", string host = "jellyfin.example")
     {
         var http = new DefaultHttpContext();
         http.Request.Method = method;
-        http.Request.Scheme = "https";
-        http.Request.Host = new HostString("jellyfin.example");
+        http.Request.Scheme = scheme;
+        http.Request.Host = new HostString(host);
+        http.Request.QueryString = new QueryString("?userId=" + Guid.NewGuid());
         if (origin is not null) http.Request.Headers.Origin = origin;
         if (fetchSite is not null) http.Request.Headers["Sec-Fetch-Site"] = fetchSite;
-        var action = new ActionContext(http, new RouteData(), new ActionDescriptor());
+        var action = new ActionContext(http, new RouteData(), new ActionDescriptor { AttributeRouteInfo = new AttributeRouteInfo { Template = "JellySin/Lastfm/Me/Connection/Begin" } });
+        var log = new LogLines<CallerFilter>();
         var context = new ActionExecutingContext(action, [], new Dictionary<string, object?>(), new object());
         var authorization = new Mock<IAuthorizationContext>();
         authorization.Setup(value => value.GetAuthorizationInfo(http)).ReturnsAsync(identity);
         var called = false;
-        await new CallerFilter(authorization.Object).OnActionExecutionAsync(context, () =>
+        await new CallerFilter(authorization.Object, new ServerAddress(published), log).OnActionExecutionAsync(context, () =>
         {
             called = true;
             return Task.FromResult(new ActionExecutedContext(action, [], new object()));
         });
-        return (context, called);
+        return (context, called, log);
     }
 }
