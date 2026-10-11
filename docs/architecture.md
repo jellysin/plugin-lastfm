@@ -57,6 +57,8 @@ Last.fm browser grant; no Last.fm mobile/password authentication is used.
 
 The plugin descriptor contains a new stable GUID and an independent ABI floor of
 `12.0.0.0`. SemVer `X.Y.Z` maps to `X.Y.Z.0` for the assembly and Plugin Repository.
+The plugin compiles against `Jellyfin.Controller` at that floor, so one build serves
+the Jellyfin 12 releases from 12.0 upwards; CONTRIBUTING.md states the rule.
 
 Reviewed release-please changes create a draft/tag and explicitly dispatch the
 publication workflow on that tag. CI verifies the exact source, then production
