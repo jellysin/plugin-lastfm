@@ -1,6 +1,6 @@
 import { Client, readJson, type Bootstrap } from './client.js';
 import { setupAuthentication } from './auth.js';
-import { refreshAccount, setupAccount } from './account.js';
+import { refreshAccount, setupAccount, takeRefusedReturn } from './account.js';
 import { setupMusic } from './music.js';
 import { setupFavourites } from './favourites.js';
 import { setupPlaylists } from './playlists.js';
@@ -48,7 +48,9 @@ async function start(): Promise<void> {
     element('delivery-status').textContent = deliveryStatus(state);
   });
   bind('delivery-retry', async () => { await client.api('Me/Delivery/Retry', 'POST'); message('Retained submissions queued for retry.'); });
+  const refused = takeRefusedReturn();
   await refresh();
+  if (refused) message('Last.fm did not connect. Start again.', true);
 }
 
 interface Delivery {
@@ -75,9 +77,8 @@ void start().catch((error: unknown) => { message(error instanceof Error ? error.
 function clearPrivateView(): void {
   message('');
   for (const id of ['history-list', 'history-preview-list', 'history-page', 'listening-stats', 'chart-tracks', 'chart-artists', 'chart-albums', 'removal-list', 'favourites-status', 'favourites-page', 'discovery-local', 'discovery-external', 'discovery-artists', 'discovery-albums', 'playlist-list', 'playlist-pending', 'profile-link', 'connection-status', 'delivery-status']) element(id).replaceChildren();
-  for (const id of ['finish-connection', 'disconnect-confirmation', 'preview-pagination', 'history-continue', 'administrator']) element(id).hidden = true;
+  for (const id of ['disconnect-confirmation', 'preview-pagination', 'history-continue', 'administrator']) element(id).hidden = true;
   for (const id of ['history-apply', 'history-previous', 'history-next', 'favourites-previous', 'favourites-next']) element<HTMLButtonElement>(id).disabled = true;
-  element<HTMLAnchorElement>('authorize-lastfm').removeAttribute('href');
   for (const form of element('signed-in').querySelectorAll('form')) form.reset();
   for (const id of ['discovery-seed', 'playlist-seed']) {
     const select = element<HTMLSelectElement>(id);

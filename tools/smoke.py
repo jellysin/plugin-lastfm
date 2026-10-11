@@ -269,6 +269,7 @@ def check_plugin(client: Client) -> None:
     plugin = next((item for item in plugins if item["id"].replace("-", "") == PLUGIN_ID.replace("-", "")), None)
     require(plugin is not None and plugin["status"].lower() == "active", "The new plugin is not active in Jellyfin.")
     check_page_redirect(client)
+    check_return_address(client)
     page, headers, _ = client.request(PREFIX + "/", raw=True)
     require(b"JellySin" in page and b"Assets/app.js" in page, "Plugin page or compiled application entrypoint is absent.")
     require(headers.get("cache-control") == "no-store", "Plugin page must not be cached.")
@@ -290,19 +291,37 @@ def check_plugin(client: Client) -> None:
                 "The native library picker must expose Last.fm as an opt-in similarity provider for " + kind + ".")
 
 
-def check_page_redirect(client: Client) -> None:
+def unfollowed(client: Client, path: str) -> tuple[int, dict[str, str]]:
+    """Open an address without a sign-in and without following a redirect; return its status and headers."""
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, request: Any, file: Any, code: int, message: str, headers: Any, new_url: str) -> None:
             return None
 
     opener = urllib.request.build_opener(NoRedirect)
     try:
-        response = opener.open(client.origin + client.base_path + PREFIX, timeout=20)
+        response = opener.open(client.origin + client.base_path + path, timeout=20)
     except urllib.error.HTTPError as error:
         response = error
+    except (OSError, http.client.HTTPException) as error:
+        raise SmokeFailure(f"GET {path.split('?')[0]} failed with {type(error).__name__}.") from None
     with response:
-        require(response.status == 302, "The page URL without a trailing slash must redirect.")
-        require(response.headers.get("Location") == client.base_path + PREFIX + "/", "The page redirect lost its configured base path.")
+        return response.status, {key.lower(): value for key, value in response.headers.items()}
+
+
+def check_page_redirect(client: Client) -> None:
+    status, headers = unfollowed(client, PREFIX)
+    require(status == 302, "The page URL without a trailing slash must redirect.")
+    require(headers.get("location") == client.base_path + PREFIX + "/", "The page redirect lost its configured base path.")
+
+
+def check_return_address(client: Client) -> None:
+    """A return from Last.fm that no browser began on this server is refused, and its token is not passed on."""
+    status, headers = unfollowed(client, PREFIX + "/Callback?attempt=" + "0" * 32 + "&token=smoke-return-token")
+    require(status == 302, "The return address of the Last.fm sign-in must answer without a Jellyfin sign-in.")
+    require(headers.get("location") == client.base_path + PREFIX + "/?connection=failed",
+            "A return nobody began must lead to the page under the configured base path, marked as refused and without its token.")
+    require(headers.get("cache-control") == "no-store", "The answer of the return address must not be cached.")
+    require(headers.get("referrer-policy") == "no-referrer", "The answer of the return address must prevent referrer leakage.")
 
 
 def create_user(admin: Client, password: str) -> dict[str, Any]:

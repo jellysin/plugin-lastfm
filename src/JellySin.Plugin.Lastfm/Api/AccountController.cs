@@ -18,11 +18,16 @@ public sealed class AccountController(AccountService accounts) : PrivateControll
     };
 
     [HttpPost("Connection/Begin")]
-    public Task<ConnectionAttempt> Begin(CancellationToken cancellationToken) => accounts.BeginAsync(CallerId, cancellationToken);
+    public async Task<ConnectionStart> Begin(ConnectionBegin request, CancellationToken cancellationToken)
+    {
+        var attempt = await accounts.BeginAsync(CallerId, ConnectionCallback.Address(Request), request.ReturnToSettings, cancellationToken).ConfigureAwait(false);
+        // The binding goes to the browser only, out of reach of page script; the response names the Last.fm address alone.
+        ConnectionCallback.Bind(HttpContext, attempt.BrowserBinding);
+        return new ConnectionStart(attempt.AuthorizationUrl, attempt.ExpiresAt);
+    }
 
     [HttpPost("Connection/Finish")]
-    public Task<AccountStatus> Finish(ConnectionFinish request, CancellationToken cancellationToken) =>
-        accounts.FinishAsync(CallerId, request.AttemptId, cancellationToken);
+    public Task<AccountStatus> Finish(CancellationToken cancellationToken) => accounts.FinishAsync(CallerId, cancellationToken);
 
     [HttpDelete("Connection")]
     public async Task<IActionResult> Disconnect(CancellationToken cancellationToken)
@@ -39,7 +44,11 @@ public sealed class AccountController(AccountService accounts) : PrivateControll
     }
 }
 
-public sealed record ConnectionFinish(Guid AttemptId);
+public sealed record ConnectionBegin(bool ReturnToSettings = false);
+public sealed record ConnectionStart(string AuthorizationUrl, DateTimeOffset ExpiresAt)
+{
+    public override string ToString() => "Last.fm sign-in start (address redacted)";
+}
 public sealed record ToggleRequest(bool Enabled);
 
 [Route("JellySin/Lastfm/Admin")]
@@ -50,7 +59,8 @@ public sealed class AdministrationController(ApplicationCredentialService creden
     {
         RequireAdministrator();
         var configured = await credentials.GetAsync(cancellationToken).ConfigureAwait(false);
-        return new { Configured = configured.IsConfigured };
+        var source = await credentials.GetSourceAsync(cancellationToken).ConfigureAwait(false);
+        return new { Configured = configured.IsConfigured, Source = source.ToString() };
     }
 
     [HttpPut("Application")]
@@ -58,6 +68,14 @@ public sealed class AdministrationController(ApplicationCredentialService creden
     {
         RequireAdministrator();
         await credentials.SetAsync(new(input.ApiKey, input.Secret), cancellationToken).ConfigureAwait(false);
+        return NoContent();
+    }
+
+    [HttpDelete("Application")]
+    public async Task<IActionResult> Remove(CancellationToken cancellationToken)
+    {
+        RequireAdministrator();
+        await credentials.DeleteAsync(cancellationToken).ConfigureAwait(false);
         return NoContent();
     }
 

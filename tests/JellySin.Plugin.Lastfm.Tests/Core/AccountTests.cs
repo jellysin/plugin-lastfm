@@ -43,12 +43,14 @@ public sealed class AccountTests
         await accounts.InitializeCapturesAsync(TestContext.Current.CancellationToken);
         var cancellation = accounts.GetOperationToken(fixture.UserId);
         Assert.NotNull(accounts.GetCaptureBinding(fixture.UserId));
+        var open = await accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
         user.SetPermission(PermissionKind.IsDisabled, true);
+        Assert.False((await accounts.ApproveAsync(open.BrowserBinding, CoreFixture.AttemptOf(open), "browser-test-token", TestContext.Current.CancellationToken)).Accepted);
         Assert.Null(await accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken));
         Assert.True(cancellation.IsCancellationRequested);
         Assert.Null(accounts.GetCaptureBinding(fixture.UserId));
         Assert.Empty(await accounts.GetAccountsAsync(TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -82,32 +84,21 @@ public sealed class AccountTests
         await fixture.ConnectAsync();
         await fixture.Credentials.SetAsync(new ApplicationCredentials(new string('c', 32), new string('d', 32)), TestContext.Current.CancellationToken);
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
-        var attempt = await fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        await fixture.Accounts.FinishAsync(fixture.UserId, attempt.AttemptId, TestContext.Current.CancellationToken);
+        await fixture.ApproveAsync(fixture.UserId);
+        await fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
-    }
-    [Fact]
-    public async Task BrowserGrantBindsAttemptToAuthenticatedUser()
-    {
-        using var fixture = new CoreFixture();
-        var attempt = await fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        Assert.StartsWith("https://www.last.fm/api/auth/", attempt.AuthorizationUrl, StringComparison.Ordinal);
-        Assert.DoesNotContain("browser-test-token", attempt.ToString(), StringComparison.Ordinal);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Accounts.FinishAsync(Guid.NewGuid(), attempt.AttemptId, TestContext.Current.CancellationToken));
-        var status = await fixture.Accounts.FinishAsync(fixture.UserId, attempt.AttemptId, TestContext.Current.CancellationToken);
-        Assert.True(status.Connected);
-        Assert.Equal("TestListener", status.Username);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Accounts.FinishAsync(fixture.UserId, attempt.AttemptId, TestContext.Current.CancellationToken));
     }
 
     [Fact]
-    public async Task ExpiredAttemptsCannotBeExchanged()
+    public async Task RemovingTheApplicationOverrideRequiresReconnect()
     {
         using var fixture = new CoreFixture();
-        var attempt = await fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        fixture.Clock.Advance(601);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Accounts.FinishAsync(fixture.UserId, attempt.AttemptId, TestContext.Current.CancellationToken));
-        Assert.Single(fixture.Client.Calls);
+        await fixture.ConnectAsync();
+        Assert.Equal(ApplicationSource.Override, await fixture.Credentials.GetSourceAsync(TestContext.Current.CancellationToken));
+        await fixture.Credentials.DeleteAsync(TestContext.Current.CancellationToken);
+        Assert.NotEqual(ApplicationSource.Override, await fixture.Credentials.GetSourceAsync(TestContext.Current.CancellationToken));
+        Assert.NotEqual(new string('a', 32), (await fixture.Credentials.GetAsync(TestContext.Current.CancellationToken)).ApiKey);
+        Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
     }
 
     [Fact]
@@ -155,16 +146,6 @@ public sealed class AccountTests
     }
 
     [Fact]
-    public async Task NewAttemptReplacesOldAttempt()
-    {
-        using var fixture = new CoreFixture();
-        var first = await fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        var second = await fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        Assert.NotEqual(first.AttemptId, second.AttemptId);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Accounts.FinishAsync(fixture.UserId, first.AttemptId, TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
     public async Task ProtectedCredentialsSurviveProviderRestart()
     {
         using var fixture = new CoreFixture();
@@ -181,10 +162,9 @@ public sealed class AccountTests
         await fixture.ConnectAsync();
         var oldOperations = fixture.Accounts.GetOperationToken(fixture.UserId);
         await fixture.Store.WriteAsync(fixture.UserId, "feature-history", "first user's history", TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (method, _, _) => System.Text.Json.JsonDocument.Parse(method == "auth.getToken"
-            ? "{\"token\":\"second-token\"}" : "{\"session\":{\"name\":\"AnotherListener\",\"key\":\"different-session\"}}");
-        var attempt = await fixture.Accounts.BeginAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        await fixture.Accounts.FinishAsync(fixture.UserId, attempt.AttemptId, TestContext.Current.CancellationToken);
+        fixture.Client.Handler = (_, _, _) => System.Text.Json.JsonDocument.Parse("{\"session\":{\"name\":\"AnotherListener\",\"key\":\"different-session\"}}");
+        await fixture.ApproveAsync(fixture.UserId, "second-token");
+        await fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
         Assert.Null(await fixture.Store.ReadAsync<string>(fixture.UserId, "feature-history", TestContext.Current.CancellationToken));
         Assert.True(oldOperations.IsCancellationRequested);
         Assert.Equal("AnotherListener", (await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Username);

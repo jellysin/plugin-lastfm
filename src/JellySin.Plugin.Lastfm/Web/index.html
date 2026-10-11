@@ -33,8 +33,7 @@
       <section id="connection" class="card" aria-labelledby="connection-heading">
         <div class="section-heading"><div><p class="eyebrow">CONNECTED ACCOUNTS</p><h2 id="connection-heading">Your Last.fm</h2></div><p id="profile-link"></p></div>
         <p id="connection-status">Loading connection…</p>
-        <div class="actions"><button id="connect-lastfm" type="button" class="primary">Connect / reconnect Last.fm</button><button id="disconnect-lastfm" type="button">Disconnect</button></div>
-        <div id="finish-connection" hidden><p><a id="authorize-lastfm" target="_blank" rel="noopener noreferrer">Open Last.fm to authorize ↗</a></p><button id="finish-lastfm" type="button">Finish connecting</button></div>
+        <div class="actions"><button id="connect-lastfm" type="button" class="primary">Connect Last.fm</button><button id="disconnect-lastfm" type="button">Disconnect</button></div>
         <div id="disconnect-confirmation" class="notice" hidden><p>Disconnect Last.fm and clear your plugin history, pending submissions and preferences? Your Last.fm account and Jellyfin library will remain.</p><button id="confirm-disconnect" type="button">Disconnect and clear plugin data</button><button id="cancel-disconnect" type="button">Cancel</button></div>
         <label class="check"><input id="scrobbling" type="checkbox"> Scrobble my listening</label>
         <details><summary>Delivery status</summary><p id="delivery-status">Refresh to inspect pending submissions.</p><button id="delivery-refresh" type="button">Refresh status</button><button id="delivery-retry" type="button">Retry retained submissions</button></details>

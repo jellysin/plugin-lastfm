@@ -19,7 +19,7 @@ application and display arrangements before our first production distribution.
 The plugin supports scrobbling/now-playing, reviewed favourite synchronization,
 listening history/charts, previewed play-count imports, metadata, discovery and
 local Jellyfin playlists. Each user authorizes their own Last.fm account through
-your documented token flow; session keys stay protected on their Jellyfin server.
+your documented web authentication flow; session keys stay protected on their Jellyfin server.
 Personal pages require that user's Jellyfin sign-in. Shared library metadata is
 available to the server's authorized library users. We download no artwork or audio
 from Last.fm and include links to relevant Last.fm profiles and catalog entries.

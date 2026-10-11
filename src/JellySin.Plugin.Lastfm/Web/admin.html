@@ -1,6 +1,11 @@
 <div id="jellysin-admin" data-role="page" class="page type-interior pluginConfigurationPage">
   <div data-role="content"><div class="content-primary">
     <h1>JellySin Last.fm</h1>
+    <h2>Your Last.fm account</h2>
+    <p id="jellysin-connection-status" role="status" aria-live="polite">Checking your Last.fm connection…</p>
+    <button id="jellysin-connect" is="emby-button" type="button" class="raised button-submit block" hidden><span id="jellysin-connect-label">Connect Last.fm</span></button>
+    <p>Each user connects their own Last.fm account. Other users do so from the music dashboard: <a id="jellysin-dashboard-link" class="button-link" target="_blank" rel="noopener noreferrer">Open JellySin Last.fm</a></p>
+    <h2>Server settings</h2>
     <form id="jellysin-settings">
       <div class="checkboxContainer"><label><input id="jellysin-enabled" is="emby-checkbox" type="checkbox"><span>Enable JellySin Last.fm</span></label></div>
       <div class="checkboxContainer"><label><input id="jellysin-metadata" is="emby-checkbox" type="checkbox"><span>Enable public Last.fm metadata</span></label></div>
@@ -9,45 +14,140 @@
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
       <p id="jellysin-settings-status" role="status" aria-live="polite"></p>
     </form>
-    <h2>Last.fm application</h2>
-    <p id="jellysin-application-status" role="status"></p>
-    <p>The project application is included in release builds. A private application override is protected on this server. Changing applications requires reconnecting accounts.</p>
-    <form id="jellysin-application-form">
-      <div class="inputContainer"><label for="jellysin-api-key">Application API key</label><input id="jellysin-api-key" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
-      <div class="inputContainer"><label for="jellysin-api-secret">Application shared secret</label><input id="jellysin-api-secret" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
-      <button is="emby-button" type="submit" class="raised button-submit block"><span>Save application override</span></button>
-    </form>
-    <p>Open the music dashboard to connect your account and manage music features.</p>
-    <p><a id="jellysin-dashboard-link" class="button-link" target="_blank" rel="noopener noreferrer">Open JellySin Last.fm</a></p>
-    <p>The user dashboard signs in with your Jellyfin account. Each user manages their own Last.fm connection.</p>
+    <details id="jellysin-advanced">
+      <summary>Advanced: Last.fm application</summary>
+      <p id="jellysin-application-status" role="status" aria-live="polite"></p>
+      <p>Release builds include the project's Last.fm application, so most servers need nothing here. A server may use its own application instead; it is stored protected on this server and never shown again.</p>
+      <form id="jellysin-application-form">
+        <div class="inputContainer"><label for="jellysin-api-key">Application API key</label><input id="jellysin-api-key" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
+        <div class="inputContainer"><label for="jellysin-api-secret">Application shared secret</label><input id="jellysin-api-secret" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
+        <button is="emby-button" type="submit" class="raised block"><span>Save application override</span></button>
+      </form>
+      <button id="jellysin-remove-override" is="emby-button" type="button" class="raised block" hidden><span>Remove override</span></button>
+      <div id="jellysin-remove-confirmation" hidden>
+        <p>Remove the application override stored on this server? The server then uses the application included with this build, if there is one. Connected accounts must connect again.</p>
+        <button id="jellysin-confirm-remove" is="emby-button" type="button" class="raised block"><span>Remove the override now</span></button>
+        <button id="jellysin-cancel-remove" is="emby-button" type="button" class="raised block"><span>Keep the override</span></button>
+      </div>
+    </details>
   </div></div>
   <script type="text/javascript">
-    document.getElementById('jellysin-admin').addEventListener('pageshow', async function () {
-      document.getElementById('jellysin-dashboard-link').href = ApiClient.getUrl('JellySin/Lastfm/');
+  (function () {
+    const byId = function (id) { return document.getElementById(id); };
+    const api = function (path) { return ApiClient.getUrl('JellySin/Lastfm/' + path); };
+    // The host answers in either letter case, depending on the client's serializer profile.
+    const read = function (value, name) { return value[name] ?? value[name.charAt(0).toLowerCase() + name.slice(1)]; };
+    const refusedReturn = function () { return /[?&]connection=failed(?:&|$)/.test(location.hash); };
+    // The return from Last.fm is tied to this browser by a cookie of the server, so the interface must come from that server.
+    const sameServer = function () { return new URL(api('Callback'), location.href).origin === location.origin; };
+
+    function showApplication(source) {
+      byId('jellysin-application-status').textContent = source === 'Override'
+        ? 'In use: an application override stored on this server. Connected accounts must connect again after a change.'
+        : source === 'Project' ? 'In use: the Last.fm application included with this build.' : 'No Last.fm application is available on this server.';
+      byId('jellysin-remove-override').hidden = source !== 'Override';
+      byId('jellysin-remove-confirmation').hidden = true;
+      if (source === 'None') byId('jellysin-advanced').open = true;
+    }
+
+    async function loadApplication() {
+      const application = await ApiClient.ajax({ type: 'GET', url: api('Admin/Application'), dataType: 'json' });
+      const source = String(read(application, 'Source') ?? (read(application, 'Configured') ? 'Project' : 'None'));
+      showApplication(source);
+      return source !== 'None';
+    }
+
+    function showConnection(connection, available, note) {
+      const connected = Boolean(read(connection, 'Connected'));
+      const state = connected
+        ? 'Last.fm is connected as ' + String(read(connection, 'Username') ?? '') + (read(connection, 'NeedsReconnect') ? '. Last.fm asks you to connect again.' : '.')
+        : 'Last.fm is not connected.';
+      const offered = available && sameServer();
+      byId('jellysin-connect-label').textContent = connected ? 'Reconnect Last.fm' : 'Connect Last.fm';
+      byId('jellysin-connect').hidden = !offered;
+      byId('jellysin-connect').disabled = false;
+      byId('jellysin-connection-status').textContent = note || (offered || connected ? state
+        : available ? state + ' Connect from the music dashboard of this server.' : 'Add a Last.fm application under Advanced before connecting.');
+    }
+
+    async function loadConnection(available) {
+      const me = await ApiClient.ajax({ type: 'GET', url: api('Me'), dataType: 'json' });
+      let connection = read(me, 'Connection');
+      let note = refusedReturn() && !read(connection, 'Connected') ? 'Last.fm did not connect. Start again.' : '';
+      if (read(connection, 'ApprovalPending')) {
+        // The browser came back from Last.fm with an approval: complete it without a further step.
+        try { connection = await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Finish'), dataType: 'json' }); note = ''; }
+        catch { note = 'Last.fm did not confirm the connection. Start again.'; }
+      }
+      showConnection(connection, available, note);
+    }
+
+    byId('jellysin-admin').addEventListener('pageshow', async function () {
+      byId('jellysin-dashboard-link').href = api('');
       try {
         const config = await ApiClient.getPluginConfiguration('2034650d-a290-4a16-b195-89fb44cfb932');
-        document.getElementById('jellysin-enabled').checked = config.Enabled;
-        document.getElementById('jellysin-metadata').checked = config.MetadataEnabled;
-        document.getElementById('jellysin-similarity').checked = config.SimilarityEnabled;
-        const application = await ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('JellySin/Lastfm/Admin/Application'), dataType: 'json' });
-        document.getElementById('jellysin-application-status').textContent = application.Configured || application.configured ? 'Application credentials are configured.' : 'Application credentials are required.';
-      } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be loaded.'; }
+        byId('jellysin-enabled').checked = config.Enabled;
+        byId('jellysin-metadata').checked = config.MetadataEnabled;
+        byId('jellysin-similarity').checked = config.SimilarityEnabled;
+      } catch { byId('jellysin-settings-status').textContent = 'Settings could not be loaded.'; }
+      try { await loadConnection(await loadApplication()); }
+      catch { byId('jellysin-connection-status').textContent = 'The Last.fm connection could not be loaded.'; }
     });
-    document.getElementById('jellysin-application-form').addEventListener('submit', async function (event) {
+
+    byId('jellysin-connect').addEventListener('click', async function (event) {
+      const control = event.currentTarget;
+      control.disabled = true;
+      try {
+        const start = await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Begin'), contentType: 'application/json', data: JSON.stringify({ ReturnToSettings: true }), dataType: 'json' });
+        const target = new URL(read(start, 'AuthorizationUrl'));
+        // A server that does not see its public address names a return elsewhere; the token from Last.fm must not go there.
+        const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
+        const expected = new URL(api('Callback'), location.href);
+        if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/'
+          || back.origin !== expected.origin || back.pathname !== expected.pathname) throw new Error('Unexpected sign-in address.');
+        byId('jellysin-connection-status').textContent = 'Opening Last.fm…';
+        location.assign(target.href);
+      } catch {
+        byId('jellysin-connection-status').textContent = 'Last.fm sign-in could not start.';
+        control.disabled = false;
+      }
+    });
+
+    byId('jellysin-application-form').addEventListener('submit', async function (event) {
       event.preventDefault();
       const control = event.currentTarget.querySelector('button');
       control.disabled = true;
-      const key = document.getElementById('jellysin-api-key');
-      const secret = document.getElementById('jellysin-api-secret');
+      const key = byId('jellysin-api-key');
+      const secret = byId('jellysin-api-secret');
       const input = { ApiKey: key.value, Secret: secret.value };
       key.value = ''; secret.value = '';
       try {
-        await ApiClient.ajax({ type: 'PUT', url: ApiClient.getUrl('JellySin/Lastfm/Admin/Application'), contentType: 'application/json', data: JSON.stringify(input) });
-        document.getElementById('jellysin-application-status').textContent = 'Application credentials saved. Reconnect accounts when changing applications.';
-      } catch { document.getElementById('jellysin-application-status').textContent = 'Application credentials could not be saved.'; }
+        await ApiClient.ajax({ type: 'PUT', url: api('Admin/Application'), contentType: 'application/json', data: JSON.stringify(input) });
+        showApplication('Override');
+        await loadConnection(true);
+      } catch { byId('jellysin-application-status').textContent = 'The application override could not be saved.'; }
       finally { input.ApiKey = ''; input.Secret = ''; control.disabled = false; }
     });
-    document.getElementById('jellysin-settings').addEventListener('submit', async function (event) {
+
+    byId('jellysin-remove-override').addEventListener('click', function () {
+      byId('jellysin-remove-confirmation').hidden = false;
+      byId('jellysin-confirm-remove').focus();
+    });
+    byId('jellysin-cancel-remove').addEventListener('click', function () {
+      byId('jellysin-remove-confirmation').hidden = true;
+      byId('jellysin-remove-override').focus();
+    });
+    byId('jellysin-confirm-remove').addEventListener('click', async function (event) {
+      const control = event.currentTarget;
+      control.disabled = true;
+      try {
+        await ApiClient.ajax({ type: 'DELETE', url: api('Admin/Application') });
+        await loadConnection(await loadApplication());
+      } catch { byId('jellysin-application-status').textContent = 'The application override could not be removed.'; }
+      finally { control.disabled = false; }
+    });
+
+    byId('jellysin-settings').addEventListener('submit', async function (event) {
       event.preventDefault();
       const control = event.currentTarget.querySelector('button');
       control.disabled = true;
@@ -62,5 +162,6 @@
       } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be saved.'; }
       finally { control.disabled = false; }
     });
+  })();
   </script>
 </div>

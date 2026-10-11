@@ -64,13 +64,7 @@ public sealed class PublicController(IServerApplicationHost host, IQuickConnect 
         return stream is null ? NotFound() : File(stream, contentType);
     }
 
-    private void SecurityHeaders()
-    {
-        Response.Headers.CacheControl = "no-store";
-        Response.Headers["X-Content-Type-Options"] = "nosniff";
-        Response.Headers["Referrer-Policy"] = "no-referrer";
-        Response.Headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
-    }
+    private void SecurityHeaders() => ResponseSecurity.Apply(Response);
 }
 
 public sealed record QuickConnectInput([Required, StringLength(128, MinimumLength = 16)] string Secret)

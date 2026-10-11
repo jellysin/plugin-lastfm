@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Web;
 using JellySin.Plugin.Lastfm.Configuration;
 using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Transport;
@@ -16,6 +17,7 @@ public sealed class CoreFixture : IDisposable
     public AccountService Accounts { get; }
     public ApplicationCredentialService Credentials { get; }
     public Guid UserId { get; } = Guid.NewGuid();
+    public static Uri Callback { get; } = new("https://jellyfin.example/JellySin/Lastfm/Callback");
 
     public CoreFixture()
     {
@@ -26,9 +28,30 @@ public sealed class CoreFixture : IDisposable
 
     public async Task ConnectAsync(Guid? user = null)
     {
-        await Credentials.SetAsync(new ApplicationCredentials(new string('a', 32), new string('b', 32)), TestContext.Current.CancellationToken);
-        var attempt = await Accounts.BeginAsync(user ?? UserId, TestContext.Current.CancellationToken);
-        await Accounts.FinishAsync(user ?? UserId, attempt.AttemptId, TestContext.Current.CancellationToken);
+        await ConfigureApplicationAsync();
+        await ApproveAsync(user ?? UserId);
+        await Accounts.FinishAsync(user ?? UserId, TestContext.Current.CancellationToken);
+    }
+
+    public Task ConfigureApplicationAsync()
+        => Credentials.SetAsync(new ApplicationCredentials(new string('a', 32), new string('b', 32)), TestContext.Current.CancellationToken);
+
+    /// <summary>Starts a sign-in and returns from Last.fm in the same browser, as the callback address would see it.</summary>
+    public async Task<ConnectionAttempt> ApproveAsync(Guid user, string token = "browser-test-token")
+    {
+        var attempt = await Accounts.BeginAsync(user, Callback, false, TestContext.Current.CancellationToken);
+        var approval = await Accounts.ApproveAsync(attempt.BrowserBinding, AttemptOf(attempt), token, TestContext.Current.CancellationToken);
+        Assert.True(approval.Accepted);
+        return attempt;
+    }
+
+    /// <summary>The attempt named in the callback address that Last.fm is asked to return to.</summary>
+    public static string AttemptOf(ConnectionAttempt attempt) => AttemptOf(attempt.AuthorizationUrl);
+
+    public static string AttemptOf(string authorizationUrl)
+    {
+        var callback = HttpUtility.ParseQueryString(new Uri(authorizationUrl).Query)["cb"]!;
+        return HttpUtility.ParseQueryString(new Uri(callback).Query)["attempt"]!;
     }
 
     public void Dispose()
@@ -61,7 +84,6 @@ public sealed class StubClient : ILastfmClient
         if (AsyncHandler is not null) return await AsyncHandler(method, parameters, cancellationToken);
         return Handler?.Invoke(method, parameters, sessionKey) ?? JsonDocument.Parse(method switch
         {
-            "auth.getToken" => "{\"token\":\"browser-test-token\"}",
             "auth.getSession" => "{\"session\":{\"name\":\"TestListener\",\"key\":\"private-session-value\"}}",
             "track.scrobble" => "{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}",
             _ => "{}"

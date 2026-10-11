@@ -35,6 +35,21 @@ test('tokens stay in authorization headers and prefixed server paths', async con
   assert.equal((await client.api('Me')).userName, 'listener');
 });
 
+test('browser cookies are kept only for a request that asks for them', async context => {
+  const client = new Client(bootstrap);
+  client.acceptSession(session);
+  const modes = [];
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    modes.push(options.credentials);
+    assert.equal(options.redirect, 'error');
+    return Response.json({});
+  });
+  await client.api('Me/Scrobbling', 'PUT', { enabled: true });
+  await client.api('Me/Connection/Begin', 'POST', { returnToSettings: false }, undefined, true);
+  await client.api('Me/Connection/Finish', 'POST');
+  assert.deepEqual(modes, ['omit', 'same-origin', 'omit']);
+});
+
 test('Quick Connect secret is sent in a body, never a URL', async context => {
   const client = new Client(bootstrap);
   context.mock.method(globalThis, 'fetch', async (url, options) => {
