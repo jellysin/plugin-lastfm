@@ -4,7 +4,8 @@ The plugin is in development; no published release is available. The candidate
 validation below records observed checks, not approval for production publication.
 
 The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
-up. The automated server checks run on Jellyfin 12.0.0 and 12.2.0 on every change.
+up. The automated server checks run on Jellyfin 12.0.0 and 12.2.0 on every change, and
+the native fixture also on 12.1.0, the first release with the playlist visibility rule.
 Rows marked "12.0 only" rest on observations made on 2026-09-08 with the project
 application and a live Last.fm account on the 12.0 image; they have not been repeated
 on 12.2 and are outstanding for that server.
@@ -20,9 +21,9 @@ on 12.2 and are outstanding for that server.
 | Favourite reconciliation | Additive merge, ambiguous identities, reviewed removals, intervening edits and interrupted-addition recovery tested; native revision protection passed |
 | Native metadata | Real artist, album and track refreshes, Last.fm links/tags and locked-field preservation verified (12.0 only); native-copy quota/reserve tests passed |
 | History and charts | Live views passed (12.0 only); bounded complete-date retrieval/resumable application tested; real native stale-write protection and deliberate resets passed on 12.0.0 and 12.2.0 |
-| Personalized discovery | Real local/external results and unknown-seed behavior verified (12.0 only); private cache-first/expiration tests passed; library matching gave the same recorded answers on 12.0.0 and 12.2.0 |
+| Personalized discovery | Real local/external results and unknown-seed behavior verified (12.0 only); private cache-first/expiration tests passed; library matching gave the same recorded answers on 12.0.0, 12.1.0 and 12.2.0 |
 | Native similarity | Actual provider picker and Last.fm-influenced native ranking verified (12.0 only); public data only; the 12.1 cache change is not reached, by server source review |
-| Private generated playlists | Actual ownership, regeneration, injected native write failure, durable restart recovery and retry passed on 12.0.0 and 12.2.0; reviewed cancellation tested; visibility under the owner's parental limit recorded for both servers |
+| Private generated playlists | Actual ownership, regeneration, injected native write failure, durable restart recovery and retry passed on 12.0.0 and 12.2.0; reviewed cancellation tested; visibility under the owner's parental limit recorded for 12.0.0, 12.1.0 and 12.2.0 |
 | Storage and lifecycle | Atomic updates, cancellation, byte/document limits, durable reserves and orphan cleanup regressions passed |
 | Web page | 18 browser scenarios, 16 client tests, root/prefixed paths, immediate logout, safe rendering, review flows, axe, keyboard and performance budgets passed; final native admin form/live read-only checks passed (12.0 only) |
 | Large-library behavior | Real 10,000-track Jellyfin 12.2.0 server with eight concurrent search/playback HTTP clients passed locally and in hosted CI; a local run on 12.0.0 passed the same budget |

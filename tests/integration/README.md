@@ -44,7 +44,7 @@ and later additionally hide the playlist itself, while 12.0 shows it empty. The 
 expects each behaviour from the release the server reported. The plugin keeps the
 recipe throughout, a second ordinary user never sees playlist or recipe, and lifting
 the limit returns the playlist unchanged. The 12.1 boundary comes from the server
-source at tag `v12.1`; the pinned 12.0 and 12.2 servers are the ones observed.
+source at tag `v12.1` and is observed on the pinned 12.0, 12.1 and 12.2 servers.
 
 Build this project explicitly with the repository SDK and locked NuGet references.
 Only `JellySin.NativeProbe.dll` belongs in the fixture mount; the production DLL is
@@ -59,9 +59,9 @@ python tests/integration/native_userdata.py \
   --server floor
 ```
 
-`--server` takes `floor` (the oldest supported Jellyfin) or `newest`, the two images
-pinned in `tools/smoke.py`; without it the newest runs. CI runs both. The report
-records the image and the release the server reported.
+`--server` takes `floor` (the oldest supported Jellyfin), `newest` or `12.1`, the
+images pinned in `tools/smoke.py`; without it the newest runs. CI runs all three. The
+report records the image and the release the server reported.
 
 The host and generated volumes are removed after success or failure. Diagnostic
 reports contain only synthetic userdata values, plugin identities and check results.
