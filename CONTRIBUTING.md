@@ -112,9 +112,17 @@ entry, its Renovate rule or the pattern Renovate reads the entries with would le
 run another release.
 
 A maintainer separately decides when to publish. After reviewing and merging the
-release PR, create the chosen version tag and an unpublished draft, then manually
-dispatch `release.yml` **on that tag ref**. This binds GitHub provenance to the
-source tag. The publication workflow has no push or PR trigger and is never
+release PR, dispatch `prepare-release.yml` on `main` with the version tag and the full
+SHA of the merged release commit. The release helper's prepare step checks that the
+commit is on main and records the version in the tag, refuses a tag that names another
+commit or a release that is already published, then creates the tag and one unpublished
+draft whose text is the version's section of `CHANGELOG.md`. It creates only what is
+missing, so a failed run is repeated with the same values. It publishes nothing, and a
+tag created this way starts no workflow. The Python tests fail when the workflow gains
+a trigger, a write permission beyond the one job's `contents`, a script or another step.
+
+Then manually dispatch `release.yml` **on that tag ref**. This binds GitHub provenance
+to the source tag. The publication workflow has no push or PR trigger and is never
 dispatched by release-please. It reruns CI and builds production bytes. Packaging verifies the NuGet
 production graph against the committed lock and restored assets, then creates a
 deterministic ZIP, SPDX file/dependency inventory and checksums. The release metadata
