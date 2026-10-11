@@ -279,6 +279,31 @@ public sealed class ConnectionCallbackTests
         Assert.Contains(action.GetCustomAttributes(false), attribute => attribute is HttpPostAttribute { Template: "Connection/Refusal" });
     }
 
+    // The scheme is the request's own text; every line of a sign-in gets one of three fixed words for it.
+    [Fact]
+    public async Task ASchemeTheServerDoesNotKnowReachesNoLineOfASignIn()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        const string scheme = "gopher\nLast.fm sign-in finished for user 000000000000: connected";
+        var name = Logged.User(fixture.UserId);
+        var steps = new LogLines<AccountController>();
+        var returns = new LogLines<CallbackController>();
+        var account = Account(fixture, scheme, "", published: "https://media.example", log: steps);
+        await account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
+        Assert.IsType<NoContentResult>(account.Refusal(new ConnectionRefusal("return-address")));
+        await Assert.ThrowsAnyAsync<Exception>(() => Account(fixture, scheme, "", host: "", log: steps).Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
+        await Callback(fixture, scheme, "", null, log: returns).Approve(Guid.NewGuid().ToString("N"), Token, TestContext.Current.CancellationToken);
+        Assert.Equal(
+            [
+                $"Last.fm sign-in begun for user {name} from the music dashboard. The return address uses https; the request reached this server over another scheme; the request names no page.",
+                $"The page did not open Last.fm for user {name}: the return address the server names is not at the address of the page. The request reached this server over another scheme; the request names no page.",
+                $"Last.fm sign-in not begun for user {name} from the music dashboard: the server has no usable return address. The request reached this server over another scheme; no published server address is set.",
+            ],
+            steps.Lines.Select(line => line.Text));
+        Assert.Equal(["Last.fm return refused: the browser sent no cookie of an attempt. The request reached this server over another scheme."], returns.Lines.Select(line => line.Text));
+    }
+
     // The log gets a phrase the server holds for a name it knows; text from the browser never reaches it.
     [Theory]
     [InlineData("")]

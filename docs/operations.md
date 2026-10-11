@@ -72,8 +72,11 @@ sign-in that did not work can be read from the server log alone:
 
 A user appears as the first twelve hexadecimal digits of a SHA-256 hash of the
 user's id, never by name or id. No line holds an address, a query string, a
-token, a cookie or a key. Returns that carry no known attempt come from anyone
-who can reach the server, so at most 20 of their lines are written per minute.
+token, a cookie or a key. Method and scheme are written as fixed words: `POST`,
+`PUT` or `DELETE`, and `http`, `https` or `another scheme`; the text a request
+carries in their place never reaches the log. Returns that carry no known
+attempt come from anyone who can reach the server, so at most 20 of their lines
+are written per minute.
 When the server answers a start with an error, Jellyfin's own error line follows
 the plugin's.
 

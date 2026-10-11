@@ -26,7 +26,7 @@ public sealed class CallerFilter(IAuthorizationContext authorization, ServerAddr
             // The route is the one declared in code and the rest are fixed phrases: nothing the browser sent reaches the log.
             logger.LogWarning(
                 "Refused {Method} {Route}: {Refusal}. The request reached this server over {Scheme}; {PageAddress}.",
-                request.Method, context.ActionDescriptor.AttributeRouteInfo?.Template ?? "an action of the plugin", refusal, request.Scheme, server.PageAddress(request));
+                LogName.Method(request), context.ActionDescriptor.AttributeRouteInfo?.Template ?? "an action of the plugin", refusal, LogName.Scheme(request), server.PageAddress(request));
             context.Result = new StatusCodeResult(StatusCodes.Status403Forbidden);
             return;
         }

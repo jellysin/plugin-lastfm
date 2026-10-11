@@ -102,6 +102,22 @@ public sealed class CallerSecurityTests
             Assert.DoesNotContain(secret, line.Text, StringComparison.Ordinal);
     }
 
+    // Method and scheme are the request's own text; the line gets a fixed word for each, so that neither can begin a line of its own.
+    [Theory]
+    [InlineData("POST", "http", "POST", "http")]
+    [InlineData("post", "HTTPS", "POST", "https")]
+    [InlineData("PUT", "https", "PUT", "https")]
+    [InlineData("DELETE", "http", "DELETE", "http")]
+    [InlineData("PROPFIND", "gopher", "a request to", "another scheme")]
+    [InlineData("POST\nRefused PUT JellySin/Lastfm/Me/Preferences", "http\nRefused PUT JellySin/Lastfm/Me/Preferences", "a request to", "another scheme")]
+    public async Task ARefusedWriteIsNamedInFixedWordsWhateverMethodAndSchemeItCarries(string method, string scheme, string loggedMethod, string loggedScheme)
+    {
+        var result = await RunFilter(Identity(), method, "https://evil.example", null, "https://media.example", scheme, "jellyfin-internal:8096");
+        Assert.Equal(403, Assert.IsType<StatusCodeResult>(result.Context.Result).StatusCode);
+        Assert.Equal($"Refused {loggedMethod} JellySin/Lastfm/Me/Connection/Begin: its origin is neither the published server address nor the address of the request. The request reached this server over {loggedScheme}; the page is not at the published server address.",
+            Assert.Single(result.Log.Lines).Text);
+    }
+
     [Fact]
     public async Task ACallerWithoutASignInIsTurnedAwayWithoutALine()
     {

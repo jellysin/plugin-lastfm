@@ -37,7 +37,7 @@ public sealed class CallbackController(AccountService accounts, ServerAddress se
         }
         else if (limiter.TryAcquire())
         {
-            logger.LogInformation("Last.fm return refused: {Refusal}. The request reached this server over {Scheme}.", approval.Refusal, Request.Scheme);
+            logger.LogInformation("Last.fm return refused: {Refusal}. The request reached this server over {Scheme}.", approval.Refusal, LogName.Scheme(Request));
         }
     }
 }

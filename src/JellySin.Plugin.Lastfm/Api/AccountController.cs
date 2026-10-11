@@ -31,14 +31,14 @@ public sealed class AccountController(AccountService accounts, ServerAddress ser
         catch (Exception error)
         {
             logger.LogInformation("Last.fm sign-in not begun for user {User} from {Page}: {Refusal}. The request reached this server over {Scheme}; {PageAddress}.",
-                LogName.Of(CallerId), page, BeginRefusal(error), Request.Scheme, server.PageAddress(Request));
+                LogName.Of(CallerId), page, BeginRefusal(error), LogName.Scheme(Request), server.PageAddress(Request));
             throw;
         }
 
         // The binding goes to the browser only, out of reach of page script; the response names the Last.fm address alone.
         ConnectionCallback.Bind(HttpContext, server, attempt.BrowserBinding);
         logger.LogInformation("Last.fm sign-in begun for user {User} from {Page}. The return address uses {ReturnScheme}; the request reached this server over {Scheme}; {PageAddress}.",
-            LogName.Of(CallerId), page, server.IsHttps(Request) ? "https" : "http", Request.Scheme, server.PageAddress(Request));
+            LogName.Of(CallerId), page, server.IsHttps(Request) ? "https" : "http", LogName.Scheme(Request), server.PageAddress(Request));
         return new ConnectionStart(attempt.AuthorizationUrl, attempt.ExpiresAt);
     }
 
@@ -51,7 +51,7 @@ public sealed class AccountController(AccountService accounts, ServerAddress ser
     {
         if (!ConnectionRefusal.Reasons.TryGetValue(refusal.Reason, out var reason)) return BadRequest();
         logger.LogInformation("The page did not open Last.fm for user {User}: {Refusal}. The request reached this server over {Scheme}; {PageAddress}.",
-            LogName.Of(CallerId), reason, Request.Scheme, server.PageAddress(Request));
+            LogName.Of(CallerId), reason, LogName.Scheme(Request), server.PageAddress(Request));
         return NoContent();
     }
 
