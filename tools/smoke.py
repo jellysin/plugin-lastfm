@@ -175,7 +175,7 @@ def remove_container(name: str) -> bool:
 
 
 class DockerHost:
-    def __init__(self, plugin: Path, image: str, probe_plugin: Path | None = None) -> None:
+    def __init__(self, plugin: Path, image: str, probe_plugin: Path | None = None, published: str = "") -> None:
         self.name = "jellysin-smoke-" + uuid.uuid4().hex[:16]
         self.config = self.name + "-config"
         self.cache = self.name + "-cache"
@@ -184,6 +184,8 @@ class DockerHost:
         self.probe_plugin = probe_plugin.resolve(strict=True) if probe_plugin else None
         if self.probe_plugin:
             require(self.probe_plugin.name == "JellySin.NativeProbe.dll", "Only the named test fixture may enable the native probe.")
+        # The address the server is told to publish for itself (start option published-server-url); empty for none.
+        self.published = published
         self.origin = ""
         self.version = ""
         self.started = False
@@ -211,12 +213,13 @@ class DockerHost:
         probe_arguments = [] if self.probe_plugin is None else [
             "--env", "JELLYSIN_NATIVE_PROBE=1", "--mount",
             f"type=bind,src={self.probe_plugin},dst=/config/plugins/JellySin.NativeProbe/JellySin.NativeProbe.dll,readonly"]
+        published_arguments = ["--env", "JELLYFIN_PublishedServerUrl=" + self.published] if self.published else []
         docker("run", "--detach", "--name", self.name, "--label", "org.jellysin.smoke=true",
                "--user", "1000:1000", "--memory", "1536m", "--cpus", "2", "--stop-timeout", "20",
                "--publish", "127.0.0.1::8096", "--mount", f"type=volume,src={self.config},dst=/config",
                "--mount", f"type=volume,src={self.cache},dst=/cache",
                "--mount", f"type=bind,src={self.plugin},dst=/config/plugins/JellySin.Lastfm/JellySin.Plugin.Lastfm.dll,readonly",
-               "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", *probe_arguments, self.image)
+               "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", *probe_arguments, *published_arguments, self.image)
         self.started = True
         self.refresh_origin()
         wait_ready(Client(self.origin))
@@ -322,6 +325,28 @@ def check_return_address(client: Client) -> None:
             "A return nobody began must lead to the page under the configured base path, marked as refused and without its token.")
     require(headers.get("cache-control") == "no-store", "The answer of the return address must not be cached.")
     require(headers.get("referrer-policy") == "no-referrer", "The answer of the return address must prevent referrer leakage.")
+
+
+def check_sign_in_address(admin: Client, listener: Client, published: str, configured: bool) -> None:
+    """The sign-in names the server's published address as the return, or the request's own address when none is published."""
+    if not configured:
+        # The server only builds an address from the application; nothing here contacts Last.fm.
+        admin.request(PREFIX + "/Admin/Application", "PUT", {"ApiKey": secrets.token_hex(16), "Secret": secrets.token_hex(16)}, 204)
+    try:
+        payload, headers, _ = listener.request(PREFIX + "/Me/Connection/Begin", "POST", {}, raw=True)
+    finally:
+        if not configured:
+            admin.request(PREFIX + "/Admin/Application", "DELETE", expected=204)
+    # The answer carries the application key, so no part of it reaches a message.
+    address = urllib.parse.urlsplit(lower_keys(json.loads(payload))["authorizationurl"])
+    back = urllib.parse.parse_qs(address.query).get("cb", [""])[0].split("?")[0]
+    origin = published or listener.origin
+    require(back == origin + listener.base_path + PREFIX + "/Callback",
+            "The sign-in must name the return under the published server address, or under the request's own address when none is published.")
+    cookie = headers.get("set-cookie", "")
+    encrypted = origin.startswith("https://")
+    require(cookie.startswith(("__Host-" if encrypted else "") + "JellySinLastfmAttempt=") and ("; secure" in cookie.lower()) is encrypted,
+            "The cookie of the sign-in must follow the scheme of the return address.")
 
 
 def create_user(admin: Client, password: str) -> dict[str, Any]:
@@ -483,7 +508,7 @@ def reverse_proxy(target: str):
         thread.join(timeout=5)
 
 
-def check_base_path(host: DockerHost, admin: Client, listener: Client) -> None:
+def check_base_path(host: DockerHost, admin: Client, listener: Client, expect_configured: bool) -> None:
     configuration = json.loads(admin.request("/System/Configuration/network", raw=True)[0])
     configuration["BaseUrl"] = "/jellyfin"
     admin.request("/System/Configuration/network", "POST", configuration, 204)
@@ -493,6 +518,7 @@ def check_base_path(host: DockerHost, admin: Client, listener: Client) -> None:
     check_plugin(admin)
     require(not admin.request("/Plugins/" + PLUGIN_ID + "/Configuration")["metadataenabled"], "Settings were lost after restart.")
     require(not listener.request(PREFIX + "/Me/Favourites")["enabled"], "Private preference was lost after restart.")
+    check_sign_in_address(admin, listener, host.published, expect_configured)
     with reverse_proxy(host.origin) as origin:
         proxy = Client(origin, "/jellyfin", listener.token)
         require(proxy.request(PREFIX + "/Bootstrap")["basepath"] == "/jellyfin", "Reverse-proxy prefix was not preserved.")
@@ -513,13 +539,15 @@ def run_smoke(host: DockerHost, expect_configured: bool = False) -> dict[str, An
     listener = Client(host.origin)
     listener.authenticate("SmokeListener", listener_password)
     check_authentication(admin, listener, user["id"], expect_configured)
+    check_sign_in_address(admin, listener, host.published, expect_configured)
     check_user_isolation(admin, listener, admin_user["id"])
     print("PASS: password/Quick Connect, anonymous/API-key/origin rejection and user isolation.", flush=True)
     track = check_library(admin, listener, user)
     check_disabled_playback(admin, listener, track)
     print("PASS: real music scan, restricted-library access and disabled-playback events.", flush=True)
-    check_base_path(host, admin, listener)
-    print("PASS: /jellyfin base path, reverse proxy and restart persistence.", flush=True)
+    check_base_path(host, admin, listener, expect_configured)
+    print("PASS: /jellyfin base path, reverse proxy, restart persistence and the return address of the sign-in"
+          + (" under the published server address." if host.published else " under the request's address."), flush=True)
     return {"container": host.name, "configVolume": host.config, "cacheVolume": host.cache,
             "fixtureDirectory": str(host.fixture_directory), "url": host.origin + "/jellyfin/JellySin/Lastfm/", "applicationConfigured": expect_configured,
             "admin": {"id": admin_user["id"], "username": "SmokeAdmin", "password": admin_password, "token": admin.token},
@@ -548,10 +576,11 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--keep", action="store_true", help="Keep the isolated server after a successful run.")
     parser.add_argument("--state-file", type=Path, help="Owner-only access details; requires --keep.")
     parser.add_argument("--expect-app-configured", action="store_true", help="Verify a production DLL with the embedded project application.")
+    parser.add_argument("--published-address", default="", help="Start the server with this published address; the sign-in must then name it as the return.")
     parser.add_argument("--cleanup-state", type=Path, help="Remove only the isolated resources recorded in a retained smoke state file.")
     args = parser.parse_args()
     if args.cleanup_state:
-        if args.plugin or args.keep or args.state_file or args.expect_app_configured:
+        if args.plugin or args.keep or args.state_file or args.expect_app_configured or args.published_address:
             parser.error("--cleanup-state cannot be combined with test options")
         return args
     if args.plugin is None:
@@ -615,7 +644,7 @@ def main() -> int:
         except (SmokeFailure, OSError, ValueError, KeyError) as error:
             print("Cleanup failed: " + (str(error) if isinstance(error, SmokeFailure) else type(error).__name__), flush=True)
             return 1
-    host = DockerHost(args.plugin, args.image)
+    host = DockerHost(args.plugin, args.image, published=args.published_address)
     kept = False
     try:
         state = run_smoke(host, args.expect_app_configured)

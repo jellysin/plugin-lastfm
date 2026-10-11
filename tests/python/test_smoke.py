@@ -177,6 +177,96 @@ def returned(status, headers):
     return asked
 
 
+def began(back, cookie, published="", configured=True, asked=None):
+    """Run the sign-in check against a local server that names the planted return and cookie; return what it was asked."""
+    asked = [] if asked is None else asked
+
+    class Planted(http.server.BaseHTTPRequestHandler):
+        def log_message(self, _format, *arguments):
+            pass
+
+        def answer(self):
+            asked.append((self.command, self.path))
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            start = self.command == "POST"
+            named = back.replace("{origin}", f"http://127.0.0.1:{self.server.server_address[1]}")
+            body = json.dumps({"AuthorizationUrl": "https://www.last.fm/api/auth/?api_key=planted&cb=" + smoke.urllib.parse.quote(named, safe="")}).encode() if start else b""
+            self.send_response(200 if start else 204)
+            if start:
+                self.send_header("Set-Cookie", cookie)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        do_POST = do_PUT = do_DELETE = answer
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        client = smoke.Client(origin, "/jellyfin", token="a" * 32)
+        smoke.check_sign_in_address(client, client, published, configured)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    return asked
+
+
+OWN = "{origin}/jellyfin/JellySin/Lastfm/Callback?attempt=" + "0" * 32
+PUBLISHED = "https://media.example"
+PLAIN_COOKIE = "JellySinLastfmAttempt=planted; path=/jellyfin/JellySin/Lastfm/Callback; httponly; samesite=lax"
+SECURE_COOKIE = "__Host-JellySinLastfmAttempt=planted; path=/; secure; httponly; samesite=lax"
+
+
+class SignInAddressTests(unittest.TestCase):
+    def test_accepts_the_request_address_with_a_plain_cookie_when_none_is_published(self):
+        self.assertEqual([("POST", "/jellyfin/JellySin/Lastfm/Me/Connection/Begin")], began(OWN, PLAIN_COOKIE))
+
+    def test_accepts_the_published_address_with_a_cookie_for_encrypted_pages_and_leaves_a_configured_application_alone(self):
+        self.assertEqual([("POST", "/jellyfin/JellySin/Lastfm/Me/Connection/Begin")],
+                         began(PUBLISHED + "/jellyfin/JellySin/Lastfm/Callback?attempt=" + "0" * 32, SECURE_COOKIE, PUBLISHED))
+
+    def test_plants_an_application_for_a_build_without_one_and_removes_it_even_after_a_refusal(self):
+        application = "/jellyfin/JellySin/Lastfm/Admin/Application"
+        expected = [("PUT", application), ("POST", "/jellyfin/JellySin/Lastfm/Me/Connection/Begin"), ("DELETE", application)]
+        self.assertEqual(expected, began("http://media.example/jellyfin/JellySin/Lastfm/Callback?attempt=1", PLAIN_COOKIE, "http://media.example", configured=False))
+        asked = []
+        with self.assertRaisesRegex(SmokeFailure, "published server address"):
+            began("http://other.example/jellyfin/JellySin/Lastfm/Callback?attempt=1", PLAIN_COOKIE, "http://media.example", configured=False, asked=asked)
+        self.assertEqual(expected, asked)
+
+    def test_refuses_a_return_under_the_request_address_another_host_a_lost_base_path_or_a_plain_scheme(self):
+        for back in ("http://127.0.0.1:8096/jellyfin/JellySin/Lastfm/Callback?attempt=1", "https://attacker.example/jellyfin/JellySin/Lastfm/Callback?attempt=1",
+                     "https://media.example/JellySin/Lastfm/Callback?attempt=1", "http://media.example/jellyfin/JellySin/Lastfm/Callback?attempt=1",
+                     "https://media.example/jellyfin/JellySin/Lastfm/Callback/more?attempt=1", ""):
+            with self.subTest(back=back), self.assertRaisesRegex(SmokeFailure, "published server address"):
+                began(back, SECURE_COOKIE, PUBLISHED)
+
+    def test_refuses_a_published_address_named_when_none_is_published(self):
+        with self.assertRaisesRegex(SmokeFailure, "request's own address"):
+            began(PUBLISHED + "/jellyfin/JellySin/Lastfm/Callback?attempt=1", PLAIN_COOKIE)
+        with self.assertRaisesRegex(SmokeFailure, "cookie of the sign-in"):
+            began(OWN, SECURE_COOKIE)
+
+    def test_refuses_a_cookie_that_does_not_follow_the_scheme_of_the_return(self):
+        back = PUBLISHED + "/jellyfin/JellySin/Lastfm/Callback?attempt=1"
+        for cookie in (PLAIN_COOKIE, "__Host-JellySinLastfmAttempt=planted; path=/; httponly", "JellySinLastfmAttempt=planted; path=/; secure; httponly", ""):
+            with self.subTest(cookie=cookie), self.assertRaisesRegex(SmokeFailure, "cookie of the sign-in"):
+                began(back, cookie, PUBLISHED)
+        with self.assertRaisesRegex(SmokeFailure, "cookie of the sign-in"):
+            began("http://media.example/jellyfin/JellySin/Lastfm/Callback?attempt=1", SECURE_COOKIE, "http://media.example")
+
+    def test_no_failure_text_names_the_application_key(self):
+        try:
+            began("https://attacker.example/x", "", PUBLISHED)
+        except SmokeFailure as error:
+            self.assertNotIn("planted", str(error))
+        else:
+            self.fail("The planted return was accepted.")
+
+
 class ReturnAddressTests(unittest.TestCase):
     def test_accepts_a_refusal_that_leads_back_to_the_page_and_asks_without_a_sign_in(self):
         self.assertEqual([("/jellyfin/JellySin/Lastfm/Callback?attempt=" + "0" * 32 + "&token=smoke-return-token", None, None)], returned(302, REFUSED))

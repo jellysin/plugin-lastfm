@@ -5,6 +5,7 @@ interface Connection { connected: boolean; username?: string; needsReconnect: bo
 interface Me { userName: string; isAdministrator: boolean; connection: Connection }
 
 const unconfirmed = 'Last.fm did not confirm the connection. Start again.';
+let administrator = false;
 
 export async function refreshAccount(client: Client): Promise<void> {
   element('sign-in').hidden = client.signedIn;
@@ -31,16 +32,28 @@ export function takeRefusedReturn(): boolean {
   return true;
 }
 
+const notStarted = 'Last.fm sign-in could not start.';
+
+/** What a refused return address tells the reader: an administrator can correct the server, anyone else can only pass it on. */
+export function returnRefusal(named: string, expected: string, administrator: boolean): string {
+  return administrator
+    ? `${notStarted} The server names ${named} as the return address, but this page expects ${expected}. Set the published server address (start option published-server-url) to the address users open, or add the proxy under Networking, Known proxies. Then restart Jellyfin.`
+    : `${notStarted} Ask the administrator of this server to check the server address setting.`;
+}
+
 /** The only address the page leaves for: the Last.fm approval page, asked to return to this server's own callback. */
-export function approvalAddress(value: string, root: string): string {
+export function approvalAddress(value: string, root: string, administrator = false): string {
   const target = new URL(value);
+  if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new Error(notStarted);
+  // A server that does not know its public address names a return elsewhere; the token from Last.fm must not go there.
   const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
-  if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/'
-    || back.origin !== location.origin || back.pathname !== `${root}/JellySin/Lastfm/Callback`) throw new Error('Last.fm sign-in could not start.');
+  const path = `${root}/JellySin/Lastfm/Callback`;
+  if (back.origin !== location.origin || back.pathname !== path) throw new Error(returnRefusal(back.origin + back.pathname, location.origin + path, administrator));
   return target.href;
 }
 
 function show(client: Client, me: Me): void {
+  administrator = me.isAdministrator;
   element('account-label').textContent = me.userName;
   element('connect-lastfm').textContent = me.connection.connected ? 'Reconnect Last.fm' : 'Connect Last.fm';
   element('connection-status').textContent = me.connection.connected
@@ -58,7 +71,7 @@ function show(client: Client, me: Me): void {
 export function setupAccount(client: Client, refresh: () => Promise<void>): void {
   bind('connect-lastfm', async () => {
     const attempt = await client.api<{ authorizationUrl: string }>('Me/Connection/Begin', 'POST', { returnToSettings: false }, undefined, true);
-    const target = approvalAddress(attempt.authorizationUrl, client.root);
+    const target = approvalAddress(attempt.authorizationUrl, client.root, administrator);
     message('Opening Last.fm…');
     location.assign(target);
   });

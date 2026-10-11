@@ -13,14 +13,14 @@ namespace JellySin.Plugin.Lastfm.Api;
 [AllowAnonymous]
 [TypeFilter(typeof(ApiExceptionFilter))]
 [Route(ConnectionCallback.Route)]
-public sealed class CallbackController(AccountService accounts) : ControllerBase
+public sealed class CallbackController(AccountService accounts, ServerAddress server) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Approve([FromQuery] string? attempt, [FromQuery] string? token, CancellationToken cancellationToken)
     {
         ResponseSecurity.Apply(Response);
-        var approval = await accounts.ApproveAsync(ConnectionCallback.Binding(Request), attempt, token, cancellationToken).ConfigureAwait(false);
-        ConnectionCallback.Release(HttpContext);
+        var approval = await accounts.ApproveAsync(ConnectionCallback.Binding(Request, server), attempt, token, cancellationToken).ConfigureAwait(false);
+        ConnectionCallback.Release(HttpContext, server);
         return LocalRedirect(ConnectionCallback.ReturnTarget(Request, approval));
     }
 }

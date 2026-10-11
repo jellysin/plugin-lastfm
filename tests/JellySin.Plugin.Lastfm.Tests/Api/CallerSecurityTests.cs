@@ -69,7 +69,7 @@ public sealed class CallerSecurityTests
         var result = await RunFilter(identity, "POST", null, null);
         var otherUser = Guid.NewGuid();
         result.Context.HttpContext.Request.QueryString = new QueryString("?userId=" + otherUser);
-        var controller = new AccountController(fixture.Accounts) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
+        var controller = new AccountController(fixture.Accounts, new ServerAddress(null)) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
         await fixture.ConfigureApplicationAsync();
         var start = await controller.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
         Assert.NotNull(await fixture.Store.ReadAsync<JellySin.Plugin.Lastfm.Configuration.AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));

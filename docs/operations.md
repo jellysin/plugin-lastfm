@@ -15,16 +15,30 @@ and expires after 10 minutes. If the return does not connect, start again:
 - Finish in the browser that started the attempt, with cookies allowed for the
   Jellyfin server.
 - A restart of Jellyfin ends open attempts.
-- Behind a reverse proxy, Jellyfin must see the public scheme and host name
-  (forwarded headers and Jellyfin's known proxies), because the return address
-  given to Last.fm is built from them. If Jellyfin sees another scheme or host,
-  both pages show "Last.fm sign-in could not start." and do not open Last.fm:
-  each compares the return address with the address the browser itself uses
-  before it leaves, so Last.fm issues no token and none is sent to the other
-  address. The browser tests "the page does not leave for a return to another
-  server" and "the settings page does not leave for a return to another server"
-  (and "over another scheme") in `tests/web/dashboard.spec.mjs` cover this
-  refusal. Correct the proxy headers, then start again.
+- The return address given to Last.fm starts with the address the server
+  publishes for itself: the start option `--published-server-url`, in a
+  container the variable `JELLYFIN_PublishedServerUrl`. Only its scheme, host
+  and port are used; the path is Jellyfin's base path setting. A request cannot
+  change this address, and a proxy that ends TLS and hides the public scheme
+  from Jellyfin does not matter. When no address is published, the scheme and
+  host of the request are used, so behind a reverse proxy Jellyfin must then
+  see the public ones (forwarded headers and Networking, Known proxies).
+- Both pages compare the return address with the address the browser itself
+  uses before they leave. If the two differ they do not open Last.fm, so
+  Last.fm issues no token and none is sent to the other address. A user reads
+  "Last.fm sign-in could not start. Ask the administrator of this server to
+  check the server address setting." An administrator reads both addresses and
+  what to set, on the dashboard and on the settings page. With a published
+  address this also refuses a browser that opened the server under another
+  address: connect from the published one. The browser tests "the page does not
+  leave for ...", "an administrator reads why the page does not leave for ..."
+  and "the settings page does not leave for ..." in
+  `tests/web/dashboard.spec.mjs` cover the refusal for a return to another
+  server, to another page of this server and over another scheme.
+- A published address that is not an absolute HTTP or HTTPS address is not
+  replaced by the request's address: the sign-in answers HTTP 400 and the
+  server log holds one warning from start, without the value. Correct the start
+  option and restart Jellyfin.
 - The button on the settings page is offered only when Jellyfin's web interface
   is served by the same server address. Otherwise connect from the dashboard.
 

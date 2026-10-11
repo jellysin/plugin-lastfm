@@ -11,6 +11,7 @@ using MediaBrowser.Controller.Events;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -23,6 +24,9 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         UserDataRegistration.Decorate(serviceCollection);
         serviceCollection.AddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<JellySin.Plugin.Lastfm.Api.QuickConnectLimiter>();
+        // The key under which the host keeps the published server address (start option published-server-url).
+        serviceCollection.AddSingleton(provider => new JellySin.Plugin.Lastfm.Api.ServerAddress(provider.GetRequiredService<IConfiguration>()[MediaBrowser.Controller.Extensions.ConfigurationExtensions.AddressOverrideKey],
+            provider.GetRequiredService<ILogger<JellySin.Plugin.Lastfm.Api.ServerAddress>>()));
         serviceCollection.AddSingleton<IStateStore>(provider => new FileStateStore(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "jellysin-lastfm", "state")));
         serviceCollection.AddSingleton(provider => new LastfmProtection(Path.Combine(provider.GetRequiredService<IApplicationPaths>().DataPath, "jellysin-lastfm", "keys")));
         serviceCollection.AddSingleton(provider => new ApplicationCredentialService(provider.GetRequiredService<IStateStore>(), provider.GetRequiredService<LastfmProtection>().Provider));

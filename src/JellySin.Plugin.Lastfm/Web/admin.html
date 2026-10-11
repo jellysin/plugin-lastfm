@@ -97,18 +97,23 @@
     byId('jellysin-connect').addEventListener('click', async function (event) {
       const control = event.currentTarget;
       control.disabled = true;
+      let refusal = 'Last.fm sign-in could not start.';
       try {
         const start = await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Begin'), contentType: 'application/json', data: JSON.stringify({ ReturnToSettings: true }), dataType: 'json' });
         const target = new URL(read(start, 'AuthorizationUrl'));
-        // A server that does not see its public address names a return elsewhere; the token from Last.fm must not go there.
+        if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new Error('Unexpected sign-in address.');
+        // A server that does not know its public address names a return elsewhere; the token from Last.fm must not go there.
         const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
         const expected = new URL(api('Callback'), location.href);
-        if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/'
-          || back.origin !== expected.origin || back.pathname !== expected.pathname) throw new Error('Unexpected sign-in address.');
+        if (back.origin !== expected.origin || back.pathname !== expected.pathname) {
+          refusal += ' The server names ' + back.origin + back.pathname + ' as the return address, but this page expects ' + expected.origin + expected.pathname
+            + '. Set the published server address (start option published-server-url) to the address users open, or add the proxy under Networking, Known proxies. Then restart Jellyfin.';
+          throw new Error('Unexpected return address.');
+        }
         byId('jellysin-connection-status').textContent = 'Opening Last.fm…';
         location.assign(target.href);
       } catch {
-        byId('jellysin-connection-status').textContent = 'Last.fm sign-in could not start.';
+        byId('jellysin-connection-status').textContent = refusal;
         control.disabled = false;
       }
     });
