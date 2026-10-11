@@ -1,10 +1,12 @@
 using JellySin.Plugin.Lastfm.Api;
+using JellySin.Plugin.Lastfm.Configuration;
 using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Transport;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 
@@ -17,6 +19,7 @@ public sealed class ExceptionRedactionTests
     [InlineData("argument", 400)]
     [InlineData("missing", 404)]
     [InlineData("conflict", 409)]
+    [InlineData("not connected", 409)]
     [InlineData("remote", 502)]
     [InlineData("cancelled", 408)]
     [InlineData("storage", 503)]
@@ -31,6 +34,7 @@ public sealed class ExceptionRedactionTests
             "argument" => new ArgumentException(secret),
             "missing" => new KeyNotFoundException(secret),
             "conflict" => new InvalidOperationException(secret),
+            "not connected" => new NotConnectedException(),
             "remote" => new LastfmException(9),
             "cancelled" => new OperationCanceledException(secret),
             "storage" => new IOException(secret),
@@ -43,8 +47,40 @@ public sealed class ExceptionRedactionTests
         var result = Assert.IsType<ObjectResult>(context.Result);
         Assert.Equal(expectedStatus, result.StatusCode);
         Assert.True(context.ExceptionHandled);
+        var problem = Assert.IsType<ProblemDetails>(result.Value);
+        if (category == "not connected") Assert.Equal(ApiExceptionFilter.NotConnectedType, problem.Type);
+        else if (category == "conflict") Assert.Null(problem.Type);
         Assert.DoesNotContain(secret, System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.Ordinal);
         Assert.DoesNotContain(secret, logger.Output, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("PATCH", "another method")]
+    [InlineData("GET", "GET")]
+    public void FailureLineNamesTheDeclaredRouteAndAListedMethodOnly(string method, string expectedMethodLog)
+    {
+        const string template = "JellySin/Lastfm/Me/Listening";
+        const string marker = "PLANTED-LEAK-MARKER";
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Method = method;
+        httpContext.Request.Path = $"/{marker}/path";
+        httpContext.Request.QueryString = new QueryString($"?param={marker}");
+        var actionDescriptor = new ActionDescriptor
+        {
+            AttributeRouteInfo = new AttributeRouteInfo
+            {
+                Template = template,
+            },
+        };
+        var context = new ExceptionContext(new ActionContext(httpContext, new RouteData(), actionDescriptor), [])
+        {
+            Exception = new InvalidOperationException("boom"),
+        };
+        var logger = new CapturingLogger();
+        new ApiExceptionFilter(logger).OnException(context);
+        Assert.Contains(template, logger.Output, StringComparison.Ordinal);
+        Assert.Contains(expectedMethodLog, logger.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain(marker, logger.Output, StringComparison.Ordinal);
     }
 
     private sealed class CapturingLogger : ILogger<ApiExceptionFilter>

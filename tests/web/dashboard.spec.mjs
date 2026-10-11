@@ -104,6 +104,46 @@ test('favourite removals and disconnect need explicit review', async ({ page }) 
   expect(state.disconnected).toBe(true);
 });
 
+test('without a Last.fm connection the page offers only Connect, until connected and again after Disconnect', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = false;
+  await passwordLogin(page);
+  const elements = page.locator('[data-needs-connection]');
+  const count = await elements.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index++) {
+    await expect(elements.nth(index)).toBeHidden();
+  }
+  await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await expect(page.locator('#status')).toHaveText('Last.fm connected.');
+  for (let index = 0; index < count; index++) {
+    await expect(elements.nth(index)).toBeVisible();
+  }
+
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page.getByRole('button', { name: 'Disconnect and clear plugin data' }).click();
+  await expect(page.locator('#connection-status')).toContainText('Connect Last.fm to start');
+  for (let index = 0; index < count; index++) {
+    await expect(elements.nth(index)).toBeHidden();
+  }
+  await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeVisible();
+});
+
+test('an account that must reconnect keeps its sections', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = true;
+  state.needsReconnect = true;
+  await passwordLogin(page);
+  const elements = page.locator('[data-needs-connection]');
+  const count = await elements.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index++) {
+    await expect(elements.nth(index)).toBeVisible();
+  }
+});
+
 for (const prefix of ['', '/jellyfin']) {
   test(`one button connects Last.fm and returns to the page at ${prefix || 'root'}`, async ({ page }) => {
     const state = await installServer(page, { prefix });

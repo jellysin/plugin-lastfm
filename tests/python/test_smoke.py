@@ -146,6 +146,25 @@ class RemovalTests(unittest.TestCase):
         self.assertEqual((False, attempts, attempts - 1), removed([True] * (attempts + 5)))
 
 
+class ConflictMarkTests(unittest.TestCase):
+    MARKED = json.dumps({"type": smoke.NOT_CONNECTED, "title": "Connect Last.fm first.", "status": 409}).encode()
+    PLAIN = json.dumps({"type": "https://tools.ietf.org/html/rfc9110#section-15.5.10", "status": 409}).encode()
+
+    def test_accepts_a_marked_view_beside_a_conflict_of_another_kind(self):
+        smoke.check_conflict_marks(self.MARKED, self.PLAIN)
+        smoke.check_conflict_marks(json.dumps({"Type": smoke.NOT_CONNECTED}).encode(), b"")
+
+    def test_refuses_a_view_without_the_mark(self):
+        for label, view in {"another type": self.PLAIN, "no type": b'{"status": 409}', "no answer": b"", "not an object": b"[]",
+                            "the mark as title only": json.dumps({"title": smoke.NOT_CONNECTED}).encode()}.items():
+            with self.subTest(label), self.assertRaisesRegex(SmokeFailure, "must carry"):
+                smoke.check_conflict_marks(view, self.PLAIN)
+
+    def test_refuses_the_mark_on_a_conflict_of_another_kind(self):
+        with self.assertRaisesRegex(SmokeFailure, "must not carry"):
+            smoke.check_conflict_marks(self.MARKED, self.MARKED)
+
+
 REFUSED = {"Location": "/jellyfin/JellySin/Lastfm/?connection=failed", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 

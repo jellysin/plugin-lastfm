@@ -1,4 +1,5 @@
 using System.Text.Json;
+using JellySin.Plugin.Lastfm.Configuration;
 using JellySin.Plugin.Lastfm.Features;
 using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Tests.Core;
@@ -80,6 +81,15 @@ public sealed class MusicViewCacheTests
         await File.WriteAllTextAsync(file, "{", Ct);
         Assert.Null(await cache.ReadAsync<string>(f.UserId, "private", Ct));
         Assert.False(File.Exists(file));
+    }
+
+    [Fact]
+    public async Task OperationsThrowWhenNotConnected()
+    {
+        using var f = new FeatureFixture();
+        await Assert.ThrowsAsync<NotConnectedException>(() => f.Api.GetPageAsync(f.Core.UserId, "user.getTopTracks", 1, "7day", Ct));
+        await Assert.ThrowsAsync<NotConnectedException>(() => f.Api.SetLovedAsync(f.Core.UserId, new("Artist", "Track"), true, Ct));
+        await Assert.ThrowsAsync<NotConnectedException>(() => f.Api.GetOverviewAsync(f.Core.UserId, "7day", Ct));
     }
 
     private static Mock<ILastfmClient> Cacheable(StubClient source, TimeSpan lifetime)

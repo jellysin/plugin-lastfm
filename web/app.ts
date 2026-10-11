@@ -78,6 +78,7 @@ function clearPrivateView(): void {
   message('');
   for (const id of ['history-list', 'history-preview-list', 'history-page', 'listening-stats', 'chart-tracks', 'chart-artists', 'chart-albums', 'removal-list', 'favourites-status', 'favourites-page', 'discovery-local', 'discovery-external', 'discovery-artists', 'discovery-albums', 'playlist-list', 'playlist-pending', 'profile-link', 'connection-status', 'delivery-status']) element(id).replaceChildren();
   for (const id of ['disconnect-confirmation', 'preview-pagination', 'history-continue', 'administrator']) element(id).hidden = true;
+  for (const el of document.querySelectorAll<HTMLElement>('[data-needs-connection]')) el.hidden = true;
   for (const id of ['history-apply', 'history-previous', 'history-next', 'favourites-previous', 'favourites-next']) element<HTMLButtonElement>(id).disabled = true;
   for (const form of element('signed-in').querySelectorAll('form')) form.reset();
   for (const id of ['discovery-seed', 'playlist-seed']) {

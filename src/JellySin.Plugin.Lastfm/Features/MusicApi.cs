@@ -19,7 +19,7 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
         if (period is not null && !Periods.Contains(period, StringComparer.Ordinal))
             throw new ArgumentException("Unsupported chart period.", nameof(period));
         var account = await accounts.GetAsync(userId, ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Connect a Last.fm account first.");
+            ?? throw new NotConnectedException();
         var cacheKey = string.Join('|', account.Username, method, page.ToString(CultureInfo.InvariantCulture), period, until?.ToString(CultureInfo.InvariantCulture));
         if (!fresh && cache is not null && await cache.ReadAsync<MusicPage>(userId, cacheKey, ct).ConfigureAwait(false) is { } cached) return cached;
         var parameters = new Dictionary<string, string>
@@ -96,7 +96,7 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
         using var operation = accounts.LinkOperation(userId, ct);
         ct = operation.Token;
         var account = await accounts.GetAsync(userId, ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Connect a Last.fm account first.");
+            ?? throw new NotConnectedException();
         if (account.NeedsReconnect) throw new InvalidOperationException("Reconnect the Last.fm account before changing favourites.");
         try
         {
@@ -116,7 +116,7 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
         using var operation = accounts.LinkOperation(userId, ct);
         ct = operation.Token;
         if (!Periods.Contains(period, StringComparer.Ordinal)) throw new ArgumentException("Unsupported chart period.", nameof(period));
-        var account = await accounts.GetAsync(userId, ct).ConfigureAwait(false) ?? throw new InvalidOperationException("Connect a Last.fm account first.");
+        var account = await accounts.GetAsync(userId, ct).ConfigureAwait(false) ?? throw new NotConnectedException();
         var tracks = await GetPageAsync(userId, "user.getTopTracks", 1, period, ct).ConfigureAwait(false);
         var artists = await GetRankedAsync(userId, account.Username, "artist", period, ct).ConfigureAwait(false);
         var albums = await GetRankedAsync(userId, account.Username, "album", period, ct).ConfigureAwait(false);
