@@ -33,6 +33,7 @@ account. Last.fm passwords and session keys are never entered into the dashboard
    to connect your own account. Release builds need no application key.
 4. Every other user visits `/JellySin/Lastfm/` on the server, signs in, selects
    **Connect Last.fm** and enables the features they want for their account.
+   An administrator can add a [link to it in Jellyfin's menu](docs/operations.md#a-link-in-jellyfins-menu).
 
 Jellyfin 10.11 is unsupported. Users of the older Last.fm plugin must remove it,
 restart Jellyfin and reconnect their accounts in this plugin. The new GUID is
