@@ -84,8 +84,15 @@ JellySin's project Last.fm application is registered, and its credentials are
 configured in the repository secrets for production builds. Browser authorization,
 live history/charts/discovery and one explicitly authorized test scrobble were
 verified on 2026-09-08 with the token flow used at that time. The return flow
-described above is covered by automated tests; its live sign-in against Last.fm
-has not been recorded yet. The [API terms review](lastfm-api.md) records the storage,
+described above is covered by automated tests, and one live sign-in against Last.fm
+is recorded: on 2026-10-11 a canary build of main (commit `5dd33c7`) ran on a
+Jellyfin 12.2.0 server whose published `https` address resolves to a private network
+address, behind a proxy that ends TLS. The server log showed the three lines above in
+order within 15 seconds: begun, with an `https` return address on a request that
+reached the server over `http`; return accepted; finished, connected. One account
+was stored. Last.fm therefore sent the browser back to an address it cannot reach
+itself. That trial delivered no scrobble; no listen was played in it.
+The [API terms review](lastfm-api.md) records the storage,
 attribution and display requirements. The [optional clarification enquiry](lastfm-permission-request.md)
 is unsent; no separate written approval has been obtained or is implied by these
 tests. Account connection uses the registered application's documented API flow.
