@@ -36,6 +36,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version-file: .python-version
+      # Every commit reachable from the checkout and, on a pull request, its title and text: the
+      # squash commit takes both. The self-test proves the refusal on planted lines first.
+      - name: Refuse credit lines for a model or coding tool
+        run: |
+          python tools/attribution.py --self-test
+          python tools/attribution.py --event "$GITHUB_EVENT_PATH"
       - name: Build and check account interface
         run: |
           npm ci --ignore-scripts
