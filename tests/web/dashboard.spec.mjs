@@ -276,7 +276,7 @@ test('an interrupted playlist can be reviewed and cancelled without deleting the
 async function openSettings(page, options = {}) {
   const setup = { source: 'Project', connection: {}, server: '', hash: '#/configurationpage?name=jellysin-lastfm', authorizationUrl: 'https://www.last.fm/api/auth/?api_key=fixture&cb=http%3A%2F%2F127.0.0.1%3A4177%2Fjellyfin%2FJellySin%2FLastfm%2FCallback%3Fattempt%3D1', ...options };
   await page.addInitScript(input => {
-    const config = { Enabled: true, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' };
+    const config = { Enabled: true, HostSetting: 'preserved' };
     // The calls outlive a visit to Last.fm in the same tab, so that a test can read what the page sent before it left.
     const state = { calls: JSON.parse(sessionStorage.getItem('fixture-calls') ?? '[]'), application: { Configured: input.source !== 'None', Source: input.source },
       connection: { Connected: false, Username: null, NeedsReconnect: false, ScrobblingEnabled: true, ApprovalPending: false, ...input.connection } };
@@ -320,10 +320,11 @@ const calls = (page, path) => page.evaluate(wanted => globalThis.fixture.calls.f
 test('native admin settings preserve host configuration and clear application secrets', async ({ page }) => {
   await openSettings(page);
   await expect(page.locator('#jellysin-enabled')).toBeChecked();
+  await expect(page.locator('#jellysin-settings input')).toHaveCount(1);
   await page.locator('#jellysin-enabled').uncheck();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, HostSetting: 'preserved' });
   // The application fields are for the rare server with its own application: closed until asked for.
   await expect(page.locator('#jellysin-advanced')).not.toHaveAttribute('open');
   await expect(page.getByLabel('Application API key', { exact: true })).toBeHidden();

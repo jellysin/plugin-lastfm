@@ -9,13 +9,12 @@ public sealed class FileStateStore : IStateStore, IDisposable
     private const int MaxDocuments = 8192;
     private const int ReservedDocuments = 1024;
     private const int MaxDocumentBytes = 8_000_000;
+    private const string RetiredReservations = "native-reservations-*.json";
     private readonly string _root;
     private readonly long _budget;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, StoredFile> _files = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Dictionary<string, long>> _native = new(StringComparer.Ordinal);
     private long _storedBytes;
-    private long _nativeBytes;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public FileStateStore(string root, long budget = DefaultBudget)
@@ -148,36 +147,13 @@ public sealed class FileStateStore : IStateStore, IDisposable
 
     public void Dispose() => _gate.Dispose();
 
-    public async Task ReserveNativeAsync(string identity, long bytes, CancellationToken cancellationToken)
-    {
-        if (identity.Length != 64 || identity.Any(c => !char.IsAsciiHexDigit(c)) || bytes < 1024) throw new ArgumentException("Invalid native storage reservation.", nameof(identity));
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var key = "native-reservations-" + identity[..2];
-            if (!_native.TryGetValue(key, out var entries)) _native[key] = entries = [];
-            var previous = entries.GetValueOrDefault(identity);
-            if (bytes <= previous) return;
-            if (previous == 0 && entries.Count >= 4096) throw new StorageBudgetException();
-            entries[identity] = bytes;
-            _nativeBytes += bytes - previous;
-            try { await WriteLockedAsync(GetPath(Guid.Empty, key), JsonSerializer.SerializeToUtf8Bytes(entries, JsonOptions), cancellationToken).ConfigureAwait(false); }
-            catch
-            {
-                _nativeBytes -= bytes - previous;
-                if (previous == 0) entries.Remove(identity); else entries[identity] = previous;
-                throw;
-            }
-        }
-        finally { _gate.Release(); }
-    }
-
     private void InitializeInventory()
     {
         var options = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
         var pending = Directory.EnumerateFiles(_root, "*.json.pending", options).Take(MaxDocuments + 1).ToArray();
         if (pending.Length > MaxDocuments) throw new StorageBudgetException();
         foreach (var orphan in pending) File.Delete(orphan);
+        RemoveRetiredReservations();
         foreach (var file in Directory.EnumerateFiles(_root, "*.json", options).Take(MaxDocuments + 1))
         {
             if (_files.Count >= MaxDocuments) throw new StorageBudgetException();
@@ -185,13 +161,16 @@ public sealed class FileStateStore : IStateStore, IDisposable
             if (info.Length > MaxDocumentBytes) throw new StorageBudgetException();
             _files[file] = new(info.Length, info.LastWriteTimeUtc);
             _storedBytes += info.Length;
-            if (!Path.GetFileName(file).StartsWith("native-reservations-", StringComparison.Ordinal)) continue;
-            var entries = JsonSerializer.Deserialize<Dictionary<string, long>>(File.ReadAllBytes(file), JsonOptions) ?? [];
-            if (entries.Count > 4096 || entries.Any(entry => entry.Key.Length != 64 || entry.Value < 1024 || entry.Value > _budget)) throw new StorageBudgetException();
-            _native[Path.GetFileNameWithoutExtension(file)] = entries;
-            _nativeBytes += entries.Values.Sum();
         }
-        if (_storedBytes + _nativeBytes > _budget) throw new StorageBudgetException();
+        if (_storedBytes > _budget) throw new StorageBudgetException();
+    }
+
+    /// <summary>Earlier builds kept size reservations for metadata handed to Jellyfin, in the folder shared by all users. Nothing reads them any more.</summary>
+    private void RemoveRetiredReservations()
+    {
+        var shared = Path.Combine(_root, Guid.Empty.ToString("N"));
+        if (!Directory.Exists(shared)) return;
+        foreach (var leftover in Directory.EnumerateFiles(shared, RetiredReservations).Take(MaxDocuments).ToArray()) File.Delete(leftover);
     }
 
     private void EnsureCapacity(string path, long size, long oldSize, bool durable, CancellationToken ct)
@@ -199,8 +178,8 @@ public sealed class FileStateStore : IStateStore, IDisposable
         var stagingReserve = Math.Min(MaxDocumentBytes, _budget / 10);
         var allowance = durable ? _budget - stagingReserve : _budget * 3 / 4;
         var documents = durable ? MaxDocuments : MaxDocuments - ReservedDocuments;
-        bool Fits() => _storedBytes + _nativeBytes - oldSize + size <= allowance
-            && _storedBytes + _nativeBytes + size <= _budget
+        bool Fits() => _storedBytes - oldSize + size <= allowance
+            && _storedBytes + size <= _budget
             && _files.Count + (oldSize == 0 ? 1 : 0) <= documents;
         if (Fits()) return;
         foreach (var cached in _files.Where(entry => entry.Key != path && Path.GetFileName(entry.Key).StartsWith("cache-", StringComparison.Ordinal))

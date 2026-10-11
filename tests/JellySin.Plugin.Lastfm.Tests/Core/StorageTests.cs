@@ -30,45 +30,26 @@ public sealed class StorageTests
     }
 
     [Fact]
-    public async Task NativeReservationsAreCompactPersistentAndLeaveDurableDocumentCapacity()
+    public async Task RestartRemovesReservationsOfEarlierBuildsAndReturnsTheirSpace()
     {
         using var fixture = new CoreFixture();
-        var shards = new Dictionary<string, Dictionary<string, long>>();
-        for (var index = 0; index < 9000; index++)
-        {
-            var identity = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(BitConverter.GetBytes(index)));
-            if (!shards.TryGetValue(identity[..2], out var entries)) shards[identity[..2]] = entries = [];
-            entries[identity] = 1024;
-        }
-        var directory = Path.Combine(fixture.DirectoryPath, Guid.Empty.ToString("N"));
-        Directory.CreateDirectory(directory);
-        foreach (var shard in shards)
-            await File.WriteAllTextAsync(Path.Combine(directory, "native-reservations-" + shard.Key + ".json"),
-                System.Text.Json.JsonSerializer.Serialize(shard.Value), TestContext.Current.CancellationToken);
-        var files = Directory.EnumerateFiles(fixture.DirectoryPath, "*.json", SearchOption.AllDirectories).ToArray();
-        Assert.InRange(files.Length, 1, 256);
-        Assert.True(files.Sum(path => new FileInfo(path).Length) < 1_000_000);
-        using var restarted = new FileStateStore(fixture.DirectoryPath);
-        await restarted.ReserveNativeAsync(new string('e', 64), 1024, TestContext.Current.CancellationToken);
-        await restarted.WriteAsync(fixture.UserId, "outbox", "durable", TestContext.Current.CancellationToken);
-        Assert.Equal("durable", await restarted.ReadAsync<string>(fixture.UserId, "outbox", TestContext.Current.CancellationToken));
+        var shared = Path.Combine(fixture.DirectoryPath, Guid.Empty.ToString("N"));
+        Directory.CreateDirectory(shared);
+        var leftover = Path.Combine(shared, "native-reservations-ab.json");
+        // An earlier build counted the reserved bytes named inside the file against the budget, not only the file's size.
+        await File.WriteAllTextAsync(leftover, "{\"" + new string('a', 64) + "\":9000}", TestContext.Current.CancellationToken);
+        var credentials = Path.Combine(shared, "credentials.json");
+        await File.WriteAllTextAsync(credentials, "\"kept\"", TestContext.Current.CancellationToken);
+        var foreign = Path.Combine(fixture.DirectoryPath, fixture.UserId.ToString("N"), "native-reservations-ab.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(foreign)!);
+        await File.WriteAllTextAsync(foreign, "\"kept\"", TestContext.Current.CancellationToken);
+        using var restarted = new FileStateStore(fixture.DirectoryPath, 10000);
+        Assert.False(File.Exists(leftover));
+        Assert.Equal("kept", await restarted.ReadAsync<string>(Guid.Empty, "credentials", TestContext.Current.CancellationToken));
+        Assert.Equal("kept", await restarted.ReadAsync<string>(fixture.UserId, "native-reservations-ab", TestContext.Current.CancellationToken));
+        await restarted.WriteAsync(fixture.UserId, "outbox", new string('x', 8000), TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task NativeCopyBytesCountAcrossRestartAndReservationFailureRollsBack()
-    {
-        using var fixture = new CoreFixture();
-        var identity = new string('a', 64);
-        using (var constrained = new FileStateStore(fixture.DirectoryPath, 10000))
-        {
-            await constrained.ReserveNativeAsync(identity, 6000, TestContext.Current.CancellationToken);
-            await Assert.ThrowsAsync<StorageBudgetException>(() => constrained.ReserveNativeAsync(identity, 8000, TestContext.Current.CancellationToken));
-            await constrained.WriteAsync(fixture.UserId, "account", new string('x', 1000), TestContext.Current.CancellationToken);
-        }
-        using var restarted = new FileStateStore(fixture.DirectoryPath, 10000);
-        await Assert.ThrowsAsync<StorageBudgetException>(() => restarted.WriteAsync(fixture.UserId, "outbox", new string('x', 3000), TestContext.Current.CancellationToken));
-        await restarted.WriteAsync(fixture.UserId, "outbox", new string('x', 1000), TestContext.Current.CancellationToken);
-    }
     [Fact]
     public async Task ConcurrentUpdatesPreserveEveryIncrement()
     {

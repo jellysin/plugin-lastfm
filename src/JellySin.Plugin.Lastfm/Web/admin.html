@@ -8,9 +8,6 @@
     <h2>Server settings</h2>
     <form id="jellysin-settings">
       <div class="checkboxContainer"><label><input id="jellysin-enabled" is="emby-checkbox" type="checkbox"><span>Enable JellySin Last.fm</span></label></div>
-      <div class="checkboxContainer"><label><input id="jellysin-metadata" is="emby-checkbox" type="checkbox"><span>Enable public Last.fm metadata</span></label></div>
-      <div class="checkboxContainer"><label><input id="jellysin-similarity" is="emby-checkbox" type="checkbox"><span>Enable public music similarity</span></label></div>
-      <p>Library provider settings and existing metadata locks also apply. Similarity uses public music data.</p>
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
       <p id="jellysin-settings-status" role="status" aria-live="polite"></p>
     </form>
@@ -87,8 +84,6 @@
       try {
         const config = await ApiClient.getPluginConfiguration('2034650d-a290-4a16-b195-89fb44cfb932');
         byId('jellysin-enabled').checked = config.Enabled;
-        byId('jellysin-metadata').checked = config.MetadataEnabled;
-        byId('jellysin-similarity').checked = config.SimilarityEnabled;
       } catch { byId('jellysin-settings-status').textContent = 'Settings could not be loaded.'; }
       try { await loadConnection(await loadApplication()); }
       catch { byId('jellysin-connection-status').textContent = 'The Last.fm connection could not be loaded.'; }
@@ -167,8 +162,6 @@
         const id = '2034650d-a290-4a16-b195-89fb44cfb932';
         const config = await ApiClient.getPluginConfiguration(id);
         config.Enabled = document.getElementById('jellysin-enabled').checked;
-        config.MetadataEnabled = document.getElementById('jellysin-metadata').checked;
-        config.SimilarityEnabled = document.getElementById('jellysin-similarity').checked;
         await ApiClient.updatePluginConfiguration(id, config);
         document.getElementById('jellysin-settings-status').textContent = 'Settings saved.';
       } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be saved.'; }
