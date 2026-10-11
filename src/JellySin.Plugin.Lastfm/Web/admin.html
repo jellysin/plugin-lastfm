@@ -98,21 +98,28 @@
       const control = event.currentTarget;
       control.disabled = true;
       let refusal = 'Last.fm sign-in could not start.';
+      // Set once the page itself refuses after the server answered: the server is told, so that its log shows the click.
+      let reason = '';
       try {
         const start = await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Begin'), contentType: 'application/json', data: JSON.stringify({ ReturnToSettings: true }), dataType: 'json' });
+        reason = 'approval-address';
         const target = new URL(read(start, 'AuthorizationUrl'));
         if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new Error('Unexpected sign-in address.');
+        reason = '';
         // A server that does not know its public address names a return elsewhere; the token from Last.fm must not go there.
         const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
         const expected = new URL(api('Callback'), location.href);
         if (back.origin !== expected.origin || back.pathname !== expected.pathname) {
           refusal += ' The server names ' + back.origin + back.pathname + ' as the return address, but this page expects ' + expected.origin + expected.pathname
             + '. Set the published server address (start option published-server-url) to the address users open, or add the proxy under Networking, Known proxies. Then restart Jellyfin.';
+          reason = 'return-address';
           throw new Error('Unexpected return address.');
         }
         byId('jellysin-connection-status').textContent = 'Opening Last.fm…';
         location.assign(target.href);
-      } catch {
+      } catch (error) {
+        if (reason) await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Refusal'), contentType: 'application/json', data: JSON.stringify({ Reason: reason }) }).catch(function () {});
+        else if (typeof error?.status === 'number') refusal += ' The server refused the request (HTTP ' + error.status + '); the server log names the reason.';
         byId('jellysin-connection-status').textContent = refusal;
         control.disabled = false;
       }

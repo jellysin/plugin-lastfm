@@ -19,7 +19,24 @@ public sealed record LinkedAccount(string Username, string SessionKey, bool Need
 public sealed record AccountStatus(bool Connected, string? Username, bool NeedsReconnect, bool ScrobblingEnabled, bool ApprovalPending = false);
 public sealed record CaptureBinding(Guid AccountGeneration, Guid CaptureGeneration);
 
-public sealed record ConnectionApproval(bool Accepted, bool ReturnToSettings);
+/// <summary>The outcome of a return from Last.fm. The refusal is a fixed phrase for the log; the user is known once the cookie could be read.</summary>
+public sealed record ConnectionApproval(bool Accepted, bool ReturnToSettings, string? Refusal = null, Guid? UserId = null);
+
+/// <summary>Which check refused a return from Last.fm. Fixed phrases: nothing the browser sent is part of them.</summary>
+public static class ApprovalRefusal
+{
+    public const string NoCookie = "the browser sent no cookie of an attempt";
+    public const string UnreadableCookie = "the cookie of the attempt cannot be read";
+    public const string OtherAttempt = "the return names another attempt than the cookie";
+    public const string NoToken = "the return carries no usable token";
+    public const string NoAccess = "the account may not use the plugin";
+    public const string NotOpen = "no attempt of this account is open since the server started";
+    public const string Replaced = "the attempt is not the one that is open";
+    public const string Expired = "the attempt has expired";
+    public const string AccountChanged = "the connection of the account changed after the attempt began";
+    public const string Used = "the attempt was returned before";
+    public const string NotStored = "the approval could not be stored";
+}
 
 public sealed record ConnectionAttempt(string AuthorizationUrl, DateTimeOffset ExpiresAt, string BrowserBinding)
 {
@@ -106,24 +123,29 @@ public sealed class AccountService(
     /// </summary>
     public async Task<ConnectionApproval> ApproveAsync(string? binding, string? attempt, string? token, CancellationToken cancellationToken)
     {
-        if (ReadBinding(binding) is not { } bound) return new ConnectionApproval(false, false);
-        var refused = new ConnectionApproval(false, bound.ReturnToSettings);
-        if (!Guid.TryParseExact(attempt, "N", out var named) || named != bound.AttemptId || !IsToken(token)) return refused;
-        if (!HasHostAccess(bound.UserId) || !_operations.TryGetValue(bound.UserId, out var operation)) return refused;
+        if (string.IsNullOrEmpty(binding)) return new ConnectionApproval(false, false, ApprovalRefusal.NoCookie);
+        if (ReadBinding(binding) is not { } bound) return new ConnectionApproval(false, false, ApprovalRefusal.UnreadableCookie);
+        ConnectionApproval Refused(string refusal) => new(false, bound.ReturnToSettings, refusal, bound.UserId);
+        if (!Guid.TryParseExact(attempt, "N", out var named) || named != bound.AttemptId) return Refused(ApprovalRefusal.OtherAttempt);
+        if (!IsToken(token)) return Refused(ApprovalRefusal.NoToken);
+        if (!HasHostAccess(bound.UserId)) return Refused(ApprovalRefusal.NoAccess);
+        if (!_operations.TryGetValue(bound.UserId, out var operation)) return Refused(ApprovalRefusal.NotOpen);
         var authorization = operation.Authorization;
         try
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, authorization.Token);
             using var lease = await _connectionGates.AcquireAsync(bound.UserId, linked.Token).ConfigureAwait(false);
             var pending = await store.ReadAsync<StoredAttempt>(bound.UserId, "attempt", linked.Token).ConfigureAwait(false);
-            if (pending is null || pending.Id != bound.AttemptId || pending.ExpiresAt <= clock.GetUtcNow()
-                || pending.Revision != authorization.Id || !string.IsNullOrEmpty(pending.ProtectedToken)) return refused;
+            if (pending is null || pending.Id != bound.AttemptId) return Refused(ApprovalRefusal.Replaced);
+            if (pending.ExpiresAt <= clock.GetUtcNow()) return Refused(ApprovalRefusal.Expired);
+            if (pending.Revision != authorization.Id) return Refused(ApprovalRefusal.AccountChanged);
+            if (!string.IsNullOrEmpty(pending.ProtectedToken)) return Refused(ApprovalRefusal.Used);
             await store.WriteAsync(bound.UserId, "attempt", pending with { ProtectedToken = _protector.Protect(token!) }, linked.Token).ConfigureAwait(false);
-            return new ConnectionApproval(true, bound.ReturnToSettings);
+            return new ConnectionApproval(true, bound.ReturnToSettings, null, bound.UserId);
         }
         catch (Exception error) when (error is JsonException or IOException || error is OperationCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            return refused;
+            return Refused(ApprovalRefusal.NotStored);
         }
     }
 

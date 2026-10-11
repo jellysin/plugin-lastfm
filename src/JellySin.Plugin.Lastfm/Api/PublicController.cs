@@ -11,7 +11,7 @@ namespace JellySin.Plugin.Lastfm.Api;
 [AllowAnonymous]
 [TypeFilter(typeof(ApiExceptionFilter))]
 [Route("JellySin/Lastfm")]
-public sealed class PublicController(IServerApplicationHost host, IQuickConnect quickConnect, QuickConnectLimiter limiter) : ControllerBase
+public sealed class PublicController(IServerApplicationHost host, IQuickConnect quickConnect, QuickConnectLimiter limiter, ServerAddress server) : ControllerBase
 {
     private static readonly HashSet<string> Assets = new(StringComparer.Ordinal)
     {
@@ -47,7 +47,7 @@ public sealed class PublicController(IServerApplicationHost host, IQuickConnect 
     public IActionResult QuickConnectStatus(QuickConnectInput input)
     {
         SecurityHeaders();
-        if (!RequestOrigin.IsAllowed(Request)) return StatusCode(403);
+        if (!RequestOrigin.IsAllowed(Request, server)) return StatusCode(403);
         if (!limiter.TryAcquire())
         {
             Response.Headers.RetryAfter = "1";

@@ -6,6 +6,7 @@ using MediaBrowser.Controller.QuickConnect;
 using MediaBrowser.Model.QuickConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
@@ -90,6 +91,20 @@ public sealed class PublicSurfaceTests
         quick.Verify(value => value.CheckRequestStatus(It.IsAny<string>()), Times.Never);
     }
 
+    // The sign-in page at the published address polls this while the server, behind a proxy that ends TLS, sees plain HTTP.
+    [Theory]
+    [InlineData("https://media.example", 404)]
+    [InlineData(null, 403)]
+    [InlineData("https://other.example", 403)]
+    public void QuickConnectAnswersThePageAtThePublishedAddress(string? published, int expected)
+    {
+        var (controller, _) = Create(published: published);
+        controller.Request.Scheme = "http";
+        controller.Request.Host = new HostString("jellyfin-internal:8096");
+        controller.Request.Headers.Origin = "https://media.example";
+        Assert.Equal(expected, Assert.IsAssignableFrom<IStatusCodeActionResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value"))).StatusCode);
+    }
+
     [Fact]
     public void QuickConnectRateGateIsGlobalAndRecoversAfterWindow()
     {
@@ -102,12 +117,12 @@ public sealed class PublicSurfaceTests
         Assert.IsType<NotFoundResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value")));
     }
 
-    private static (PublicController Controller, Mock<IQuickConnect> Quick) Create(TimeProvider? clock = null)
+    private static (PublicController Controller, Mock<IQuickConnect> Quick) Create(TimeProvider? clock = null, string? published = null)
     {
         var host = new Mock<IServerApplicationHost>();
         host.SetupGet(value => value.SystemId).Returns("test-server");
         var quick = new Mock<IQuickConnect>();
-        var controller = new PublicController(host.Object, quick.Object, new QuickConnectLimiter(clock ?? TimeProvider.System))
+        var controller = new PublicController(host.Object, quick.Object, new QuickConnectLimiter(clock ?? TimeProvider.System), new ServerAddress(published))
         { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
         controller.Request.Scheme = "https";
         controller.Request.Host = new HostString("jellyfin.example");

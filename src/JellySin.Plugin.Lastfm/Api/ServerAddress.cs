@@ -34,6 +34,26 @@ public sealed class ServerAddress
     public bool IsHttps(HttpRequest request)
         => published is null ? request.IsHttps : published.StartsWith("https://", StringComparison.Ordinal);
 
+    /// <summary>
+    /// Whether a page with this origin is one of this server's own: at the published address, or at the address this
+    /// request itself names. Behind a proxy that ends TLS the two differ in their scheme, and the browser names the first.
+    /// </summary>
+    public bool Serves(HttpRequest request, Uri origin)
+        => string.Equals(origin.GetLeftPart(UriPartial.Authority), published, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(origin.Authority, request.Host.Value, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(origin.Scheme, request.Scheme, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Where the page that sent this request stands, for the log: a fixed phrase, never a value the browser sent.</summary>
+    public string PageAddress(HttpRequest request)
+    {
+        if (published is null) return unusable ? "the published server address cannot be used" : "no published server address is set";
+        var named = request.Headers.Origin.ToString();
+        if (named.Length == 0) return "the request names no page";
+        return Uri.TryCreate(named, UriKind.Absolute, out var origin)
+            && string.Equals(origin.GetLeftPart(UriPartial.Authority), published, StringComparison.OrdinalIgnoreCase)
+            ? "the page is at the published server address" : "the page is not at the published server address";
+    }
+
     /// <summary>The scheme, host and port of this server, without a trailing slash.</summary>
     public string Origin(HttpRequest request)
     {

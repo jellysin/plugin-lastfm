@@ -117,6 +117,7 @@ for (const prefix of ['', '/jellyfin']) {
     await expect(page.getByRole('button', { name: 'Reconnect Last.fm', exact: true })).toBeVisible();
     expect(page.url()).toBe(`http://127.0.0.1:4177${prefix}/JellySin/Lastfm/`);
     expect(state.lastfm).toHaveLength(1);
+    expect(told(state)).toHaveLength(0);
     const visit = new URL(state.lastfm[0]);
     expect([...visit.searchParams.keys()]).toEqual(['api_key', 'cb']);
     expect(visit.searchParams.get('cb')).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:4177${prefix}/JellySin/Lastfm/Callback\\?attempt=[0-9a-f]{32}$`));
@@ -157,6 +158,7 @@ test('an approval that Last.fm then refuses is reported and not repeated', async
 });
 
 const back = path => `cb=${encodeURIComponent(`${path}?attempt=1`)}`;
+const told = state => state.requests.filter(request => request.path === '/JellySin/Lastfm/Me/Connection/Refusal').map(({ method, body }) => ({ method, body }));
 const home = back('http://127.0.0.1:4177/JellySin/Lastfm/Callback');
 const notStarted = 'Last.fm sign-in could not start.';
 const askAdministrator = `${notStarted} Ask the administrator of this server to check the server address setting.`;
@@ -168,6 +170,7 @@ const refusedAddresses = [
   ['another host', `https://last.fm.attacker.example/api/auth/?api_key=fixture&${home}`],
   ['an unencrypted address', `http://www.last.fm/api/auth/?api_key=fixture&${home}`],
   ['another page of Last.fm', `https://www.last.fm/user/someone?api_key=fixture&${home}`],
+  ['something that is no address', 'no address at all'],
   ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://attacker.example/JellySin/Lastfm/Callback')}`, 'https://attacker.example/JellySin/Lastfm/Callback'],
   ['a return over another scheme', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://127.0.0.1:4177/JellySin/Lastfm/Callback')}`, 'https://127.0.0.1:4177/JellySin/Lastfm/Callback'],
   ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/JellySin/Lastfm/')}`, 'http://127.0.0.1:4177/JellySin/Lastfm/'],
@@ -186,9 +189,22 @@ for (const [reason, address, named] of refusedAddresses) {
       await expect(page.locator('#status')).toHaveAttribute('role', 'alert');
       expect(page.url()).toBe('http://127.0.0.1:4177/JellySin/Lastfm/');
       expect(state.lastfm).toHaveLength(0);
+      // The server is told once, by a name from a fixed set, so that its log shows a click the page refused.
+      expect(told(state)).toEqual([{ method: 'POST', body: { reason: named ? 'return-address' : 'approval-address' } }]);
     });
   }
 }
+
+test('the page shows its refusal also when the server does not take the note of it', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = false;
+  state.authorizationUrl = refusedAddresses[0][1];
+  state.refusalFails = true;
+  await passwordLogin(page);
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await expect(page.locator('#status')).toHaveText(notStarted);
+  expect(told(state)).toHaveLength(1);
+});
 
 test('administrators open native Jellyfin settings from the user page', async ({ page }) => {
   await installServer(page, { administrator: true });
@@ -261,18 +277,22 @@ async function openSettings(page, options = {}) {
   const setup = { source: 'Project', connection: {}, server: '', hash: '#/configurationpage?name=jellysin-lastfm', authorizationUrl: 'https://www.last.fm/api/auth/?api_key=fixture&cb=http%3A%2F%2F127.0.0.1%3A4177%2Fjellyfin%2FJellySin%2FLastfm%2FCallback%3Fattempt%3D1', ...options };
   await page.addInitScript(input => {
     const config = { Enabled: true, MetadataEnabled: false, SimilarityEnabled: false, HostSetting: 'preserved' };
-    const state = { calls: [], application: { Configured: input.source !== 'None', Source: input.source },
+    // The calls outlive a visit to Last.fm in the same tab, so that a test can read what the page sent before it left.
+    const state = { calls: JSON.parse(sessionStorage.getItem('fixture-calls') ?? '[]'), application: { Configured: input.source !== 'None', Source: input.source },
       connection: { Connected: false, Username: null, NeedsReconnect: false, ScrobblingEnabled: true, ApprovalPending: false, ...input.connection } };
     globalThis.fixture = state;
     const answer = (path, type, data) => {
       if (path === 'Admin/Application' && type === 'GET') return state.application;
       if (path === 'Admin/Application') { state.application = { Configured: true, Source: type === 'PUT' ? 'Override' : 'Project' }; return undefined; }
       if (path === 'Me') return { UserName: 'administrator', IsAdministrator: true, Connection: state.connection };
+      if (path === 'Me/Connection/Begin' && input.beginStatus) throw new Response(null, { status: input.beginStatus });
       if (path === 'Me/Connection/Begin' && data?.ReturnToSettings === true) return { AuthorizationUrl: input.authorizationUrl, ExpiresAt: '2026-09-08T15:10:00Z' };
       if (path === 'Me/Connection/Finish' && state.connection.ApprovalPending && !input.finishFails) {
         state.connection = { ...state.connection, Connected: true, Username: 'Listener', ApprovalPending: false };
         return state.connection;
       }
+      if (path === 'Me/Connection/Refusal' && type === 'POST' && input.refusalStatus) throw new Response(null, { status: input.refusalStatus });
+      if (path === 'Me/Connection/Refusal' && type === 'POST') return undefined;
       throw new Error('No fixture response');
     };
     globalThis.ApiClient = {
@@ -283,6 +303,7 @@ async function openSettings(page, options = {}) {
         const path = request.url.split('/JellySin/Lastfm/')[1];
         const data = request.data ? JSON.parse(request.data) : null;
         state.calls.push({ type: request.type, path, data });
+        sessionStorage.setItem('fixture-calls', JSON.stringify(state.calls));
         return answer(path, request.type, data);
       },
     };
@@ -344,7 +365,9 @@ test('the administrator connects the own account with one button on the settings
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
   await page.waitForURL('https://www.last.fm/api/auth/?api_key=fixture&cb=**');
   await page.goBack();
+  expect(await calls(page, 'Me/Connection/Begin')).toHaveLength(1);
   expect(await calls(page, 'Me/Connection/Finish')).toHaveLength(0);
+  expect(await calls(page, 'Me/Connection/Refusal')).toHaveLength(0);
 });
 
 test('the settings page finishes an approved sign-in by itself after the return', async ({ page }) => {
@@ -374,6 +397,7 @@ for (const [reason, address, named] of [
   ['another host', `https://last.fm.attacker.example/api/auth/?api_key=fixture&${settingsHome}`],
   ['an unencrypted address', `http://www.last.fm/api/auth/?api_key=fixture&${settingsHome}`],
   ['another page of Last.fm', `https://www.last.fm/user/someone?api_key=fixture&${settingsHome}`],
+  ['something that is no address', 'no address at all'],
   ['a return to another server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://10.0.0.5:8096/jellyfin/JellySin/Lastfm/Callback')}`, 'http://10.0.0.5:8096/jellyfin/JellySin/Lastfm/Callback'],
   ['a return over another scheme', `https://www.last.fm/api/auth/?api_key=fixture&${back('https://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback')}`, 'https://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback'],
   ['a return to another page of this server', `https://www.last.fm/api/auth/?api_key=fixture&${back('http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/')}`, 'http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/'],
@@ -385,6 +409,26 @@ for (const [reason, address, named] of [
     await expect(page.locator('#jellysin-connection-status')).toHaveText(named ? namedReturn(named, 'http://127.0.0.1:4177/jellyfin/JellySin/Lastfm/Callback') : notStarted);
     await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeEnabled();
     expect(page.url()).toContain('http://127.0.0.1:4177/native');
+    expect(await calls(page, 'Me/Connection/Refusal')).toEqual([{ type: 'POST', path: 'Me/Connection/Refusal', data: { Reason: named ? 'return-address' : 'approval-address' } }]);
+  });
+}
+
+test('the settings page shows its refusal also when the server does not take the note of it', async ({ page }) => {
+  await openSettings(page, { authorizationUrl: 'https://last.fm.attacker.example/api/auth/?api_key=fixture', refusalStatus: 503 });
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await expect(page.locator('#jellysin-connection-status')).toHaveText(notStarted);
+  await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeEnabled();
+  expect(await calls(page, 'Me/Connection/Refusal')).toHaveLength(1);
+});
+
+// The server's own refusal already left a line in its log; the page names the status and sends no second note.
+for (const status of [403, 400]) {
+  test(`the settings page names HTTP ${status} when the server refuses the start`, async ({ page }) => {
+    await openSettings(page, { beginStatus: status });
+    await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+    await expect(page.locator('#jellysin-connection-status')).toHaveText(`${notStarted} The server refused the request (HTTP ${status}); the server log names the reason.`);
+    await expect(page.getByRole('button', { name: 'Connect Last.fm', exact: true })).toBeEnabled();
+    expect(await calls(page, 'Me/Connection/Refusal')).toHaveLength(0);
   });
 }
 
