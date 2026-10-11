@@ -142,6 +142,25 @@ public sealed class LibraryTests
     }
 
     [Fact]
+    public void AlbumIdentifierMatchSurvivesAnotherAlbumArtistSpelling()
+    {
+        // Jellyfin 12.2 names album artists after the MusicBrainz credit, so the library and Last.fm can spell one artist differently.
+        var user = new User("Listener", "provider", "reset");
+        var id = Guid.NewGuid().ToString();
+        var album = new MusicAlbum { Id = Guid.NewGuid(), Name = "Album", AlbumArtists = ["Artist, The"] };
+        album.ProviderIds["MusicBrainzAlbum"] = id;
+        var manager = new Mock<ILibraryManager>();
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        manager.Setup(l => l.GetItemList(It.IsAny<InternalItemsQuery>()))
+            .Returns<InternalItemsQuery>(q => q.HasAnyProviderId is null || q.HasAnyProviderId["MusicBrainzAlbum"] == id ? [album] : []);
+        var library = new MusicLibrary(manager.Object, users.Object, Mock.Of<IUserDataManager>());
+        Assert.Equal(album.Id, library.MatchEntity(user.Id, new("album", "Album", "The Artist", null, id), Ct).ItemId);
+        Assert.Null(library.MatchEntity(user.Id, new("album", "Album", "The Artist", null, null), Ct).ItemId);
+        Assert.Null(library.MatchEntity(user.Id, new("album", "Album", "Artist, The", null, Guid.NewGuid().ToString()), Ct).ItemId);
+    }
+
+    [Fact]
     public void ConflictingMusicBrainzIdentifiersNeverFallBackToTheSameTitle()
     {
         var user = new User("Listener", "provider", "reset");

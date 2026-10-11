@@ -28,6 +28,16 @@ from smoke import (  # noqa: E402
     wait_music,
 )
 
+from native_library import (  # noqa: E402
+    FIXTURES,
+    LIBRARY,
+    limited_owner_checks,
+    match_checks,
+    match_fixtures,
+    other_account,
+    wait_scan,
+)
+
 PROBE = "/JellySin/NativeProbe"
 
 
@@ -48,10 +58,11 @@ def fixture_item(admin: Client, user: dict) -> dict:
     plugin_settings(
         admin, Enabled=False, MetadataEnabled=False, SimilarityEnabled=False
     )
-    for name in ("Public", "Hidden"):
+    for name in ("Public", "Hidden", LIBRARY):
         add_library(admin, name)
     admin.request("/Library/Refresh", "POST", expected=204)
-    items = wait_music(admin)
+    items = wait_music(admin, 3 + len(FIXTURES))
+    wait_scan(admin)
     item = next(entry for entry in items if "Public" in entry["name"])
     return {"UserId": user["id"], "ItemId": item["id"]}
 
@@ -184,19 +195,7 @@ def playlist_fixture(admin: Client, user: dict) -> tuple[dict, Client]:
         == [item["id"] for item in repeated_playlists],
         "Repeated preparation created another native playlist.",
     )
-    password = secrets.token_urlsafe(24)
-    other = admin.request(
-        "/Users/New",
-        "POST",
-        {"Name": "JellySin Probe Other " + uuid.uuid4().hex[:8], "Password": password},
-    )
-    require(
-        not other["policy"]["isadministrator"],
-        "The other fixture user unexpectedly has administrator access.",
-    )
-    viewer = Client(admin.origin)
-    viewer.authenticate(other["name"], password)
-    return prepared, viewer
+    return prepared, other_account(admin)
 
 
 def playlist_checks(
@@ -305,6 +304,7 @@ def playlist_checks(
 
 def run(host: DockerHost) -> dict:
     fixture_music(host.fixture_directory / "Public", "JellySin Extra Fixture")
+    match_fixtures(host.fixture_directory)
     host.start()
     admin = Client(host.origin)
     listener, user = fixture_accounts(admin)
@@ -321,12 +321,14 @@ def run(host: DockerHost) -> dict:
         "The actual Jellyfin host did not inject CoordinatedUserData.",
     )
     item = fixture_item(admin, user)
+    library = match_checks(admin, user)
     history = history_checks(admin, listener, item)
     (ROOT / "build" / "native-probe-history.json").write_text(
         json.dumps(history, indent=2), encoding="utf-8"
     )
     favourites = favourite_checks(admin, listener, item)
     playlist = playlist_checks(host, admin, listener, user)
+    limited = limited_owner_checks(host.version, admin, listener, user)
     delivery = listener.request("/JellySin/Lastfm/Me/Delivery")
     require(
         delivery["pending"] == 0,
@@ -337,6 +339,8 @@ def run(host: DockerHost) -> dict:
         "history": history,
         "favourites": favourites,
         "playlist": playlist,
+        "library_matching": library,
+        "parental_limit_playlist": limited,
         "no_lastfm_deliveries": True,
     }
 
@@ -373,6 +377,9 @@ def main() -> int:
         validate(result)
         print(
             "PASS: native DI, stale import protection, intentional resets, favourite revisions and interrupted playlist recovery."
+        )
+        print(
+            "PASS: library matching and generated playlist visibility under a parental limit."
         )
         return 0
     except SmokeFailure:
