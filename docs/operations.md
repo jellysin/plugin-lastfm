@@ -48,6 +48,46 @@ Last.fm session keys are protected on the server and are not returned to the
 browser. Jellyfin sign-in remains subject to Jellyfin's own permissions. The
 dashboard does not bypass music-library access restrictions.
 
+## A link in Jellyfin's menu
+
+Jellyfin's web interface lists a plugin's pages for administrators only. An
+administrator can give every user a link to the dashboard through the
+`menuLinks` list in the web interface's `config.json`:
+
+```json
+"menuLinks": [
+  {
+    "name": "Last.fm",
+    "icon": "music_note",
+    "url": "/JellySin/Lastfm/"
+  }
+]
+```
+
+- `url` is the path of the dashboard on the server and starts with Jellyfin's
+  base path when one is set, for example `/jellyfin/JellySin/Lastfm/`.
+- Packages for Debian, Ubuntu, Fedora and CentOS keep the file at
+  `/usr/share/jellyfin/web/config.json`. Jellyfin's documentation states that
+  the Debian packages register it as a configuration file, so `apt` handles a
+  changed file on upgrade. After an update of the web interface, check that the
+  entry is still there.
+- The container image holds the file at `/jellyfin/jellyfin-web/config.json`.
+  A change made inside the container is gone with the next image. Mount a copy
+  instead: `--volume /path/to/web-config.json:/jellyfin/jellyfin-web/config.json`.
+  The copy must exist as a file before the first start and replaces the whole
+  default file, so start from the file of the image in use and compare it with
+  the new default after an update.
+- The link opens the dashboard in a new tab. The dashboard keeps its own
+  sign-in with Jellyfin credentials or Quick Connect.
+
+Checked on 2026-10-11 with the Jellyfin 12.2.0 container image under the base
+path `/jellyfin`, for an administrator and for an ordinary user: the link
+appears in the top bar of a wide window and in the side menu of a narrow one,
+and opens the dashboard. Package installations and other clients than the web
+interface were not checked; the file locations are those of
+[Jellyfin's documentation](https://jellyfin.org/docs/general/clients/web-config/),
+read on the same day.
+
 ## Stored data
 
 The plugin stores state under `jellysin-lastfm/state` and its protection key ring
