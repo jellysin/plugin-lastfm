@@ -5,10 +5,6 @@ namespace JellySin.Plugin.Lastfm.Configuration;
 public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public bool Enabled { get; set; } = true;
-
-    public bool MetadataEnabled { get; set; } = true;
-
-    public bool SimilarityEnabled { get; set; } = true;
 }
 
 public sealed record ApplicationCredentials(string ApiKey, string Secret)

@@ -10,17 +10,17 @@ album, track, user, tag, chart, geo, library and authentication families.
 | --- | --- |
 | Listening | [`track.scrobble`](https://www.last.fm/api/show/track.scrobble), `track.updateNowPlaying`; signed writes, at most 50 scrobbles per batch and individual acknowledgement results |
 | Favourites | [`track.love`](https://www.last.fm/api/show/track.love), `track.unlove`, `user.getLovedTracks`; paginated snapshots, no atomic two-way synchronization or deletion feed |
-| Metadata | [`artist.getInfo`](https://www.last.fm/api/show/artist.getInfo), [`album.getInfo`](https://www.last.fm/api/show/album.getInfo), [`track.getInfo`](https://www.last.fm/api/show/track.getInfo); optional identifiers, bios/descriptions, track lists, links and popularity |
-| Community tags | `artist/album/track.getTopTags`, `tag.getInfo`; tags are community labels rather than a controlled genre classification |
 | History | [`user.getRecentTracks`](https://www.last.fm/api/show/user.getRecentTracks); paginated UTC windows, up to 200 entries per page, with a now-playing entry that is not a completed listen |
 | Listening charts | [`user.getTopTracks`](https://www.last.fm/api/show/user.getTopTracks), `user.getTopArtists`, `user.getTopAlbums`, weekly-chart families; fixed supported periods, not arbitrary private listening reports |
 | Similarity | [`track.getSimilar`](https://www.last.fm/api/show/track.getSimilar), `artist.getSimilar`; similarity seeds can resolve to local accessible items or external catalog links |
 | Broader discovery | Artist top tracks/albums, tag charts, global charts and [`geo.getTopTracks`](https://www.last.fm/api/show/geo.getTopTracks); discovery is assembled from documented public methods |
 
-The API also exposes search/corrections, personal tags, user profiles/friends and
-library artist listings. Those capabilities are documented future extension points;
-this release does not add personal tag editing, friend synchronization or a global
-search takeover. No private Last.fm endpoints are scraped.
+The API also exposes artist, album and track descriptions
+([`artist.getInfo`](https://www.last.fm/api/show/artist.getInfo) and its album and track
+counterparts), community tags, search/corrections, personal tags, user profiles/friends
+and library artist listings. This release uses none of them: it writes no Last.fm
+descriptions or tags into the Jellyfin library and adds no personal tag editing, friend
+synchronization or global search takeover. No private Last.fm endpoints are scraped.
 
 ## Authentication
 

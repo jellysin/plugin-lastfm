@@ -287,11 +287,25 @@ def check_plugin(client: Client) -> None:
     require(bootstrap["basepath"] == client.base_path, "The plugin does not report Jellyfin's configured base path.")
     page, _, _ = client.request("/web/configurationpage?name=jellysin-lastfm", raw=True)
     require(b"JellySin" in page, "The plugin's administrator configuration page is missing.")
-    options = client.request("/Libraries/AvailableOptions?libraryContentType=music")["typeoptions"]
-    for kind in ("Audio", "MusicAlbum", "MusicArtist"):
-        providers = next(item["similaritemproviders"] for item in options if item["type"] == kind)
-        require(any(item["name"] == "JellySin Last.fm" and not item["defaultenabled"] for item in providers),
-                "The native library picker must expose Last.fm as an opt-in similarity provider for " + kind + ".")
+    check_library_options(client.request("/Libraries/AvailableOptions?libraryContentType=music"))
+
+
+def own_entries(answer: Any) -> list[str]:
+    """Names in an answer of Jellyfin that belong to this plugin, at any depth."""
+    if isinstance(answer, list):
+        return [name for value in answer for name in own_entries(value)]
+    if not isinstance(answer, dict):
+        return []
+    name = answer.get("name")
+    own = [name] if isinstance(name, str) and ("jellysin" in name.lower() or "last.fm" in name.lower()) else []
+    return own + [name for value in answer.values() for name in own_entries(value)]
+
+
+def check_library_options(options: dict[str, Any]) -> None:
+    kinds = {item.get("type") for item in options.get("typeoptions", [])}
+    require({"Audio", "MusicAlbum", "MusicArtist"} <= kinds, "Jellyfin did not list the options of a music library.")
+    found = own_entries(options)
+    require(not found, "The plugin must offer nothing in the options of a library, found: " + ", ".join(found) + ".")
 
 
 def unfollowed(client: Client, path: str) -> tuple[int, dict[str, str]]:
@@ -430,12 +444,12 @@ def wait_music(admin: Client, count: int = 2) -> list[dict[str, Any]]:
 
 
 def check_library(admin: Client, listener: Client, user: dict[str, Any]) -> str:
-    plugin_settings(admin, Enabled=False, MetadataEnabled=False, SimilarityEnabled=False)
+    plugin_settings(admin, Enabled=False)
     for name in ("Public", "Hidden"):
         add_library(admin, name)
     admin.request("/Library/Refresh", "POST", expected=204)
     tracks = wait_music(admin)
-    plugin_settings(admin, Enabled=True, MetadataEnabled=False, SimilarityEnabled=False)
+    plugin_settings(admin, Enabled=True)
     require(any("Public" in item["name"] for item in tracks), "The embedded fixture title was not scanned.")
     folders = admin.request("/Library/VirtualFolders")
     public = next(folder["itemid"] for folder in folders if folder["name"] == "Smoke Public")
@@ -451,7 +465,7 @@ def check_library(admin: Client, listener: Client, user: dict[str, Any]) -> str:
 
 
 def check_disabled_playback(admin: Client, listener: Client, track: str) -> None:
-    plugin_settings(admin, Enabled=False, MetadataEnabled=False, SimilarityEnabled=False)
+    plugin_settings(admin, Enabled=False)
     playing = {"ItemId": track, "PositionTicks": 0, "IsPaused": False, "PlayMethod": "DirectPlay", "CanSeek": True,
                "PlaySessionId": uuid.uuid4().hex, "MediaSourceId": track}
     listener.request("/Sessions/Playing", "POST", playing, 204)
@@ -459,7 +473,7 @@ def check_disabled_playback(admin: Client, listener: Client, track: str) -> None
     listener.request("/Sessions/Playing/Stopped", "POST", {**playing, "PositionTicks": 650_000_000}, 204)
     delivery = listener.request(PREFIX + "/Me/Delivery")
     require(delivery["pending"] == 0 and delivery["failedwrites"] == 0, "Disabled playback unexpectedly queued or failed a scrobble.")
-    plugin_settings(admin, Enabled=True, MetadataEnabled=False, SimilarityEnabled=False)
+    plugin_settings(admin, Enabled=True)
 
 
 @contextlib.contextmanager
@@ -512,11 +526,13 @@ def check_base_path(host: DockerHost, admin: Client, listener: Client, expect_co
     configuration = json.loads(admin.request("/System/Configuration/network", raw=True)[0])
     configuration["BaseUrl"] = "/jellyfin"
     admin.request("/System/Configuration/network", "POST", configuration, 204)
+    plugin_settings(admin, Enabled=False)
     host.restart("/jellyfin")
     admin.origin = listener.origin = host.origin
     admin.base_path = listener.base_path = "/jellyfin"
+    require(not admin.request("/Plugins/" + PLUGIN_ID + "/Configuration")["enabled"], "Settings were lost after restart.")
+    plugin_settings(admin, Enabled=True)
     check_plugin(admin)
-    require(not admin.request("/Plugins/" + PLUGIN_ID + "/Configuration")["metadataenabled"], "Settings were lost after restart.")
     require(not listener.request(PREFIX + "/Me/Favourites")["enabled"], "Private preference was lost after restart.")
     check_sign_in_address(admin, listener, host.published, expect_configured)
     with reverse_proxy(host.origin) as origin:

@@ -14,7 +14,6 @@ plugin identity. The plugin is in development; no published release is available
   previewed import raises local aggregate play counts and last-played dates.
 - Discovery of playable music already in your library and off-library tracks,
   artists and albums linked to Last.fm.
-- Native artist/track similarity and optional music metadata/community tags.
 - Private Jellyfin playlists from loved tracks, charts, similarity and discovery,
   with saved recipes and optional daily refresh.
 

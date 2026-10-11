@@ -110,8 +110,7 @@ when moving the server. Losing the key ring requires reconnecting accounts.
 Server administrators can access host files and remain trusted.
 
 The state store has an 80 MB aggregate accounting budget, an 8 MB document limit
-and bounded document counts. The budget includes conservative reservations for
-metadata copies passed to Jellyfin's database/NFO storage. Disposable cache entries
+and bounded document counts. Disposable cache entries
 are evicted before durable account or delivery state. Reaching a durable limit
 reports a failure rather than silently discarding unsent listens. This accounting
 does not measure administrator backups or exports, establish Last.fm's allowance
@@ -170,14 +169,13 @@ update appears in the page for review. Cancelling it pauses daily refresh and ke
 the possibly partial playlist; subsequent cancellation recovery completes that
 intent instead of resuming the old update.
 
-## Metadata and clients
+## Library and clients
 
-Metadata and native similarity use public, user-independent data. Personal history
-and recommendations use user-scoped state. The plugin does not place one user's
-personal results into Jellyfin's shared similarity cache. Community tags are
-Last.fm tags, not a curated genre taxonomy. Artwork is not downloaded by this plugin.
+The plugin writes no Last.fm metadata, tags or artwork into the Jellyfin library and
+adds no entry to a library's provider settings. Jellyfin's own similar-item rows are
+unchanged. Personal history and recommendations use user-scoped state.
 
 Use the browser dashboard for account management, insights and external discovery.
 Jellyfin's plugin administration page is administrator-only. Native client support
-for playlists and similar-item rows varies; the plugin cannot add a custom music
+for playlists varies; the plugin cannot add a custom music
 home screen to every TV, mobile or third-party client.

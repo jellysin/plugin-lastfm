@@ -26,9 +26,10 @@ so a stale playback snapshot cannot undo an import. Fresh intentional resets rem
 available. The narrow host-registration boundary, fresh-row reads and fail-closed
 behavior are documented in [ADR 0001](adr/0001-native-userdata-coordination.md).
 
-Public metadata and remote similarity are user-independent. Jellyfin's shared
-similarity cache does not include user identity; personalized discovery therefore
-stays in the user-scoped service and generated playlists.
+The plugin offers Jellyfin no metadata, image, external-link or similarity provider,
+so nothing from Last.fm is written into the shared library and a library's provider
+settings gain no entry. Similarity and discovery are answered for one user at a time
+by the plugin's own service and its generated playlists.
 
 ## HTTP surface
 

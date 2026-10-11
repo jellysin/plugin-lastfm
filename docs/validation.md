@@ -75,7 +75,7 @@ retrieval, resumable imports, cache expiration and storage reserves.
 
 ## Server changes after Jellyfin 12.0
 
-Three server changes in Jellyfin 12.1 and 12.2 touch what the plugin relies on.
+Two server changes in Jellyfin 12.1 and 12.2 touch what the plugin relies on.
 
 **Library matching.** Jellyfin 12.2 changed how artists are named and how names are
 looked up. The native fixture scans a library with accented names, a name containing
@@ -101,12 +101,8 @@ block was not run, because it needs Last.fm data. By the code, the plugin looks 
 playlist up as its owner and stops with "unavailable" when the server does not return
 it, without writing to the playlist.
 
-**Similarity cache.** Jellyfin 12.1 writes the similar-items cache through a
-temporary file and an atomic move. In `SimilarItemsManager.cs` at tags `v12.0`,
-`v12.1` and `v12.2` the cache is written only for a provider whose `CacheDuration`
-is not null. The plugin's provider returns null, which a unit test asserts, so the
-server never writes a cache for it and the changed code is not reached. This rests on
-the server source; no run with Last.fm traffic was made on 12.2.
+A third change, the similar-items cache that Jellyfin 12.1 writes through a temporary
+file, does not concern the plugin: it offers the server no similarity provider.
 
 ## Observed on 2026-09-08 with the 12.0 image only
 

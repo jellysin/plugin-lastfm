@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Jellyfin.Database.Implementations.Entities;
 using JellySin.Plugin.Lastfm.Features;
+using JellySin.Plugin.Lastfm.Tests.Core;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
@@ -11,6 +13,32 @@ namespace JellySin.Plugin.Lastfm.Tests.Features;
 public sealed class LibraryTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    [Theory]
+    [InlineData("Song", "Artist", "Album", "song", "artist", "album", true)]
+    [InlineData("Song", "Artist", "Album", "Song (Live)", "Artist", "Album", false)]
+    [InlineData("Song", "Artist", "Album", "Song", "Other", "Album", false)]
+    [InlineData("Song", "Artist", "Album", "Song", "Artist", "Compilation", false)]
+    [InlineData("Song", "Artist", null, "Song", "Artist", "Compilation", true)]
+    public void MatchingDoesNotConfusePerformancesOrArtists(string title, string artist, string? album,
+        string candidateTitle, string candidateArtist, string candidateAlbum, bool expected) =>
+        Assert.Equal(expected, MusicLibrary.MatchesNames(new(artist, title, album), candidateTitle, [candidateArtist], candidateAlbum));
+
+    [Theory]
+    [InlineData("https://www.last.fm/music/A", "https://www.last.fm/music/A")]
+    [InlineData("https://last.fm/music/A", "https://last.fm/music/A")]
+    [InlineData("http://www.last.fm/music/A", null)]
+    [InlineData("https://www.last.fm.evil.test/music/A", null)]
+    [InlineData("https://secret@www.last.fm/music/A", null)]
+    [InlineData("javascript:alert(1)", null)]
+    public async Task LinksAreKeptOnlyForLastfmOverHttpsWithoutCredentials(string url, string? expected)
+    {
+        using var core = new CoreFixture();
+        core.Client.Handler = (_, _, _) => JsonDocument.Parse(JsonSerializer.Serialize(
+            new { similarartists = new { artist = new[] { new { name = "Other", url } } } }));
+        var found = await new MusicApi(core.Client, core.Accounts, core.Clock).ArtistDiscoveryAsync("Artist", false, Ct);
+        Assert.Equal(expected, Assert.Single(found).Url);
+    }
 
     [Fact]
     public void MatchingFiltersAccessAndPrefersAnExactIdentifier()
