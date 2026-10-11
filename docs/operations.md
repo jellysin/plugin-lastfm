@@ -41,6 +41,44 @@ and expires after 10 minutes. If the return does not connect, start again:
   option and restart Jellyfin.
 - The button on the settings page is offered only when Jellyfin's web interface
   is served by the same server address. Otherwise connect from the dashboard.
+- Every request that changes something must come from a page of this server:
+  its origin is the published server address, or the scheme and host the
+  request itself arrived with. Behind a proxy that ends TLS without being a
+  known proxy, Jellyfin sees `http` where the browser names `https`; the
+  published address then covers the browser's side. A page anywhere else, the
+  same host under the other scheme and a request the browser marks as sent by
+  another site are answered with HTTP 403. Without a published address and
+  without forwarded headers, a server behind such a proxy refuses its own
+  pages: publish the address or add the proxy under Networking, Known proxies.
+
+### What the server log says about a sign-in
+
+The plugin writes one line at information level for each step, so that a
+sign-in that did not work can be read from the server log alone:
+
+- `Last.fm sign-in begun for user ... from the music dashboard` or `from the
+  settings page`, with the scheme of the return address, the scheme the request
+  reached the server with, and whether the page is at the published server
+  address. `Last.fm sign-in not begun ...` names the reason instead.
+- `The page did not open Last.fm for user ...`: the page compared the answer
+  with its own address and stayed. The line names which comparison failed.
+- `Last.fm return accepted ...` or `Last.fm return refused ...` with the reason,
+  for example that the browser sent no cookie of an attempt, that the attempt
+  has expired or was returned before, or that the return carries no usable
+  token.
+- `Last.fm sign-in finished for user ...: connected` or `not connected`.
+- A warning `Refused <method> <route>: ...` for every changing request the
+  origin rule above turned away, with the same two facts about the address.
+
+A user appears as the first twelve hexadecimal digits of a SHA-256 hash of the
+user's id, never by name or id. No line holds an address, a query string, a
+token, a cookie or a key. Method and scheme are written as fixed words: `POST`,
+`PUT` or `DELETE`, and `http`, `https` or `another scheme`; the text a request
+carries in their place never reaches the log. Returns that carry no known
+attempt come from anyone who can reach the server, so at most 20 of their lines
+are written per minute.
+When the server answers a start with an error, Jellyfin's own error line follows
+the plugin's.
 
 JellySin's project Last.fm application is registered, and its credentials are
 configured in the repository secrets for production builds. Browser authorization,

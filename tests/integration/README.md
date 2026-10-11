@@ -1,4 +1,6 @@
-# Native userdata integration fixture
+# Integration checks on real Jellyfin servers
+
+## Native userdata fixture
 
 `JellySin.NativeProbe` is a separate test-only plugin, with its own GUID and assembly.
 It must never be copied into a production package or a host containing real accounts.
@@ -73,3 +75,46 @@ only the public host contracts at compile time. For the reviewed production
 operations, it resolves the already-registered service type from the injected native
 userdata decorator and invokes fixed method names. It never creates a replacement
 decorator or loads another copy of the production assembly.
+
+## Sign-in behind a proxy that ends TLS
+
+`proxied_sign_in.py` starts the pinned server with a published address
+(`https://jellyfin.test`) and no known proxy, and puts a proxy in front of it that
+ends TLS and passes every request on as plain HTTP with the host name unchanged.
+The server therefore sees `http` where the browser names `https`. A headless
+Chromium then uses the plugin the way a person does:
+
+- at the published address: sign in on the dashboard and select **Connect
+  Last.fm**, save a preference, ask for a Quick Connect code, and select the
+  button on the plugin's settings page in the server's own web interface. The
+  browser must arrive at `https://www.last.fm/api/auth/` with a return address
+  under the published address and hold the host-only secure cookie of the attempt;
+- at a second address, the server's own HTTP port: the dashboard and the settings
+  page must stay where they are, name both addresses to an administrator and send
+  an ordinary user to the administrator.
+
+Last.fm is never contacted: the browser's request for the approval page is
+answered by a stub, and a build without the project application gets a random
+application for the run.
+
+The server log is part of the result. `EXPECTED` in the script names the lines
+each scenario leaves, and the run fails on a missing line and on a line too many.
+After the browser the script sends one write from a foreign origin and one note
+with a made-up reason: the first must leave exactly one warning with its reason,
+the second none. No line may carry an address, an account id, a password or a
+token; users appear as the start of a hash.
+
+```sh
+npx --no-install playwright install chromium
+python tests/integration/proxied_sign_in.py \
+  --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
+  --server newest --report build/proxied-sign-in
+```
+
+It needs Docker, Node with the repository's locked packages and `openssl` for the
+certificate of the run. The report directory receives `result.json`, the writes
+the proxy passed on with their status, the plugin's log lines and a screenshot
+of every failed scenario. `--only <text>` runs the scenarios whose name contains
+the text. The first run of this check, against a build that compared the scheme
+of the page with the scheme the server saw, failed all scenarios at the
+published address with HTTP 403; that defect is what the check guards.

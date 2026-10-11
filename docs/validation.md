@@ -53,6 +53,25 @@ containing the project application passed the same harness on 2026-09-08 with th
 12.0 image only. The harness uses generated silent WAV fixtures and unique
 disposable storage.
 
+A sign-in check in a browser, `tests/integration/proxied_sign_in.py`, was added on
+2026-10-11 after a build installed behind a proxy that ends TLS answered HTTP 403
+to every changing request from the published address: the plugin compared the
+scheme of the page with the scheme the server saw. The smoke harness had not
+found this, because its proxy does not end TLS: page and server both used
+`http`. The check starts
+Jellyfin 12.2.0 with a published HTTPS address and no known proxy behind a proxy
+that ends TLS, and a headless Chromium selects **Connect Last.fm**. Against the
+defective build all scenarios at the published address failed. Against the
+corrected build the local run passed all eight scenarios and the three checks of
+the server log: from the published address the browser reached the address of
+Last.fm's approval page with a return address under the published address, on the
+dashboard and on the settings page, a preference was saved and Quick Connect
+asked for its status; at the server's own HTTP port both pages stayed and named
+both addresses to an administrator. Last.fm's approval page is a stub in this
+check, so it shows no approval and no return from Last.fm. The smoke harness now
+also sends writes with the published address, the request's own address, another
+server, the other scheme and a cross-site mark as their origin.
+
 The separate native integration fixture reproduced and then guarded against a
 stale playback snapshot overwriting an imported count/date. Fresh native resets,
 the actual userdata HTTP endpoint and favourite remove/re-add revisions passed.

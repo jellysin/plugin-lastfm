@@ -192,7 +192,7 @@ public sealed class ConnectionCallbackTests
         var server = new ServerAddress(published, warnings);
         var http = Request("POST", "https", "", "jellyfin.example");
         http.Items[typeof(CallerFilter)] = CallerSecurityTests.Identity(fixture.UserId);
-        var account = new AccountController(fixture.Accounts, server) { ControllerContext = new ControllerContext { HttpContext = http } };
+        var account = new AccountController(fixture.Accounts, server, new LogLines<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = http } };
         await Assert.ThrowsAsync<ArgumentException>(() => account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<ArgumentException>(() => account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
         Assert.False(account.Response.Headers.ContainsKey("Set-Cookie"));
@@ -201,7 +201,7 @@ public sealed class ConnectionCallbackTests
         Assert.Contains("published-server-url", line, StringComparison.Ordinal);
         Assert.DoesNotContain("media.example", line, StringComparison.Ordinal);
         // The anonymous return answers as for any attempt that never began.
-        var returned = new CallbackController(fixture.Accounts, server) { ControllerContext = new ControllerContext { HttpContext = Request("GET", "https", "", "jellyfin.example") } };
+        var returned = new CallbackController(fixture.Accounts, server, new ReturnLogLimiter(fixture.Clock), new LogLines<CallbackController>()) { ControllerContext = new ControllerContext { HttpContext = Request("GET", "https", "", "jellyfin.example") } };
         Assert.Equal("/JellySin/Lastfm/?connection=failed",
             Assert.IsType<LocalRedirectResult>(await returned.Approve("0123456789abcdef0123456789abcdef", Token, TestContext.Current.CancellationToken)).Url);
     }
@@ -213,6 +213,145 @@ public sealed class ConnectionCallbackTests
         _ = new ServerAddress("https://media.example", warnings);
         _ = new ServerAddress(null, warnings);
         Assert.Empty(warnings.Lines);
+    }
+
+    // What an administrator reads after a listener says the button does nothing: one line a step, each with its outcome.
+    [Fact]
+    public async Task EachStepOfASignInLeavesOneLineThatNamesTheOutcomeAndNoSecret()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        var name = Logged.User(fixture.UserId);
+        var steps = new LogLines<AccountController>();
+        var returns = new LogLines<CallbackController>();
+        var account = Account(fixture, "http", "", published: "https://media.example", host: "jellyfin-internal:8096", log: steps);
+        account.Request.Headers.Origin = "https://media.example";
+        var start = await account.Begin(new ConnectionBegin(true), TestContext.Current.CancellationToken);
+        Assert.Equal((LogLevel.Information, $"Last.fm sign-in begun for user {name} from the settings page. The return address uses https; the request reached this server over http; the page is at the published server address."),
+            Assert.Single(steps.Lines));
+        var issued = SetCookieHeaderValue.Parse(Assert.Single(account.Response.Headers.SetCookie)!);
+        var attempt = CoreFixture.AttemptOf(start.AuthorizationUrl);
+        await Callback(fixture, "http", "", issued, "https://media.example", "jellyfin-internal:8096", returns).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.Equal((LogLevel.Information, $"Last.fm return accepted for user {name}; the browser goes back to the settings page."), Assert.Single(returns.Lines));
+        await Callback(fixture, "http", "", issued, "https://media.example", "jellyfin-internal:8096", returns).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.Equal((LogLevel.Information, $"Last.fm return refused for user {name}: the attempt was returned before. The browser goes back to the settings page."), returns.Lines[1]);
+        Assert.True((await account.Finish(TestContext.Current.CancellationToken)).Connected);
+        Assert.Equal((LogLevel.Information, $"Last.fm sign-in finished for user {name}: connected."), steps.Lines[1]);
+        Assert.Equal(2, steps.Lines.Count);
+        Assert.Equal(2, returns.Lines.Count);
+        var written = string.Join('\n', steps.Lines.Concat(returns.Lines).Select(line => line.Text));
+        foreach (var secret in new[] { Token, attempt, issued.Value.Value!, fixture.UserId.ToString("N"), fixture.UserId.ToString(), "api_key", "media.example", "jellyfin-internal", "private-" })
+            Assert.DoesNotContain(secret, written, StringComparison.OrdinalIgnoreCase);
+        Assert.Matches("^[0-9a-f]{12}$", name);
+    }
+
+    [Theory]
+    [InlineData("no application", "no Last.fm application is available")]
+    [InlineData("no address", "the server has no usable return address")]
+    [InlineData("cancelled", "the request was cancelled")]
+    public async Task ASignInThatDoesNotBeginLeavesOneLineWithTheReason(string fault, string reason)
+    {
+        using var fixture = new CoreFixture();
+        if (fault != "no application") await fixture.ConfigureApplicationAsync();
+        var steps = new LogLines<AccountController>();
+        var account = Account(fixture, "http", "", host: fault == "no address" ? "" : "192.168.1.20:8096", log: steps);
+        using var cancelled = new CancellationTokenSource();
+        if (fault == "cancelled") await cancelled.CancelAsync();
+        await Assert.ThrowsAnyAsync<Exception>(() => account.Begin(new ConnectionBegin(false), cancelled.Token));
+        Assert.Equal((LogLevel.Information, $"Last.fm sign-in not begun for user {Logged.User(fixture.UserId)} from the music dashboard: {reason}. The request reached this server over http; no published server address is set."),
+            Assert.Single(steps.Lines));
+        Assert.False(account.Response.Headers.ContainsKey("Set-Cookie"));
+    }
+
+    [Theory]
+    [InlineData("return-address", "the return address the server names is not at the address of the page")]
+    [InlineData("approval-address", "the server named no address of the Last.fm approval page")]
+    public void AClickThePageRefusesLeavesExactlyOneLineWithTheReason(string reason, string phrase)
+    {
+        using var fixture = new CoreFixture();
+        var steps = new LogLines<AccountController>();
+        var account = Account(fixture, "http", "", published: "https://media.example", host: "192.168.1.20:8096", log: steps);
+        account.Request.Headers.Origin = "http://192.168.1.20:8096";
+        Assert.IsType<NoContentResult>(account.Refusal(new ConnectionRefusal(reason)));
+        Assert.Equal((LogLevel.Information, $"The page did not open Last.fm for user {Logged.User(fixture.UserId)}: {phrase}. The request reached this server over http; the page is not at the published server address."),
+            Assert.Single(steps.Lines));
+        var action = typeof(AccountController).GetMethod(nameof(AccountController.Refusal))!;
+        Assert.Contains(action.GetCustomAttributes(false), attribute => attribute is HttpPostAttribute { Template: "Connection/Refusal" });
+    }
+
+    // The scheme is the request's own text; every line of a sign-in gets one of three fixed words for it.
+    [Fact]
+    public async Task ASchemeTheServerDoesNotKnowReachesNoLineOfASignIn()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        const string scheme = "gopher\nLast.fm sign-in finished for user 000000000000: connected";
+        var name = Logged.User(fixture.UserId);
+        var steps = new LogLines<AccountController>();
+        var returns = new LogLines<CallbackController>();
+        var account = Account(fixture, scheme, "", published: "https://media.example", log: steps);
+        await account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
+        Assert.IsType<NoContentResult>(account.Refusal(new ConnectionRefusal("return-address")));
+        await Assert.ThrowsAnyAsync<Exception>(() => Account(fixture, scheme, "", host: "", log: steps).Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
+        await Callback(fixture, scheme, "", null, log: returns).Approve(Guid.NewGuid().ToString("N"), Token, TestContext.Current.CancellationToken);
+        Assert.Equal(
+            [
+                $"Last.fm sign-in begun for user {name} from the music dashboard. The return address uses https; the request reached this server over another scheme; the request names no page.",
+                $"The page did not open Last.fm for user {name}: the return address the server names is not at the address of the page. The request reached this server over another scheme; the request names no page.",
+                $"Last.fm sign-in not begun for user {name} from the music dashboard: the server has no usable return address. The request reached this server over another scheme; no published server address is set.",
+            ],
+            steps.Lines.Select(line => line.Text));
+        Assert.Equal(["Last.fm return refused: the browser sent no cookie of an attempt. The request reached this server over another scheme."], returns.Lines.Select(line => line.Text));
+    }
+
+    // The log gets a phrase the server holds for a name it knows; text from the browser never reaches it.
+    [Theory]
+    [InlineData("")]
+    [InlineData("Return-Address")]
+    [InlineData("return-address ")]
+    [InlineData("return-address\nLast.fm sign-in begun for user 000000000000")]
+    [InlineData("the page made this up")]
+    public void AReasonTheServerDoesNotKnowIsRefusedAndLeavesNoLine(string reason)
+    {
+        using var fixture = new CoreFixture();
+        var steps = new LogLines<AccountController>();
+        Assert.IsType<BadRequestResult>(Account(fixture, "https", "", log: steps).Refusal(new ConnectionRefusal(reason)));
+        Assert.Empty(steps.Lines);
+    }
+
+    [Fact]
+    public async Task AReturnThatNamesNoUserLeavesItsReasonAndTheLinesAreBounded()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        var returns = new LogLines<CallbackController>();
+        var limiter = new ReturnLogLimiter(fixture.Clock);
+        var attempt = Guid.NewGuid().ToString("N");
+        await Callback(fixture, "http", "", null, log: returns, limiter: limiter).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.Equal((LogLevel.Information, "Last.fm return refused: the browser sent no cookie of an attempt. The request reached this server over http."), Assert.Single(returns.Lines));
+        var forged = new SetCookieHeaderValue("__Host-JellySinLastfmAttempt", "forged-cookie-value");
+        await Callback(fixture, "https", "", forged, log: returns, limiter: limiter).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.Equal((LogLevel.Information, "Last.fm return refused: the cookie of the attempt cannot be read. The request reached this server over https."), returns.Lines[1]);
+        for (var index = 0; index < 30; index++)
+            await Callback(fixture, "https", "", null, log: returns, limiter: limiter).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.Equal(20, returns.Lines.Count);
+        // A return that names a user is that user's own sign-in and is always written.
+        var account = Account(fixture, "https", "");
+        var start = await account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
+        var issued = SetCookieHeaderValue.Parse(Assert.Single(account.Response.Headers.SetCookie)!);
+        await Callback(fixture, "https", "", issued, log: returns, limiter: limiter).Approve(CoreFixture.AttemptOf(start.AuthorizationUrl), "not a token", TestContext.Current.CancellationToken);
+        Assert.Equal((LogLevel.Information, $"Last.fm return refused for user {Logged.User(fixture.UserId)}: the return carries no usable token. The browser goes back to the music dashboard."), returns.Lines[20]);
+        await Callback(fixture, "https", "", issued, log: returns, limiter: limiter).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.EndsWith(": the return names another attempt than the cookie. The browser goes back to the music dashboard.", returns.Lines[21].Text, StringComparison.Ordinal);
+        fixture.Clock.Advance(59);
+        await Callback(fixture, "https", "", null, log: returns, limiter: limiter).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.Equal(22, returns.Lines.Count);
+        fixture.Clock.Advance(1);
+        await Callback(fixture, "https", "", null, log: returns, limiter: limiter).Approve(attempt, Token, TestContext.Current.CancellationToken);
+        Assert.Equal(23, returns.Lines.Count);
+        var written = string.Join('\n', returns.Lines.Select(line => line.Text));
+        foreach (var secret in new[] { Token, attempt, "forged-cookie-value", "not a token", "in-the-address", issued.Value.Value! })
+            Assert.DoesNotContain(secret, written, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -239,18 +378,23 @@ public sealed class ConnectionCallbackTests
         Assert.True(cleared.Expires < DateTimeOffset.UnixEpoch.AddDays(1));
     }
 
-    private static AccountController Account(CoreFixture fixture, string scheme, string prefix, Guid? user = null, string? published = null, string host = "jellyfin.example")
+    private static AccountController Account(CoreFixture fixture, string scheme, string prefix, Guid? user = null, string? published = null, string host = "jellyfin.example",
+        LogLines<AccountController>? log = null)
     {
         var http = Request("POST", scheme, prefix, host);
         http.Items[typeof(CallerFilter)] = CallerSecurityTests.Identity(user ?? fixture.UserId);
-        return new AccountController(fixture.Accounts, new ServerAddress(published)) { ControllerContext = new ControllerContext { HttpContext = http } };
+        return new AccountController(fixture.Accounts, new ServerAddress(published), log ?? new LogLines<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
-    private static CallbackController Callback(CoreFixture fixture, string scheme, string prefix, SetCookieHeaderValue? cookie, string? published = null, string host = "jellyfin.example")
+    private static CallbackController Callback(CoreFixture fixture, string scheme, string prefix, SetCookieHeaderValue? cookie, string? published = null, string host = "jellyfin.example",
+        LogLines<CallbackController>? log = null, ReturnLogLimiter? limiter = null)
     {
         var http = Request("GET", scheme, prefix, host);
+        // What Last.fm appends to the return address; the controller receives the same values as arguments.
+        http.Request.QueryString = new QueryString("?attempt=attempt-in-the-address&token=token-in-the-address");
         if (cookie is not null) http.Request.Headers.Cookie = $"{cookie.Name.Value}={cookie.Value.Value}";
-        return new CallbackController(fixture.Accounts, new ServerAddress(published)) { ControllerContext = new ControllerContext { HttpContext = http } };
+        return new CallbackController(fixture.Accounts, new ServerAddress(published), limiter ?? new ReturnLogLimiter(fixture.Clock), log ?? new LogLines<CallbackController>())
+        { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
     private static DefaultHttpContext Request(string method, string scheme, string prefix, string host)

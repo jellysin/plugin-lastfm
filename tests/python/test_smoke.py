@@ -214,6 +214,77 @@ def began(back, cookie, published="", configured=True, asked=None):
     return asked
 
 
+def wrote(accepts, published=""):
+    """Run the page-origin check against a local server that accepts a write by the planted rule; return what it was asked."""
+    asked = []
+
+    class Planted(http.server.BaseHTTPRequestHandler):
+        def log_message(self, _format, *arguments):
+            pass
+
+        def do_PUT(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            own = f"http://127.0.0.1:{self.server.server_address[1]}"
+            origin, site = self.headers.get("Origin"), self.headers.get("Sec-Fetch-Site")
+            asked.append((self.path, "{own}" if origin == own else origin, site))
+            body = b"{}" if accepts(origin, site, own) else b""
+            self.send_response(200 if body else 403)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        smoke.check_page_origin(smoke.Client(f"http://127.0.0.1:{server.server_address[1]}", "/jellyfin", token="a" * 32), published)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    return asked
+
+
+def own_pages(published):
+    """The rule of a server that takes its published address and the address of the request for its own pages."""
+    return lambda origin, site, own: site == "same-origin" and origin in (own, published)
+
+
+class PageOriginTests(unittest.TestCase):
+    FAVOURITES = "/jellyfin/JellySin/Lastfm/Me/Favourites"
+
+    def test_asks_from_each_own_address_and_from_three_other_places(self):
+        self.assertEqual([(self.FAVOURITES, "{own}", "same-origin"), (self.FAVOURITES, PUBLISHED, "same-origin"),
+                          (self.FAVOURITES, "https://foreign.invalid", "same-origin"), (self.FAVOURITES, "http://media.example", "same-origin"),
+                          (self.FAVOURITES, PUBLISHED, "cross-site")], wrote(own_pages(PUBLISHED), PUBLISHED))
+        asked = wrote(own_pages(None))
+        self.assertEqual(["{own}", "https://foreign.invalid", "{own}"], [origin for _, origin, _ in asked if not origin.startswith("https://127.")])
+        self.assertRegex(asked[2][1], r"^https://127\.0\.0\.1:\d+$")
+        self.assertEqual(4, len(asked))
+
+    def test_refuses_a_server_that_compares_the_scheme_of_the_page_with_the_scheme_it_sees(self):
+        with self.assertRaisesRegex(SmokeFailure, "published server address was refused"):
+            wrote(own_pages(None), PUBLISHED)
+
+    def test_refuses_a_server_that_turns_its_own_address_away(self):
+        with self.assertRaisesRegex(SmokeFailure, "request's own address was refused"):
+            wrote(lambda origin, site, own: site == "same-origin" and origin == PUBLISHED, PUBLISHED)
+
+    def test_refuses_a_server_that_accepts_a_page_of_another_server(self):
+        with self.assertRaisesRegex(SmokeFailure, "page of another server was accepted"):
+            wrote(lambda origin, site, own: site == "same-origin", PUBLISHED)
+
+    def test_refuses_a_server_that_reads_only_the_host_of_the_page(self):
+        with self.assertRaisesRegex(SmokeFailure, "under another scheme was accepted"):
+            wrote(lambda origin, site, own: site == "same-origin" and origin.split("://")[1] in (own.split("://")[1], "media.example"), PUBLISHED)
+        with self.assertRaisesRegex(SmokeFailure, "under another scheme was accepted"):
+            wrote(lambda origin, site, own: site == "same-origin" and origin.split("://")[1] == own.split("://")[1])
+
+    def test_refuses_a_server_that_ignores_what_the_browser_says_about_the_sender(self):
+        with self.assertRaisesRegex(SmokeFailure, "marks as sent by another site was accepted"):
+            wrote(lambda origin, site, own: origin in (own, PUBLISHED), PUBLISHED)
+
+
 OWN = "{origin}/jellyfin/JellySin/Lastfm/Callback?attempt=" + "0" * 32
 PUBLISHED = "https://media.example"
 PLAIN_COOKIE = "JellySinLastfmAttempt=planted; path=/jellyfin/JellySin/Lastfm/Callback; httponly; samesite=lax"

@@ -1,7 +1,7 @@
 namespace JellySin.Plugin.Lastfm.Api;
 
-/// <summary>A fixed-memory global bound for the anonymous Quick Connect status adapter.</summary>
-public sealed class QuickConnectLimiter(TimeProvider clock)
+/// <summary>A fixed-memory bound on how often something happens within one window of time.</summary>
+public abstract class WindowLimiter(TimeProvider clock, int limit, TimeSpan window)
 {
     private readonly object _gate = new();
     private long _window = clock.GetTimestamp();
@@ -12,15 +12,24 @@ public sealed class QuickConnectLimiter(TimeProvider clock)
         lock (_gate)
         {
             var now = clock.GetTimestamp();
-            if (clock.GetElapsedTime(_window, now) >= TimeSpan.FromSeconds(1))
+            if (clock.GetElapsedTime(_window, now) >= window)
             {
                 _window = now;
                 _requests = 0;
             }
 
-            if (_requests >= 60) return false;
+            if (_requests >= limit) return false;
             _requests++;
             return true;
         }
     }
 }
+
+/// <summary>A fixed-memory global bound for the anonymous Quick Connect status adapter.</summary>
+public sealed class QuickConnectLimiter(TimeProvider clock) : WindowLimiter(clock, 60, TimeSpan.FromSeconds(1));
+
+/// <summary>
+/// A bound on the log lines for returns from Last.fm that name no user. The return address answers without a sign-in,
+/// so a stranger could otherwise fill the server log one request at a time.
+/// </summary>
+public sealed class ReturnLogLimiter(TimeProvider clock) : WindowLimiter(clock, 20, TimeSpan.FromMinutes(1));

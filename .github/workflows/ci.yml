@@ -85,7 +85,7 @@ jobs:
           PY
       - name: Measure production playback callbacks
         run: dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
-      - uses: jellysin/release-helper/actions/check@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+      - uses: jellysin/release-helper/actions/check@1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
       - name: Validate workflows and scan tracked history for secrets
         env:
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -108,6 +108,9 @@ jobs:
       # The oldest server publishes no address, the newest publishes one: the sign-in must name the request's address there and the published one here.
       - name: Exercise load, account isolation and restart on the newest Jellyfin 12
         run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --published-address https://media.smoke.invalid
+      # The deployment in which the scheme the server sees differs from the one the browser names; the server log must name every click.
+      - name: Start the Last.fm sign-in in a browser behind a proxy that ends TLS on the newest Jellyfin 12
+        run: python tests/integration/proxied_sign_in.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --report build/proxied-sign-in
       - name: Verify native history writes and interrupted private playlist recovery on the oldest supported Jellyfin
         run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server floor --report build/native-userdata-floor.json
       - name: Verify native history writes and interrupted private playlist recovery on the newest Jellyfin 12
@@ -118,19 +121,23 @@ jobs:
       - name: Enforce real-library search and concurrent playback budgets
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server newest
       - name: Validate installable package and release metadata
-        uses: jellysin/release-helper/actions/package@41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+        uses: jellysin/release-helper/actions/package@1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
           nuget-lock-path: src/JellySin.Plugin.Lastfm/packages.lock.json
           nuget-assets-path: src/JellySin.Plugin.Lastfm/obj/project.assets.json
           runtime-dependencies-path: runtime-dependencies.json
+          changelog-path: CHANGELOG.md
       - name: Check out the pinned packaging implementation for independent rebuilds
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jellysin/release-helper
-          ref: 41f9ccffa1093d7dda8c3f7f634fad24d08cdc7a # v1.0.1
+          ref: 1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
           path: build/repro-tooling
           persist-credentials: false
+      # The helper holds the plugin's own server references at the floor; planted ones show that this pin does.
+      - name: Require the pinned release helper to refuse a server reference above and below the floor
+        run: python tools/floor_proof.py --tooling-directory build/repro-tooling
       - name: Verify identical release artifacts from two independent checkouts
         run: python tools/reproduce.py --tooling-directory build/repro-tooling --reference-directory dist
       - name: Retain diagnostic results

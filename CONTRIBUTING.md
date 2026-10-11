@@ -40,7 +40,10 @@ runs actionlint and Gitleaks, packages the DLL, and exercises real Jellyfin 12
 containers, the oldest supported and the newest, through `tools/smoke.py`
 (`--server floor` or `--server newest`, the newest started with a published
 server address that the Last.fm sign-in must name as its return), and the native
-userdata check also on Jellyfin 12.1 (`--server 12.1`). CodeQL scans source and
+userdata check also on Jellyfin 12.1 (`--server 12.1`). On the newest server
+`tests/integration/proxied_sign_in.py` starts the Last.fm sign-in in a browser
+behind a proxy that ends TLS and compares the server log with the clicks; its
+README section names what it needs to run locally. CodeQL scans source and
 Actions separately.
 The secret scan covers every fetched ref. An exception is one full fingerprint in
 `.gitleaksignore` with a reason and an expiry date; from that date the finding fails
@@ -79,16 +82,25 @@ supports. Every `Jellyfin.*` package reference and `runtime-dependencies.json` s
 at exactly that version. Jellyfin stamps each release into the versions of its
 assemblies, so a plugin compiled against a newer release is disabled as incompatible
 by an older server, while a plugin compiled against the floor loads on the releases
-above it. `python tools/abi_floor.py` and the Python tests fail on a reference that
-differs from the floor, and Renovate does not propose these packages. Raising the
-floor changes `targetAbi`, the references and the lockfiles in one pull request and
-ends support for the servers below it.
+above it. Two checks hold the references there, and Renovate does not propose these
+packages:
+
+- The release helper's package step, in CI and in the release workflow, refuses the
+  plugin project's locked references and `runtime-dependencies.json` when they differ
+  from the floor. `tools/floor_proof.py` plants a reference above and one below the
+  floor in every CI run and fails unless the pinned helper packages the unchanged
+  references and refuses both planted ones for the floor's sake.
+- `python tools/abi_floor.py` and the Python tests fail on a differing reference in
+  the test, benchmark and native probe projects.
+
+Raising the floor changes `targetAbi`, the references and the lockfiles in one pull
+request and ends support for the servers below it.
 
 `tools/smoke.py` is the only file that names the server images: `floor` is the
 release in `targetAbi`, `newest` the latest Jellyfin 12. CI runs the load, isolation,
 restart and native userdata checks on both, and each run fails unless the server
 that answered reports the release its image tag names. Renovate moves the digest of
-both and the release of `newest` only; the same floor check fails when the `floor`
+both and the release of `newest` only; `tools/abi_floor.py` also fails when the `floor`
 image or its Renovate rule would leave the floor. Raising the floor changes both
 with it.
 
@@ -105,7 +117,9 @@ dispatch `release.yml` **on that tag ref**. This binds GitHub provenance to the
 source tag. The publication workflow has no push or PR trigger and is never
 dispatched by release-please. It reruns CI and builds production bytes. Packaging verifies the NuGet
 production graph against the committed lock and restored assets, then creates a
-deterministic ZIP, SPDX file/dependency inventory and checksums. Independent builds
+deterministic ZIP, SPDX file/dependency inventory and checksums. The release metadata
+carries the version's section of `CHANGELOG.md` as the text the Plugin Repository
+shows; a tagged build without that section fails. Independent builds
 in different checkout paths must produce the same four artifacts. The workflow
 attests them, verifies existing draft bytes and publishes only a complete release.
 Immutable releases must be
@@ -143,6 +157,8 @@ not satisfy that pending PR check. Required checks remain enforced.
 The [Plugin Repository](https://github.com/jellysin/repo) has separate ownership,
 so this repository needs no cross-repository write token. All shared tooling is
 pinned to full SHAs in [release-helper](https://github.com/jellysin/release-helper).
+The Python tests fail unless every workflow reference to it names the same commit and
+the release that commit is.
 
 The engineering baseline is in
 [JellySin principles](https://github.com/jellysin/.github/blob/main/docs/principles.md).

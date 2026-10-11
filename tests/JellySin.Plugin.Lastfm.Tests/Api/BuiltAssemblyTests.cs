@@ -34,6 +34,7 @@ public sealed class BuiltAssemblyTests
     private static readonly string[] Services =
     [
         "JellySin.Plugin.Lastfm.Api.QuickConnectLimiter x1",
+        "JellySin.Plugin.Lastfm.Api.ReturnLogLimiter x1",
         "JellySin.Plugin.Lastfm.Api.ServerAddress x1",
         "JellySin.Plugin.Lastfm.Configuration.AccountService x1",
         "JellySin.Plugin.Lastfm.Configuration.ApplicationCredentialService x1",

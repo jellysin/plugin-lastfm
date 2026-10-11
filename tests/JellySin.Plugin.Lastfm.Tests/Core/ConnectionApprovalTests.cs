@@ -66,8 +66,11 @@ public sealed class ConnectionApprovalTests
         var foreign = await elsewhere.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
         var id = CoreFixture.AttemptOf(attempt);
         var flipped = attempt.BrowserBinding[..20] + (attempt.BrowserBinding[20] == 'A' ? 'B' : 'A') + attempt.BrowserBinding[21..];
-        foreach (var binding in new[] { null, "", id, flipped, foreign.BrowserBinding, new string('A', 5000) })
-            Assert.False((await fixture.Accounts.ApproveAsync(binding, id, Token, TestContext.Current.CancellationToken)).Accepted);
+        // Without a readable cookie nothing names a user, so the refusal names none either.
+        foreach (var binding in new[] { null, "" })
+            Assert.Equal(new ConnectionApproval(false, false, ApprovalRefusal.NoCookie), await fixture.Accounts.ApproveAsync(binding, id, Token, TestContext.Current.CancellationToken));
+        foreach (var binding in new[] { id, flipped, foreign.BrowserBinding, new string('A', 5000) })
+            Assert.Equal(new ConnectionApproval(false, false, ApprovalRefusal.UnreadableCookie), await fixture.Accounts.ApproveAsync(binding, id, Token, TestContext.Current.CancellationToken));
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken));
         Assert.Empty(fixture.Client.Calls);
@@ -82,8 +85,8 @@ public sealed class ConnectionApprovalTests
         var other = Guid.NewGuid();
         var mine = await fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
         var theirs = await fixture.Accounts.BeginAsync(other, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
-        Assert.False((await fixture.Accounts.ApproveAsync(theirs.BrowserBinding, CoreFixture.AttemptOf(mine), Token, TestContext.Current.CancellationToken)).Accepted);
-        Assert.False((await fixture.Accounts.ApproveAsync(mine.BrowserBinding, CoreFixture.AttemptOf(theirs), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.OtherAttempt, (await fixture.Accounts.ApproveAsync(theirs.BrowserBinding, CoreFixture.AttemptOf(mine), Token, TestContext.Current.CancellationToken)).Refusal);
+        Assert.Equal(ApprovalRefusal.OtherAttempt, (await fixture.Accounts.ApproveAsync(mine.BrowserBinding, CoreFixture.AttemptOf(theirs), Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.True((await fixture.Accounts.ApproveAsync(mine.BrowserBinding, CoreFixture.AttemptOf(mine), Token, TestContext.Current.CancellationToken)).Accepted);
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
         Assert.False((await fixture.Accounts.GetStatusAsync(other, TestContext.Current.CancellationToken)).ApprovalPending);
@@ -106,7 +109,7 @@ public sealed class ConnectionApprovalTests
         await fixture.ConfigureApplicationAsync();
         var late = await fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
         fixture.Clock.Advance(600);
-        Assert.False((await fixture.Accounts.ApproveAsync(late.BrowserBinding, CoreFixture.AttemptOf(late), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.Expired, (await fixture.Accounts.ApproveAsync(late.BrowserBinding, CoreFixture.AttemptOf(late), Token, TestContext.Current.CancellationToken)).Refusal);
         await fixture.ApproveAsync(fixture.UserId);
         fixture.Clock.Advance(599);
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
@@ -123,10 +126,10 @@ public sealed class ConnectionApprovalTests
         await fixture.ConfigureApplicationAsync();
         var attempt = await fixture.ApproveAsync(fixture.UserId, "first-token");
         var id = CoreFixture.AttemptOf(attempt);
-        Assert.False((await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, "second-token", TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.Used, (await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, "second-token", TestContext.Current.CancellationToken)).Refusal);
         Assert.True((await fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken)).Connected);
         Assert.Equal("first-token", Assert.Single(fixture.Client.Calls).Values["token"]);
-        Assert.False((await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, "third-token", TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.Replaced, (await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, "third-token", TestContext.Current.CancellationToken)).Refusal);
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken));
         Assert.Single(fixture.Client.Calls);
     }
@@ -139,7 +142,7 @@ public sealed class ConnectionApprovalTests
         var first = await fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
         var second = await fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
         Assert.NotEqual(CoreFixture.AttemptOf(first), CoreFixture.AttemptOf(second));
-        Assert.False((await fixture.Accounts.ApproveAsync(first.BrowserBinding, CoreFixture.AttemptOf(first), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.Replaced, (await fixture.Accounts.ApproveAsync(first.BrowserBinding, CoreFixture.AttemptOf(first), Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.True((await fixture.Accounts.ApproveAsync(second.BrowserBinding, CoreFixture.AttemptOf(second), Token, TestContext.Current.CancellationToken)).Accepted);
     }
 
@@ -157,12 +160,12 @@ public sealed class ConnectionApprovalTests
         var attempt = await fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, true, TestContext.Current.CancellationToken);
         var id = CoreFixture.AttemptOf(attempt);
         var refused = await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, token, TestContext.Current.CancellationToken);
-        Assert.Equal(new ConnectionApproval(false, true), refused);
-        Assert.False((await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, new string('a', 257), TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(new ConnectionApproval(false, true, ApprovalRefusal.NoToken, fixture.UserId), refused);
+        Assert.Equal(ApprovalRefusal.NoToken, (await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, new string('a', 257), TestContext.Current.CancellationToken)).Refusal);
         foreach (var name in new[] { null, "", "not-an-attempt", Guid.NewGuid().ToString("N"), id + "0" })
-            Assert.False((await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, name, Token, TestContext.Current.CancellationToken)).Accepted);
+            Assert.Equal(ApprovalRefusal.OtherAttempt, (await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, name, Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
-        Assert.Equal(new ConnectionApproval(true, true), await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, new string('a', 256), TestContext.Current.CancellationToken));
+        Assert.Equal(new ConnectionApproval(true, true, null, fixture.UserId), await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, id, new string('a', 256), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -174,10 +177,10 @@ public sealed class ConnectionApprovalTests
         var other = Guid.NewGuid();
         await fixture.ApproveAsync(other);
         using var restarted = new AccountService(fixture.Store, fixture.Client, fixture.Credentials, fixture.Protection, fixture.Clock);
-        Assert.False((await restarted.ApproveAsync(open.BrowserBinding, CoreFixture.AttemptOf(open), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.NotOpen, (await restarted.ApproveAsync(open.BrowserBinding, CoreFixture.AttemptOf(open), Token, TestContext.Current.CancellationToken)).Refusal);
         // Background work may reach the user before the browser returns; the attempt of the earlier process stays refused.
         _ = restarted.GetOperationToken(fixture.UserId);
-        Assert.False((await restarted.ApproveAsync(open.BrowserBinding, CoreFixture.AttemptOf(open), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.AccountChanged, (await restarted.ApproveAsync(open.BrowserBinding, CoreFixture.AttemptOf(open), Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.False((await restarted.GetStatusAsync(other, TestContext.Current.CancellationToken)).ApprovalPending);
         _ = restarted.GetOperationToken(other);
         Assert.False((await restarted.GetStatusAsync(other, TestContext.Current.CancellationToken)).ApprovalPending);
@@ -197,7 +200,7 @@ public sealed class ConnectionApprovalTests
         await fixture.Accounts.DisconnectAsync(fixture.UserId, TestContext.Current.CancellationToken);
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
         await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken));
-        Assert.False((await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, CoreFixture.AttemptOf(attempt), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.Replaced, (await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, CoreFixture.AttemptOf(attempt), Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.Empty(fixture.Client.Calls);
     }
 
@@ -239,7 +242,7 @@ public sealed class ConnectionApprovalTests
             Assert.DoesNotContain("token-that-must-not-reach-disk", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken), StringComparison.Ordinal);
         await fixture.Store.WriteAsync(fixture.UserId, "attempt", "not an attempt document", TestContext.Current.CancellationToken);
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
-        Assert.False((await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, CoreFixture.AttemptOf(attempt), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.NotStored, (await fixture.Accounts.ApproveAsync(attempt.BrowserBinding, CoreFixture.AttemptOf(attempt), Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.Empty(fixture.Client.Calls);
     }
 
@@ -251,7 +254,7 @@ public sealed class ConnectionApprovalTests
         var attempt = await fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken);
         var id = CoreFixture.AttemptOf(attempt);
         var session = fixture.Protection.CreateProtector("JellySin.Lastfm.Account.v1").Protect($"{fixture.UserId:N}{id}0");
-        Assert.False((await fixture.Accounts.ApproveAsync(session, id, Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.UnreadableCookie, (await fixture.Accounts.ApproveAsync(session, id, Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
     }
 
@@ -262,9 +265,9 @@ public sealed class ConnectionApprovalTests
         var protection = new CountingProtection(fixture.Protection);
         using var accounts = new AccountService(fixture.Store, fixture.Client, fixture.Credentials, protection, fixture.Clock);
         // Both values decode as text of the right alphabet; only the first is within the bound and reaches the protector.
-        Assert.False((await accounts.ApproveAsync(new string('A', 1024), Guid.NewGuid().ToString("N"), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.UnreadableCookie, (await accounts.ApproveAsync(new string('A', 1024), Guid.NewGuid().ToString("N"), Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.Equal(1, protection.Unprotected);
-        Assert.False((await accounts.ApproveAsync(new string('A', 1028), Guid.NewGuid().ToString("N"), Token, TestContext.Current.CancellationToken)).Accepted);
+        Assert.Equal(ApprovalRefusal.UnreadableCookie, (await accounts.ApproveAsync(new string('A', 1028), Guid.NewGuid().ToString("N"), Token, TestContext.Current.CancellationToken)).Refusal);
         Assert.Equal(1, protection.Unprotected);
     }
 

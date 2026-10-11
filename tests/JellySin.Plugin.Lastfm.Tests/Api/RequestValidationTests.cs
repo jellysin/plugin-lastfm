@@ -18,6 +18,8 @@ public sealed class RequestValidationTests
     [InlineData("quick-connect", false)]
     [InlineData("playlist", true)]
     [InlineData("playlist", false)]
+    [InlineData("refusal", true)]
+    [InlineData("refusal", false)]
     public void AspNetValidatesRecordConstructorMetadataWithoutThrowing(string requestType, bool valid)
     {
         var services = new ServiceCollection();
@@ -30,6 +32,7 @@ public sealed class RequestValidationTests
         {
             "application" => new ApplicationInput(valid ? new string('a', 32) : "invalid", new string('b', 32)),
             "quick-connect" => new QuickConnectInput(valid ? new string('x', 32) : "short"),
+            "refusal" => new ConnectionRefusal(valid ? "return-address" : new string('r', 33)),
             _ => new PlaylistInput(Guid.Empty, valid ? "My music" : string.Empty, PlaylistSource.Loved, Limit: valid ? 50 : 0)
         };
         // This is MVC's real validator, including record-bound constructor metadata.

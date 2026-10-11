@@ -363,6 +363,22 @@ def check_sign_in_address(admin: Client, listener: Client, published: str, confi
             "The cookie of the sign-in must follow the scheme of the return address.")
 
 
+def check_page_origin(listener: Client, published: str) -> None:
+    """A page at the published server address or at the request's own address may write; a page anywhere else may not."""
+    def write(origin: str, site: str) -> int:
+        return listener.request(PREFIX + "/Me/Favourites", "PUT", {"Enabled": False}, (200, 403), {"Origin": origin, "Sec-Fetch-Site": site}, raw=True)[2]
+
+    # Behind a proxy that ends TLS the server sees plain HTTP while the browser names the published address.
+    for origin, place in ((listener.origin, "the request's own address"), (published, "the published server address")):
+        require(not origin or write(origin, "same-origin") == 200, f"A write from a page at {place} was refused.")
+    own = urllib.parse.urlsplit(published or listener.origin)
+    other_scheme = ("http" if own.scheme == "https" else "https") + "://" + own.netloc
+    for origin, site, place in (("https://foreign.invalid", "same-origin", "a page of another server"),
+                                (other_scheme, "same-origin", "a page at the server's address under another scheme"),
+                                (published or listener.origin, "cross-site", "a request the browser marks as sent by another site")):
+        require(write(origin, site) == 403, f"A write from {place} was accepted.")
+
+
 def create_user(admin: Client, password: str) -> dict[str, Any]:
     user = admin.request("/Users/New", "POST", {"Name": "SmokeListener", "Password": password})
     require(not user["policy"]["isadministrator"], "The ordinary smoke user unexpectedly has administrator rights.")
@@ -535,6 +551,7 @@ def check_base_path(host: DockerHost, admin: Client, listener: Client, expect_co
     check_plugin(admin)
     require(not listener.request(PREFIX + "/Me/Favourites")["enabled"], "Private preference was lost after restart.")
     check_sign_in_address(admin, listener, host.published, expect_configured)
+    check_page_origin(listener, host.published)
     with reverse_proxy(host.origin) as origin:
         proxy = Client(origin, "/jellyfin", listener.token)
         require(proxy.request(PREFIX + "/Bootstrap")["basepath"] == "/jellyfin", "Reverse-proxy prefix was not preserved.")
@@ -556,6 +573,7 @@ def run_smoke(host: DockerHost, expect_configured: bool = False) -> dict[str, An
     listener.authenticate("SmokeListener", listener_password)
     check_authentication(admin, listener, user["id"], expect_configured)
     check_sign_in_address(admin, listener, host.published, expect_configured)
+    check_page_origin(listener, host.published)
     check_user_isolation(admin, listener, admin_user["id"])
     print("PASS: password/Quick Connect, anonymous/API-key/origin rejection and user isolation.", flush=True)
     track = check_library(admin, listener, user)

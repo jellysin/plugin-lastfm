@@ -34,6 +34,11 @@ export function takeRefusedReturn(): boolean {
 
 const notStarted = 'Last.fm sign-in could not start.';
 
+/** A refusal the page decides on its own, after the server answered. Its kind is told to the server, which otherwise sees nothing of it. */
+export class StartRefusal extends Error {
+  constructor(message: string, readonly reason: 'approval-address' | 'return-address') { super(message); }
+}
+
 /** What a refused return address tells the reader: an administrator can correct the server, anyone else can only pass it on. */
 export function returnRefusal(named: string, expected: string, administrator: boolean): string {
   return administrator
@@ -43,12 +48,13 @@ export function returnRefusal(named: string, expected: string, administrator: bo
 
 /** The only address the page leaves for: the Last.fm approval page, asked to return to this server's own callback. */
 export function approvalAddress(value: string, root: string, administrator = false): string {
-  const target = new URL(value);
-  if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new Error(notStarted);
+  let target: URL;
+  try { target = new URL(value); } catch { throw new StartRefusal(notStarted, 'approval-address'); }
+  if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new StartRefusal(notStarted, 'approval-address');
   // A server that does not know its public address names a return elsewhere; the token from Last.fm must not go there.
   const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
   const path = `${root}/JellySin/Lastfm/Callback`;
-  if (back.origin !== location.origin || back.pathname !== path) throw new Error(returnRefusal(back.origin + back.pathname, location.origin + path, administrator));
+  if (back.origin !== location.origin || back.pathname !== path) throw new StartRefusal(returnRefusal(back.origin + back.pathname, location.origin + path, administrator), 'return-address');
   return target.href;
 }
 
@@ -71,7 +77,13 @@ function show(client: Client, me: Me): void {
 export function setupAccount(client: Client, refresh: () => Promise<void>): void {
   bind('connect-lastfm', async () => {
     const attempt = await client.api<{ authorizationUrl: string }>('Me/Connection/Begin', 'POST', { returnToSettings: false }, undefined, true);
-    const target = approvalAddress(attempt.authorizationUrl, client.root, administrator);
+    let target: string;
+    try { target = approvalAddress(attempt.authorizationUrl, client.root, administrator); }
+    catch (error) {
+      // The server log gets one line for the click; the page shows its own text whether or not that line was written.
+      if (error instanceof StartRefusal) await client.api('Me/Connection/Refusal', 'POST', { reason: error.reason }).catch(() => undefined);
+      throw error;
+    }
     message('Opening Last.fm…');
     location.assign(target);
   });
