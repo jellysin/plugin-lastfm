@@ -84,8 +84,15 @@ JellySin's project Last.fm application is registered, and its credentials are
 configured in the repository secrets for production builds. Browser authorization,
 live history/charts/discovery and one explicitly authorized test scrobble were
 verified on 2026-09-08 with the token flow used at that time. The return flow
-described above is covered by automated tests; its live sign-in against Last.fm
-has not been recorded yet. The [API terms review](lastfm-api.md) records the storage,
+described above is covered by automated tests, and one live sign-in against Last.fm
+is recorded: on 2026-10-11 a canary build of main (commit `5dd33c7`) ran on a
+Jellyfin 12.2.0 server whose published `https` address resolves to a private network
+address, behind a proxy that ends TLS. The server log showed the three lines above in
+order within 15 seconds: begun, with an `https` return address on a request that
+reached the server over `http`; return accepted; finished, connected. One account
+was stored. Last.fm therefore sent the browser back to an address it cannot reach
+itself. That trial delivered no scrobble; no listen was played in it.
+The [API terms review](lastfm-api.md) records the storage,
 attribution and display requirements. The [optional clarification enquiry](lastfm-permission-request.md)
 is unsent; no separate written approval has been obtained or is implied by these
 tests. Account connection uses the registered application's documented API flow.
@@ -148,8 +155,7 @@ when moving the server. Losing the key ring requires reconnecting accounts.
 Server administrators can access host files and remain trusted.
 
 The state store has an 80 MB aggregate accounting budget, an 8 MB document limit
-and bounded document counts. The budget includes conservative reservations for
-metadata copies passed to Jellyfin's database/NFO storage. Disposable cache entries
+and bounded document counts. Disposable cache entries
 are evicted before durable account or delivery state. Reaching a durable limit
 reports a failure rather than silently discarding unsent listens. This accounting
 does not measure administrator backups or exports, establish Last.fm's allowance
@@ -208,14 +214,13 @@ update appears in the page for review. Cancelling it pauses daily refresh and ke
 the possibly partial playlist; subsequent cancellation recovery completes that
 intent instead of resuming the old update.
 
-## Metadata and clients
+## Library and clients
 
-Metadata and native similarity use public, user-independent data. Personal history
-and recommendations use user-scoped state. The plugin does not place one user's
-personal results into Jellyfin's shared similarity cache. Community tags are
-Last.fm tags, not a curated genre taxonomy. Artwork is not downloaded by this plugin.
+The plugin writes no Last.fm metadata, tags or artwork into the Jellyfin library and
+adds no entry to a library's provider settings. Jellyfin's own similar-item rows are
+unchanged. Personal history and recommendations use user-scoped state.
 
 Use the browser dashboard for account management, insights and external discovery.
 Jellyfin's plugin administration page is administrator-only. Native client support
-for playlists and similar-item rows varies; the plugin cannot add a custom music
+for playlists varies; the plugin cannot add a custom music
 home screen to every TV, mobile or third-party client.

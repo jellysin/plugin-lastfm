@@ -17,18 +17,17 @@ aggregation service or resale of Last.fm data. Please confirm the following
 application and display arrangements before our first production distribution.
 
 The plugin supports scrobbling/now-playing, reviewed favourite synchronization,
-listening history/charts, previewed play-count imports, metadata, discovery and
+listening history/charts, previewed play-count imports, discovery and
 local Jellyfin playlists. Each user authorizes their own Last.fm account through
 your documented web authentication flow; session keys stay protected on their Jellyfin server.
-Personal pages require that user's Jellyfin sign-in. Shared library metadata is
-available to the server's authorized library users. We download no artwork or audio
+Personal pages require that user's Jellyfin sign-in. Nothing from Last.fm is written
+into the shared library's metadata. We download no artwork or audio
 from Last.fm and include links to relevant Last.fm profiles and catalog entries.
 
-Each server has an 80,000,000-byte aggregate accounting budget for plugin state,
-including conservative reservations for metadata copies passed to Jellyfin's
-database/NFO storage. Operator-created backups and exports are outside that
+Each server has an 80,000,000-byte aggregate accounting budget for plugin state.
+Operator-created backups and exports are outside that
 measurement. We use HTTP cache directives for response caching; some imported
-counts, playlist membership and native metadata remain in Jellyfin afterward.
+counts and playlist membership remain in Jellyfin afterward.
 
 Could you confirm:
 
@@ -39,9 +38,9 @@ Could you confirm:
    arrangements required?
 2. Does the storage allowance apply per installation, per user or across all
    installations using that application? Is the described accounting acceptable,
-   and what retention, refresh or deletion requirements apply to native metadata,
+   and what retention, refresh or deletion requirements apply to
    derived counts/playlists and administrator backups?
-3. Can you approve authenticated personal pages and shared native-library displays,
+3. Can you approve authenticated personal pages and private generated playlists,
    including remote access to a self-hosted server? Which attribution and link
    placements are required in Jellyfin clients whose layouts we cannot control?
 4. The resources URL in your terms was unavailable during our review. Please supply

@@ -22,7 +22,6 @@ public static class FeatureRegistration
         services.AddSingleton<FavouritesService>();
         services.AddSingleton<DiscoveryService>();
         services.AddSingleton<PlaylistService>();
-        services.AddSingleton<Metadata.MetadataApi>();
         services.AddHostedService<FeatureWorker>();
         return services;
     }

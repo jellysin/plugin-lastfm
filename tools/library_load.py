@@ -88,7 +88,7 @@ def exercise(host: DockerHost, count: int) -> dict:
     host.start()
     admin = Client(host.origin)
     setup_server(admin, secrets.token_urlsafe(24))
-    plugin_settings(admin, Enabled=True, MetadataEnabled=False, SimilarityEnabled=False)
+    plugin_settings(admin, Enabled=True)
     password = secrets.token_urlsafe(24)
     create_user(admin, password)
     listener = Client(host.origin)

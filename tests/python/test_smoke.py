@@ -378,5 +378,31 @@ class ReturnAddressTests(unittest.TestCase):
                 returned(302, REFUSED | {name: value})
 
 
+def library_options(kinds=("Audio", "MusicAlbum", "MusicArtist")):
+    """The options Jellyfin lists for a music library, in the letter case the smoke client reads."""
+    return {"metadatasavers": [{"name": "Nfo", "defaultenabled": False}], "metadatareaders": [{"name": "Nfo", "defaultenabled": True}],
+            "typeoptions": [{"type": kind, "metadatafetchers": [{"name": "MusicBrainz", "defaultenabled": True}], "imagefetchers": [],
+                             "similaritemproviders": [{"name": "Local Genre", "defaultenabled": True}]} for kind in kinds]}
+
+
+class LibraryOptionsTests(unittest.TestCase):
+    def test_accepts_options_that_name_only_other_providers(self):
+        smoke.check_library_options(library_options())
+
+    def test_refuses_an_entry_of_the_plugin_in_a_list_of_a_type_or_of_the_library(self):
+        for name, place in (("JellySin Last.fm", lambda options: options["typeoptions"][1]["similaritemproviders"]),
+                            ("Last.fm", lambda options: options["typeoptions"][2]["metadatafetchers"]),
+                            ("JellySin Last.fm", lambda options: options.setdefault("lyricfetchers", []))):
+            options = library_options()
+            place(options).append({"name": name, "defaultenabled": False})
+            with self.subTest(name=name), self.assertRaisesRegex(SmokeFailure, "offer nothing in the options of a library, found: " + re.escape(name)):
+                smoke.check_library_options(options)
+
+    def test_refuses_an_answer_that_does_not_list_the_music_types(self):
+        for options in ({}, {"typeoptions": []}, library_options(("Audio", "MusicAlbum"))):
+            with self.subTest(options=len(options.get("typeoptions", []))), self.assertRaisesRegex(SmokeFailure, "did not list the options of a music library"):
+                smoke.check_library_options(options)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -55,9 +55,7 @@ def fixture_accounts(admin: Client) -> tuple[Client, dict]:
 
 
 def fixture_item(admin: Client, user: dict) -> dict:
-    plugin_settings(
-        admin, Enabled=False, MetadataEnabled=False, SimilarityEnabled=False
-    )
+    plugin_settings(admin, Enabled=False)
     for name in ("Public", "Hidden", LIBRARY):
         add_library(admin, name)
     admin.request("/Library/Refresh", "POST", expected=204)
@@ -161,7 +159,7 @@ def private_playlist(
 
 
 def playlist_fixture(admin: Client, user: dict) -> tuple[dict, Client]:
-    plugin_settings(admin, Enabled=True, MetadataEnabled=False, SimilarityEnabled=False)
+    plugin_settings(admin, Enabled=True)
     items = admin.request(
         "/Items?recursive=true&includeItemTypes=Audio&fields=Path&limit=20"
     )["items"]

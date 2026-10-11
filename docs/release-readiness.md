@@ -19,10 +19,8 @@ on 12.2 and are outstanding for that server.
 | Credential protection | Protected sessions, authorization headers, redaction, per-user auth cancellation, disabled users and application-change regressions passed |
 | Playback and durable delivery | One explicitly authorized live scrobble passed (12.0 only); daily-limit retention, account transitions, enqueue retry and shutdown drain regressions passed |
 | Favourite reconciliation | Additive merge, ambiguous identities, reviewed removals, intervening edits and interrupted-addition recovery tested; native revision protection passed |
-| Native metadata | Real artist, album and track refreshes, Last.fm links/tags and locked-field preservation verified (12.0 only); native-copy quota/reserve tests passed |
 | History and charts | Live views passed (12.0 only); bounded complete-date retrieval/resumable application tested; real native stale-write protection and deliberate resets passed on 12.0.0 and 12.2.0 |
 | Personalized discovery | Real local/external results and unknown-seed behavior verified (12.0 only); private cache-first/expiration tests passed; library matching gave the same recorded answers on 12.0.0, 12.1.0 and 12.2.0 |
-| Native similarity | Actual provider picker and Last.fm-influenced native ranking verified (12.0 only); public data only; the 12.1 cache change is not reached, by server source review |
 | Private generated playlists | Actual ownership, regeneration, injected native write failure, durable restart recovery and retry passed on 12.0.0 and 12.2.0; reviewed cancellation tested; visibility under the owner's parental limit recorded for 12.0.0, 12.1.0 and 12.2.0 |
 | Storage and lifecycle | Atomic updates, cancellation, byte/document limits, durable reserves and orphan cleanup regressions passed |
 | Web page | 18 browser scenarios, 16 client tests, root/prefixed paths, immediate logout, safe rendering, review flows, axe, keyboard and performance budgets passed; final native admin form/live read-only checks passed (12.0 only) |
