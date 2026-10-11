@@ -2,14 +2,59 @@
 
 import argparse
 import contextlib
+import copy
 import io
+import json
+import re
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from tools import smoke
 from tools.smoke import DEFAULT_SERVER, IMAGES, SmokeFailure, add_server_options, chosen_image, remove_container, require_release
 
 DIGEST = "@sha256:" + "a" * 64
+UPDATES = json.loads((Path(__file__).resolve().parents[2] / "renovate.json").read_text(encoding="utf-8"))
+RELEASE = re.compile(r"(\d+)\.(\d+)")
+
+
+def held(rules, name):
+    """Tell whether exactly one update rule keeps the server of that name at the release it is named after."""
+    patterns = [rule.get("allowedVersions", "") for rule in rules if rule.get("matchDepTypes") == [name]]
+    if len(patterns) != 1 or len(patterns[0]) < 3 or not patterns[0].startswith("/") or not patterns[0].endswith("/"):
+        return False
+    allowed = re.compile(patterns[0][1:-1])
+    major, minor = (int(part) for part in RELEASE.fullmatch(name).groups())
+    others = (f"{major}.{minor + 1}", f"{major}.{minor}0.0", f"{major + 1}.{minor}.0")
+    return all(allowed.search(version) for version in (name, name + ".3")) and not any(allowed.search(version) for version in others)
+
+
+def pin_drift(images, updates):
+    """Return every pinned server the update bot does not read or could move off the release it is named after."""
+    (manager,) = [entry for entry in updates["customManagers"] if entry["managerFilePatterns"] == ["/^tools/smoke\\.py$/"]]
+    read = re.compile(manager["matchStrings"][0].replace("(?<", "(?P<"))
+    wrong = []
+    for name, image in images.items():
+        entry = read.fullmatch(json.dumps(name) + ": " + json.dumps(image))
+        if entry is None or entry["depType"] != name:
+            wrong.append(f"{name}: not read by the update bot")
+        if not RELEASE.fullmatch(name):
+            continue
+        if smoke.IMAGE_TAG.fullmatch(image).group(1) != name:
+            wrong.append(f"{name}: the image names another release")
+        if not held(updates["packageRules"], name):
+            wrong.append(f"{name}: no single update rule holds it at its release")
+    return wrong
+
+
+def changed(rule=None, manager=None):
+    """Return the update configuration with the 12.1 rule or the server pattern replaced."""
+    updates = copy.deepcopy(UPDATES)
+    if manager:
+        updates["customManagers"][1]["matchStrings"] = [updates["customManagers"][1]["matchStrings"][0].replace(*manager)]
+    if rule is not None:
+        updates["packageRules"] = [entry for entry in updates["packageRules"] if entry.get("matchDepTypes") != ["12.1"]] + rule
+    return updates
 
 
 def chosen(*arguments):
@@ -33,10 +78,30 @@ def removed(outcomes):
 
 
 class ServerChoiceTests(unittest.TestCase):
-    def test_both_pinned_servers_carry_a_release_and_a_digest(self):
-        self.assertEqual(["floor", "newest"], sorted(IMAGES))
+    def test_every_pinned_server_carries_a_release_and_a_digest(self):
+        self.assertEqual(["12.1", "floor", "newest"], sorted(IMAGES))
         for image in IMAGES.values():
             self.assertIsNotNone(smoke.IMAGE_TAG.fullmatch(image), image)
+
+    def test_update_bot_reads_every_pin_and_holds_a_release_named_one(self):
+        self.assertEqual([], pin_drift(IMAGES, UPDATES))
+
+    def test_pin_the_update_bot_could_lose_or_move_is_named(self):
+        narrow = {"matchDepTypes": ["12.1"], "allowedVersions": "/^12\\.1(?:\\.|$)/"}
+        unheld = "12.1: no single update rule holds it at its release"
+        planted = [
+            ("12.1: the image names another release", {"12.1": "jellyfin/jellyfin:12.2" + DIGEST}, UPDATES),
+            (unheld, IMAGES, changed(rule=[])),
+            (unheld, IMAGES, changed(rule=[narrow, narrow])),
+            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12(?:\\.|$)/"}])),
+            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12\\.1/"}])),
+            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "12.1"}])),
+            ("12.1: not read by the update bot", IMAGES, changed(manager=("|[0-9]+\\.[0-9]+", ""))),
+            ("spare: not read by the update bot", {"spare": IMAGES["newest"]}, UPDATES),
+        ]
+        for number, (named, images, updates) in enumerate(planted):
+            with self.subTest(number=number, named=named):
+                self.assertEqual([named], pin_drift(images, updates))
 
     def test_named_server_selects_its_pinned_image(self):
         self.assertEqual(IMAGES["floor"], chosen("--server", "floor"))

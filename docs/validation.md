@@ -8,7 +8,14 @@ lockfiles and two pinned Jellyfin images, the oldest and the newest supported se
 
 The plugin is compiled against Jellyfin 12.0.0 and the same build is loaded on both
 servers. Every server run asks the started server for its version and fails unless it
-is the release the image tag names. Jellyfin 12.1 was not run.
+is the release the image tag names.
+
+A third pinned image, Jellyfin 12.1.0
+(`jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e`),
+was added after the run recorded below, because 12.1 is the first release with the
+playlist visibility rule described further down. The native fixture passed on it
+locally on 2026-10-11 and runs on it in CI from that change on. The smoke harness and
+the library load check were not run on 12.1.
 
 The table records the hosted run for `b79a87d` with Python 3.14.8. The .NET, Python
 and server checks were repeated locally the same day in the pinned SDK container, with
@@ -56,7 +63,7 @@ store, then explicitly triggers normal recovery for its unconnected account. It
 does not claim that the Last.fm account scheduler ran for an unconnected user.
 Repeated fixture preparation cannot overwrite an existing operation. The fixture
 is a separate assembly, excluded from the production package. All of this passed
-on Jellyfin 12.0.0 and 12.2.0.
+on Jellyfin 12.0.0 and 12.2.0, and in the later local run on 12.1.0.
 
 The unit suite covers per-item daily-limit retention, failed outbox persistence,
 shutdown drain, dispatch-time now-playing expiry, disconnect/reconnect races,
@@ -71,8 +78,8 @@ Three server changes in Jellyfin 12.1 and 12.2 touch what the plugin relies on.
 **Library matching.** Jellyfin 12.2 changed how artists are named and how names are
 looked up. The native fixture scans a library with accented names, a name containing
 a slash and one title by two artists, then asks the production matching for ten
-tracks and nine artists or albums. Jellyfin 12.0.0 and 12.2.0 gave the same answers,
-which `tests/integration/native_library.py` records. The fixtures carry no
+tracks and nine artists or albums. Jellyfin 12.0.0, 12.1.0 and 12.2.0 gave the same
+answers, which `tests/integration/native_library.py` records. The fixtures carry no
 MusicBrainz identifiers and metadata providers are off, so this run does not show an
 artist renamed after a MusicBrainz credit. A unit test covers that case in the
 plugin: an album found by its identifier is matched even when the library spells the
@@ -83,10 +90,10 @@ match it.
 visible to a user only when the user's parental limit allows at least one of its
 tracks (`HasParentalAllowedChild` in `Playlist.cs` is absent at tag `v12.0` and
 present at `v12.1` and `v12.2`). Observed with the owner of a generated private
-playlist: a limit that allows the tracks changes nothing on either server. With
-unrated music blocked, the tracks are unreadable and unmatched on both; Jellyfin
-12.0.0 still lists the playlist, empty, and 12.2.0 neither lists nor returns it. The
-plugin keeps the playlist recipe in both cases, a second user never sees playlist or
+playlist: a limit that allows the tracks changes nothing on any of the three servers.
+With unrated music blocked, the tracks are unreadable and unmatched on all of them;
+Jellyfin 12.0.0 still lists the playlist, empty, while 12.1.0 and 12.2.0 neither list
+nor return it. The plugin keeps the playlist recipe in every case, a second user never sees playlist or
 recipe, and lifting the limit returns the playlist unchanged. A refresh during the
 block was not run, because it needs Last.fm data. By the code, the plugin looks the
 playlist up as its owner and stops with "unavailable" when the server does not return

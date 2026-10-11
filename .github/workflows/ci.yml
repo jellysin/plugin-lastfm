@@ -96,7 +96,7 @@ jobs:
           # expiry; the self-test plants keys and an expired exception before the result is trusted.
           python tools/secret_scan.py --gitleaks "$RUNNER_TEMP/gitleaks" --self-test
           python tools/secret_scan.py --gitleaks "$RUNNER_TEMP/gitleaks"
-      # tools/smoke.py names both server images. The floor is the release in plugin.json targetAbi.
+      # tools/smoke.py names the server images. The floor is the release in plugin.json targetAbi.
       - name: Exercise load, account isolation and restart on the oldest supported Jellyfin
         run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server floor
       - name: Exercise load, account isolation and restart on the newest Jellyfin 12
@@ -105,6 +105,9 @@ jobs:
         run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server floor --report build/native-userdata-floor.json
       - name: Verify native history writes and interrupted private playlist recovery on the newest Jellyfin 12
         run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server newest --report build/native-userdata-newest.json
+      # Jellyfin 12.1 is the first release that hides a playlist whose tracks a parental limit blocks.
+      - name: Verify generated playlist visibility under a parental limit on Jellyfin 12.1
+        run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server '12.1' --report build/native-userdata-12.1.json
       - name: Enforce real-library search and concurrent playback budgets
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server newest
       - name: Validate installable package and release metadata
@@ -136,6 +139,7 @@ jobs:
             build/reproducibility.json
             build/native-userdata-floor.json
             build/native-userdata-newest.json
+            build/native-userdata-12.1.json
             playwright-report
             test-results
           if-no-files-found: ignore

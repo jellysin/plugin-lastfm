@@ -19,7 +19,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/^tools/smoke\\.py$/"],
-      "matchStrings": ["\"(?<depType>floor|newest)\":\\s*\"jellyfin/jellyfin:(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)@(?<currentDigest>sha256:[a-f0-9]{64})\""],
+      "matchStrings": ["\"(?<depType>floor|newest|[0-9]+\\.[0-9]+)\":\\s*\"jellyfin/jellyfin:(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)@(?<currentDigest>sha256:[a-f0-9]{64})\""],
       "depNameTemplate": "jellyfin/jellyfin",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
@@ -40,6 +40,12 @@
       "matchPackageNames": ["jellyfin/jellyfin"],
       "matchDepTypes": ["floor"],
       "allowedVersions": "/^12\\.0(?:\\.|$)/"
+    },
+    {
+      "description": "A server image named after a release in tools/smoke.py keeps that release; only its digest moves. The Python tests compare this pattern with the entry.",
+      "matchPackageNames": ["jellyfin/jellyfin"],
+      "matchDepTypes": ["12.1"],
+      "allowedVersions": "/^12\\.1(?:\\.|$)/"
     }
   ]
 }

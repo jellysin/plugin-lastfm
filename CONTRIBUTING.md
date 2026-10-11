@@ -33,7 +33,8 @@ python -m unittest discover -s tests/python
 CI also audits npm/NuGet dependencies, checks repository policy and Action pins,
 runs actionlint and Gitleaks, packages the DLL, and exercises real Jellyfin 12
 containers, the oldest supported and the newest, through `tools/smoke.py`
-(`--server floor` or `--server newest`). CodeQL scans source and Actions separately.
+(`--server floor` or `--server newest`), and the native userdata check also on
+Jellyfin 12.1 (`--server 12.1`). CodeQL scans source and Actions separately.
 The secret scan covers every fetched ref. An exception is one full fingerprint in
 `.gitleaksignore` with a reason and an expiry date; from that date the finding fails
 again. `tools/secret_scan.py --self-test` plants keys and an expired exception first.
@@ -83,6 +84,13 @@ that answered reports the release its image tag names. Renovate moves the digest
 both and the release of `newest` only; the same floor check fails when the `floor`
 image or its Renovate rule would leave the floor. Raising the floor changes both
 with it.
+
+An entry named after a release, such as `12.1`, keeps that release because a check
+depends on what changed in it: Jellyfin 12.1 is the first release that hides a
+playlist whose tracks a parental limit blocks, and the native userdata check runs
+there as well. Renovate moves only its digest, and the Python tests fail when the
+entry, its Renovate rule or the pattern Renovate reads the entries with would let it
+run another release.
 
 A maintainer separately decides when to publish. After reviewing and merging the
 release PR, create the chosen version tag and an unpublished draft, then manually
