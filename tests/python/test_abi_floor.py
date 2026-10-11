@@ -7,17 +7,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.abi_floor import FloorError, floor, main, mismatches, references
+from tools.abi_floor import FloorError, floor, main, mismatches, references, server_mismatches
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECT = '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup>{}</ItemGroup></Project>'
 REFERENCE = '<PackageReference Include="{}" Version="{}" PrivateAssets="all" />'
+SERVERS = 'IMAGES = {{\n    "floor": "jellyfin/jellyfin:{}@sha256:' + "a" * 64 + '",\n    "newest": "jellyfin/jellyfin:12.2@sha256:' + "b" * 64 + '",\n}}\n'
+PATTERN = "/^12\\.0(?:\\.|$)/"
 
 
-def planted(root, compiled="12.0.0", runtime="12.0.0", target="12.0.0.0", package="Jellyfin.Controller"):
-    """Write the smallest tree the check reads: a descriptor, one project and the runtime list."""
+def planted(root, compiled="12.0.0", runtime="12.0.0", target="12.0.0.0", package="Jellyfin.Controller", image="12.0", pattern=PATTERN):
+    """Write the smallest tree the check reads: a descriptor, one project, the runtime list, the server images and their update rule."""
     root = Path(root)
     (root / "src").mkdir()
+    (root / "tools").mkdir()
+    (root / "tools" / "smoke.py").write_text(SERVERS.format(image), encoding="utf-8")
+    rules = [{"matchPackageNames": ["jellyfin/jellyfin"], "allowedVersions": "/^12(?:\\.|$)/"}]
+    rules += [{"matchDepTypes": ["floor"], "allowedVersions": pattern}] if pattern is not None else []
+    (root / "renovate.json").write_text(json.dumps({"packageRules": rules}), encoding="utf-8")
     (root / "obj").mkdir()
     (root / "plugin.json").write_text(json.dumps({"targetAbi": target}), encoding="utf-8")
     other = REFERENCE.format("Moq", "4.20.72")
@@ -50,8 +57,21 @@ class FloorTests(unittest.TestCase):
         found = mismatches(planted(self.root, runtime="12.2.0"))
         self.assertEqual(["runtime-dependencies.json: Jellyfin.Controller 12.2.0, the floor is 12.0.0"], found)
 
-    def test_raising_the_floor_alone_is_reported_twice(self):
-        self.assertEqual(2, len(mismatches(planted(self.root, target="12.2.0.0"))))
+    def test_raising_the_floor_alone_reports_every_place_that_names_it(self):
+        found = mismatches(planted(self.root, target="12.2.0.0"))
+        self.assertEqual(["src/Plugin.csproj", "runtime-dependencies.json", "tools/smoke.py", "renovate.json"], [line.split(":")[0] for line in found])
+
+    def test_floor_server_on_a_newer_release_is_reported(self):
+        self.assertEqual(["tools/smoke.py: floor server image 12.2, the floor is 12.0.0"], mismatches(planted(self.root, image="12.2")))
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual([], server_mismatches(planted(root, image="12.0.0")))
+
+    def test_update_rule_that_lets_the_floor_server_move_is_reported(self):
+        loose = {"any Jellyfin 12": "/^12(?:\\.|$)/", "another release": "/^12\\.1(?:\\.|$)/", "next major": "/^1[23]\\.0(?:\\.|$)/"}
+        for label, pattern in loose.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as root:
+                (found,) = mismatches(planted(root, pattern=pattern))
+                self.assertTrue(found.startswith("renovate.json: the floor server image rule"), found)
 
     def test_refuses_a_tree_it_cannot_compare(self):
         refused = {
@@ -59,6 +79,10 @@ class FloorTests(unittest.TestCase):
             "descriptor without a target": {"target": None},
             "target with a revision": {"target": "12.0.0.1"},
             "target without a revision": {"target": "12.0.0"},
+            "no floor server image": {"image": "latest"},
+            "no update rule for the floor server": {"pattern": None},
+            "update rule that is not a pattern": {"pattern": "12.0"},
+            "update rule with a broken pattern": {"pattern": "/^12\\.0(/"},
         }
         for label, changes in refused.items():
             with self.subTest(label), tempfile.TemporaryDirectory() as root, self.assertRaises(FloorError):

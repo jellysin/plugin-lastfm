@@ -31,7 +31,16 @@ import wave
 
 
 PLUGIN_ID = "2034650d-a290-4a16-b195-89fb44cfb932"
-DEFAULT_IMAGE = "jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5"
+# The only place that names the server images. The floor is the release named by targetAbi in
+# plugin.json and keeps its tag; the newest follows Jellyfin 12. Renovate updates both pins.
+IMAGES = {
+    "floor": "jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5",
+    "newest": "jellyfin/jellyfin:12.2@sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037",
+}
+DEFAULT_SERVER = "newest"
+REMOVE_ATTEMPTS = 4
+REMOVE_PAUSE_SECONDS = 5
+IMAGE_TAG = re.compile(r"jellyfin/jellyfin:(\d+\.\d+)(?:\.\d+)?@sha256:[a-f0-9]{64}")
 PREFIX = "/JellySin/Lastfm"
 MAX_RESPONSE = 8_000_000
 
@@ -143,6 +152,25 @@ def fixture_music(directory: Path, title: str) -> None:
     path.chmod(0o644)
 
 
+def require_release(image: str, version: str) -> None:
+    tag = IMAGE_TAG.fullmatch(image)
+    # A run proves nothing about a release unless that release is the one that answered.
+    require(tag is None or version.startswith(tag.group(1) + "."), "The started server is not the release its image tag names.")
+
+
+def remove_container(name: str) -> bool:
+    # Docker refuses the removal while a killed server process is not yet reaped; it is gone moments later.
+    for attempt in range(REMOVE_ATTEMPTS):
+        if attempt:
+            time.sleep(REMOVE_PAUSE_SECONDS)
+        try:
+            docker("rm", "--force", name)
+            return True
+        except SmokeFailure:
+            continue
+    return False
+
+
 class DockerHost:
     def __init__(self, plugin: Path, image: str, probe_plugin: Path | None = None) -> None:
         self.name = "jellysin-smoke-" + uuid.uuid4().hex[:16]
@@ -154,6 +182,7 @@ class DockerHost:
         if self.probe_plugin:
             require(self.probe_plugin.name == "JellySin.NativeProbe.dll", "Only the named test fixture may enable the native probe.")
         self.origin = ""
+        self.version = ""
         self.started = False
         self.volumes: list[str] = []
         self.fixture_directory = Path(tempfile.mkdtemp(prefix=self.name + "-"))
@@ -188,6 +217,9 @@ class DockerHost:
         self.started = True
         self.refresh_origin()
         wait_ready(Client(self.origin))
+        self.version = str(Client(self.origin).request("/System/Info/Public")["version"])
+        require_release(self.image, self.version)
+        print(f"Jellyfin {self.version} from {self.image}", flush=True)
 
     def refresh_origin(self) -> None:
         info = json.loads(docker("inspect", self.name))[0]
@@ -201,11 +233,8 @@ class DockerHost:
 
     def cleanup(self) -> None:
         failures = []
-        if self.started:
-            try:
-                docker("rm", "--force", self.name)
-            except SmokeFailure:
-                failures.append("container")
+        if self.started and not remove_container(self.name):
+            failures.append("container")
         for name in self.volumes:
             try:
                 docker("volume", "rm", name)
@@ -477,10 +506,23 @@ def run_smoke(host: DockerHost, expect_configured: bool = False) -> dict[str, An
                         "album": "Smoke Album", "durationSeconds": 65}}
 
 
+def add_server_options(parser: argparse.ArgumentParser) -> None:
+    choice = parser.add_mutually_exclusive_group()
+    choice.add_argument("--server", choices=sorted(IMAGES), help=f"A pinned server from this file (default: {DEFAULT_SERVER}).")
+    choice.add_argument("--image", help="Another Jellyfin image, pinned to a digest.")
+
+
+def chosen_image(parser: argparse.ArgumentParser, args: argparse.Namespace) -> str:
+    image = args.image or IMAGES[args.server or DEFAULT_SERVER]
+    if "@sha256:" not in image:
+        parser.error("--image must be pinned to a digest")
+    return image
+
+
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin", type=Path)
-    parser.add_argument("--image", default=DEFAULT_IMAGE)
+    add_server_options(parser)
     parser.add_argument("--keep", action="store_true", help="Keep the isolated server after a successful run.")
     parser.add_argument("--state-file", type=Path, help="Owner-only access details; requires --keep.")
     parser.add_argument("--expect-app-configured", action="store_true", help="Verify a production DLL with the embedded project application.")
@@ -497,8 +539,7 @@ def arguments() -> argparse.Namespace:
         parser.error("--plugin must name the built plugin DLL")
     if args.keep != bool(args.state_file):
         parser.error("--keep and --state-file must be used together")
-    if "@sha256:" not in args.image:
-        parser.error("--image must be pinned to a digest")
+    args.image = chosen_image(parser, args)
     if args.state_file and args.state_file.exists():
         parser.error("--state-file must not already exist")
     return args

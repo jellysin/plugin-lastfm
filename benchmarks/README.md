@@ -30,7 +30,7 @@ measurement JSON. Compare equivalent workloads on the same runtime and hardware.
 ## Real library workload
 
 ```sh
-python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000
+python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server newest
 ```
 
 The harness starts a fresh pinned Jellyfin 12 container with two CPUs and 1,536 MiB

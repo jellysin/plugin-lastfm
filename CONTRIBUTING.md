@@ -31,8 +31,9 @@ python -m unittest discover -s tests/python
 ```
 
 CI also audits npm/NuGet dependencies, checks repository policy and Action pins,
-runs actionlint and Gitleaks, packages the DLL, and exercises a real Jellyfin 12
-container through `tools/smoke.py`. CodeQL scans source and Actions separately.
+runs actionlint and Gitleaks, packages the DLL, and exercises real Jellyfin 12
+containers, the oldest supported and the newest, through `tools/smoke.py`
+(`--server floor` or `--server newest`). CodeQL scans source and Actions separately.
 The secret scan covers every fetched ref. An exception is one full fingerprint in
 `.gitleaksignore` with a reason and an expiry date; from that date the finding fails
 again. `tools/secret_scan.py --self-test` plants keys and an expired exception first.
@@ -74,6 +75,14 @@ above it. `python tools/abi_floor.py` and the Python tests fail on a reference t
 differs from the floor, and Renovate does not propose these packages. Raising the
 floor changes `targetAbi`, the references and the lockfiles in one pull request and
 ends support for the servers below it.
+
+`tools/smoke.py` is the only file that names the server images: `floor` is the
+release in `targetAbi`, `newest` the latest Jellyfin 12. CI runs the load, isolation,
+restart and native userdata checks on both, and each run fails unless the server
+that answered reports the release its image tag names. Renovate moves the digest of
+both and the release of `newest` only; the same floor check fails when the `floor`
+image or its Renovate rule would leave the floor. Raising the floor changes both
+with it.
 
 A maintainer separately decides when to publish. After reviewing and merging the
 release PR, create the chosen version tag and an unpublished draft, then manually
