@@ -123,6 +123,7 @@ def certificate(directory: Path) -> ssl.SSLContext:
         capture_output=True, text=True, timeout=60, check=False)
     require(made.returncode == 0, "A certificate for the test name could not be made.")
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(chain, key)
     return context
 
@@ -161,7 +162,8 @@ def tls_proxy(target: str, context: ssl.SSLContext, seen: list[dict[str, Any]]) 
                 self.send_response(response.status)
                 for name, value in response.headers.items():
                     if name.lower() not in (*HOP_HEADERS, "content-length", "server", "date"):
-                        self.send_header(name, value)
+                        # A line break in a name or value would begin a header of its own.
+                        self.send_header(name.replace("\r", "").replace("\n", ""), value.replace("\r", "").replace("\n", ""))
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 if self.command != "HEAD":

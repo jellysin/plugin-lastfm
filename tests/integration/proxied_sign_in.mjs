@@ -69,7 +69,7 @@ async function refusal(page, click, status, expected) {
   await page.click(click);
   await page.locator(status, { hasText: 'Last.fm sign-in could not start.' }).waitFor({ timeout: 15_000 }).catch(() => {});
   const text = (await page.locator(status).textContent() ?? '').trim();
-  require(!page.url().startsWith('https://www.last.fm'), 'the browser left for Last.fm from an address the return cannot reach');
+  require(new URL(page.url()).origin !== 'https://www.last.fm', 'the browser left for Last.fm from an address the return cannot reach');
   for (const part of expected) require(text.includes(part), `the page says ${JSON.stringify(text)}; missing: ${part}`);
   return text;
 }
