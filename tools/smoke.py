@@ -539,10 +539,11 @@ def reverse_proxy(target: str):
 
 
 def check_base_path(host: DockerHost, admin: Client, listener: Client, expect_configured: bool) -> None:
+    # The setting is written first: once the new base path is stored, Jellyfin redirects every other path until its restart.
+    plugin_settings(admin, Enabled=False)
     configuration = json.loads(admin.request("/System/Configuration/network", raw=True)[0])
     configuration["BaseUrl"] = "/jellyfin"
     admin.request("/System/Configuration/network", "POST", configuration, 204)
-    plugin_settings(admin, Enabled=False)
     host.restart("/jellyfin")
     admin.origin = listener.origin = host.origin
     admin.base_path = listener.base_path = "/jellyfin"
