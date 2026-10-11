@@ -1,0 +1,65 @@
+name: Build a canary plugin from main
+# A canary is the plugin of main with the project application, for a trial on one server. It is
+# not a release: no tag, no draft, no catalog entry, and the artefact expires after one day.
+# tools/canary.py and tests/python/test_canary.py hold these limits.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: canary
+  cancel-in-progress: false
+jobs:
+  canary:
+    name: Canary build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: 'true'
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      # Any other ref fails here, before a step receives the application.
+      - name: Refuse every ref but main and name the canary
+        id: plan
+        run: python tools/canary.py plan --ref "$GITHUB_REF" --commit "$GITHUB_SHA" --run "$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Require the project-owned application credentials
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SHARED_SECRET: ${{ secrets.LASTFM_SHARED_SECRET }}
+        run: python tools/canary.py credentials
+      - name: Build the plugin under the canary version
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SHARED_SECRET: ${{ secrets.LASTFM_SHARED_SECRET }}
+          CANARY_VERSION: ${{ steps.plan.outputs.version }}
+          CANARY_ASSEMBLY_VERSION: ${{ steps.plan.outputs.assembly-version }}
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          dotnet restore --locked-mode
+          dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore "-p:Version=$CANARY_VERSION" "-p:AssemblyVersion=$CANARY_ASSEMBLY_VERSION" "-p:FileVersion=$CANARY_ASSEMBLY_VERSION"
+      - name: Package the canary and record its checksums
+        env:
+          CANARY_NAME: ${{ steps.plan.outputs.name }}
+          CANARY_VERSION: ${{ steps.plan.outputs.version }}
+        run: python tools/canary.py package --directory src/JellySin.Plugin.Lastfm/bin/Release/net10.0 --name "$CANARY_NAME" --version "$CANARY_VERSION" --output dist >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.plan.outputs.name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
