@@ -116,6 +116,15 @@ metadata in distributed plugin bytes and are extractable by server owners; build
 secret storage does not turn a distributed desktop application secret into a
 confidential server credential.
 
+`canary.yml` builds main with the same application for a trial on one server before a
+release exists. A maintainer dispatches it by hand; it refuses every ref but main,
+creates no tag, draft or catalog entry and keeps its artefact for one day. The build is
+versioned `0.0.<run>`, below every release, and its archive is named
+`plugin-lastfm-canary-*`, so it cannot pass as a release. The artefact carries the
+application as a release does. `tools/canary.py` refuses a build without the application
+or under another version, and the Python tests fail when the workflow gains a trigger,
+a write permission, a longer retention or a script that names the application.
+
 Only the built-in repository token is used. Bot PR CI is explicitly dispatched;
 publication requires the separate maintainer action described above.
 GitHub may additionally require a maintainer to approve the actual bot-created
