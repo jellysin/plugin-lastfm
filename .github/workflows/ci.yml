@@ -87,7 +87,10 @@ jobs:
           curl --fail --silent --show-error --location --proto '=https' --max-time 60 https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output "$RUNNER_TEMP/gitleaks.tar.gz"
           echo "$GITLEAKS_SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
-          "$RUNNER_TEMP/gitleaks" git --redact --no-banner
+          # Every fetched ref is scanned. Exceptions are single fingerprints in .gitleaksignore with an
+          # expiry; the self-test plants keys and an expired exception before the result is trusted.
+          python tools/secret_scan.py --gitleaks "$RUNNER_TEMP/gitleaks" --self-test
+          python tools/secret_scan.py --gitleaks "$RUNNER_TEMP/gitleaks"
       - name: Exercise real Jellyfin 12 load, account isolation and restart
         run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --image jellyfin/jellyfin:12.0@sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5
       - name: Verify native history writes and interrupted private playlist recovery
