@@ -14,15 +14,18 @@ fails on queue overflow, failed writes, p95 above 50 microseconds, p99 above 200
 microseconds or allocation above 1,024 bytes per callback. These are regression
 budgets; no network, disk or library query runs inside the playback callback.
 
-Measured locally on 2026-09-08 with .NET 10.0.11, Windows build 26200 and 24 logical
-processors:
+Measured on 2026-10-11 for `b79a87d`. The harness runs in one process against the
+Jellyfin 12.0.0 interfaces the plugin is compiled with; no server takes part, so
+these numbers do not depend on the server release.
 
-| Producers | Median | p95 | p99 | Mean allocation |
-| --- | ---: | ---: | ---: | ---: |
-| 1 | 0.3 μs | 1.1 μs | 1.7 μs | 276.1 bytes/callback |
-| 4 | 0.4 μs | 2.1 μs | 4.0 μs | 276.1 bytes/callback |
+| Run | Producers | Median | p95 | p99 | Mean allocation |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Hosted CI: .NET 10.0.12, Ubuntu 24.04.5, 4 logical processors | 1 | 1.0 μs | 1.6 μs | 2.2 μs | 260.8 bytes/callback |
+| | 4 | 1.5 μs | 2.0 μs | 2.8 μs | 276.1 bytes/callback |
+| Local SDK container: .NET 10.0.12, Ubuntu 24.04.5, 5 logical processors | 1 | 0.3 μs | 0.4 μs | 1.7 μs | 260.8 bytes/callback |
+| | 4 | 0.4 μs | 1.1 μs | 1.8 μs | 276.1 bytes/callback |
 
-Both scenarios recorded zero dropped observations and failed writes. These are
+All scenarios recorded zero dropped observations and failed writes. These are
 callback measurements, not whole-server latency or improvement claims against an
 inherited implementation. CI retains its own runtime, OS, processor count and
 measurement JSON. Compare equivalent workloads on the same runtime and hardware.
@@ -41,12 +44,22 @@ generated track, delivery state must remain empty and healthy, and HTTP p95 must
 stay below 1,000 ms. No Last.fm account is connected or external music API called.
 Only this harness's uniquely owned container, volumes and fixtures are cleaned up.
 
-The final 2026-09-08 local run scanned all 10,000 tracks in 24.7 seconds:
+Measured on 2026-10-11 for `b79a87d`, one run each. CI enforces the budget on
+Jellyfin 12.2.0 only; the 12.0.0 row is a local run for comparison on the same host.
 
-| Request | Median | p95 | p99 |
-| --- | ---: | ---: | ---: |
-| Plugin library search | 197.6 ms | 331.2 ms | 380.7 ms |
-| Native playback progress | 196.1 ms | 439.0 ms | 519.0 ms |
+| Run | Server | Scan | Request | Median | p95 | p99 |
+| --- | --- | ---: | --- | ---: | ---: | ---: |
+| Hosted CI | 12.2.0 | 12.6 s | Plugin library search | 207.9 ms | 323.0 ms | 437.3 ms |
+| | | | Native playback progress | 191.4 ms | 398.5 ms | 534.0 ms |
+| Local | 12.2.0 | 8.2 s | Plugin library search | 35.8 ms | 139.0 ms | 176.4 ms |
+| | | | Native playback progress | 37.0 ms | 187.5 ms | 324.3 ms |
+| Local | 12.0.0 | 10.4 s | Plugin library search | 27.7 ms | 174.5 ms | 190.6 ms |
+| | | | Native playback progress | 47.6 ms | 463.7 ms | 626.2 ms |
+
+The local host is an AMD Ryzen 9 9950X3D that ran other work at the same time. An
+earlier local run on 12.2.0 the same day measured 33.3/171.6/299.5 ms for search and
+24.4/315.0/351.3 ms for playback, so single runs differ by this much and the table
+shows no difference between the two servers. All runs stayed below the budget.
 
 These numbers include Docker networking, HTTP, authorization and Jellyfin's own
 work. They do not describe the plugin callback alone. The playback requests are
