@@ -255,7 +255,13 @@ failed:
 | `PageLimit` | The collection has more than 50 pages of 200 tracks. |
 
 The warning carries counts only: pages read and reported, the total reported
-first and last, tracks read and distinct tracks. It never carries track names.
+first and last, tracks read and distinct tracks. For `FirstPageChanged` it adds
+how many positions of page 1 differ between the two reads, whether both reads
+hold the same tracks with the same loved dates, and how many tracks of page 1
+share a loved date with another. The same tracks in another order, with tied
+dates, would suggest that Last.fm returns tracks loved in the same second in no
+fixed order; other tracks or dates would suggest that the collection changed
+during the read. It never carries track names.
 
 History import starts with a preview. It raises play counts to the larger of
 existing local and Last.fm aggregate counts and only moves last-played dates
