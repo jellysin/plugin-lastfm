@@ -1,12 +1,21 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace JellySin.Plugin.Lastfm.Features;
 
 public sealed record MusicTrack(string Artist, string Title, string? Album = null, string? MusicBrainzId = null,
     string? Url = null, int PlayCount = 0, DateTimeOffset? PlayedAt = null, bool NowPlaying = false);
 
-public sealed record MusicPage(IReadOnlyList<MusicTrack> Tracks, int Page, int TotalPages, bool Complete, long? Until = null, int TotalTracks = 0);
+public sealed record MusicPage(IReadOnlyList<MusicTrack> Tracks, int Page, int TotalPages, bool Complete, long? Until = null, int TotalTracks = 0,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] LovedReadGap? Gap = null);
+
+/// <summary>The check a read of the loved tracks failed. The names appear in the server log.</summary>
+public enum LovedReadCheck { PageCountChanged, TotalChanged, ItemCountDiffers, FirstPageChanged, DuplicateTracks, EmptyPage, PageLimit }
+
+/// <summary>Why a read of the loved tracks is not trusted, in counts only: no track, artist or user appears.</summary>
+public sealed record LovedReadGap(LovedReadCheck Check, int PagesRead, int TotalPages, int FirstTotal, int LatestTotal,
+    int ItemsRead, int DistinctItems);
 
 public sealed record MusicChart(string Period, IReadOnlyList<MusicTrack> Tracks);
 
