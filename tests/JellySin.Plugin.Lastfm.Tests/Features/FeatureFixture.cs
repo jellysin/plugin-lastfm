@@ -32,6 +32,13 @@ internal sealed class FeatureFixture : IDisposable
         Core.Client.Handler = Respond;
     }
 
+    /// <summary>The call behind the page's Save control, with the token of that web request.</summary>
+    public Task<FavouriteReview> SaveFromRequestAsync(bool enabled, CancellationToken request) =>
+        Favourites.SetEnabledAsync(Core.UserId, enabled, request);
+
+    /// <summary>Completes when no reconciliation runs for the user any more.</summary>
+    public Task ReconciliationEndedAsync(CancellationToken ct) => Task.CompletedTask;
+
     public LocalMusic AddLocal(string title, bool favourite = false, int playCount = 0)
     {
         var value = new LocalMusic(Guid.NewGuid(), new MusicTrack("Artist", title), favourite, playCount, null);
@@ -86,10 +93,12 @@ internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter
     public Dictionary<Guid, LocalMusic> Items { get; } = [];
     public List<(Guid Item, bool Favourite)> FavouriteWrites { get; } = [];
     public List<(Guid Item, int Count, DateTime? Date)> HistoryWrites { get; } = [];
+    public Action<CancellationToken>? OnMatch { get; set; }
 
     public MusicMatch Match(Guid userId, MusicTrack track, CancellationToken ct)
     {
         Validate(userId, ct);
+        OnMatch?.Invoke(ct);
         var matches = Items.Values.Where(v => v.Track.Artist == track.Artist && v.Track.Title == track.Title).ToArray();
         return new(track, matches.Length == 1 ? matches[0].Id : null, matches.Length == 0 ? "missing" : matches.Length == 1 ? "matched" : "ambiguous");
     }
