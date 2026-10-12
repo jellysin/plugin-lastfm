@@ -176,7 +176,8 @@ def remove_container(name: str) -> bool:
 
 
 class DockerHost:
-    def __init__(self, plugin: Path, image: str, probe_plugin: Path | None = None, published: str = "") -> None:
+    def __init__(self, plugin: Path, image: str, probe_plugin: Path | None = None, published: str = "",
+                 extra_arguments: tuple[str, ...] = ()) -> None:
         self.name = "jellysin-smoke-" + uuid.uuid4().hex[:16]
         self.config = self.name + "-config"
         self.cache = self.name + "-cache"
@@ -187,6 +188,8 @@ class DockerHost:
             require(self.probe_plugin.name == "JellySin.NativeProbe.dll", "Only the named test fixture may enable the native probe.")
         # The address the server is told to publish for itself (start option published-server-url); empty for none.
         self.published = published
+        # Further options for the server container, such as the Last.fm stand-in of the page check.
+        self.extra_arguments = list(extra_arguments)
         self.origin = ""
         self.version = ""
         self.started = False
@@ -220,7 +223,8 @@ class DockerHost:
                "--publish", "127.0.0.1::8096", "--mount", f"type=volume,src={self.config},dst=/config",
                "--mount", f"type=volume,src={self.cache},dst=/cache",
                "--mount", f"type=bind,src={self.plugin},dst=/config/plugins/JellySin.Lastfm/JellySin.Plugin.Lastfm.dll,readonly",
-               "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", *probe_arguments, *published_arguments, self.image)
+               "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", *probe_arguments, *published_arguments,
+               *self.extra_arguments, self.image)
         self.started = True
         self.refresh_origin()
         wait_ready(Client(self.origin))
