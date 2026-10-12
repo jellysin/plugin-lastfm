@@ -1,6 +1,8 @@
 """Secret-scan exceptions stay fingerprint-scoped and stop applying when they expire."""
 
+import contextlib
 import datetime
+import io
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -65,6 +67,29 @@ class ScanDecisionTests(unittest.TestCase):
 
     def test_reports_an_exception_that_matches_nothing(self):
         self.assertEqual(([], [], [FINGERPRINT]), self.decide("2027-01-06", []))
+
+
+class SelfTestTests(unittest.TestCase):
+    def run_self_test(self, found):
+        stderr = io.StringIO()
+        with (
+            patch.object(secret_scan, "fixture", side_effect=lambda root, name, side_branch=False: Path(root) / name),
+            patch.object(secret_scan, "findings", return_value=found),
+            contextlib.redirect_stderr(stderr),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            status = secret_scan.main(["--gitleaks", "gitleaks", "--self-test"])
+        return status, stderr.getvalue()
+
+    def test_scanner_that_finds_no_planted_key_fails_with_a_clear_message(self):
+        status, stderr = self.run_self_test([])
+        self.assertEqual(2, status)
+        self.assertIn("self-test fixture 'valid': expected 1 planted finding, got 0", stderr)
+
+    def test_scanner_that_reports_extra_findings_fails_with_a_clear_message(self):
+        status, stderr = self.run_self_test([FINGERPRINT, f"{COMMIT}:src/Other.cs:generic-api-key:3"])
+        self.assertEqual(2, status)
+        self.assertIn("expected 1 planted finding, got 2", stderr)
 
 
 if __name__ == "__main__":

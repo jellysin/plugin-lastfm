@@ -147,7 +147,10 @@ def fixture(root, name, side_branch=False):
 
 def excepted(root, gitleaks, name, expires):
     repository = fixture(root, name)
-    (fingerprint,) = findings(gitleaks, repository)
+    found = findings(gitleaks, repository)
+    if len(found) != 1:
+        raise ScanError(f"self-test fixture '{name}': expected 1 planted finding, got {len(found)}")
+    (fingerprint,) = found
     (repository / EXCEPTIONS).write_text(f"# expires {expires.isoformat()}: fixture\n{fingerprint}\n", encoding="utf-8")
     return repository
 
