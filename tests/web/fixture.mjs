@@ -13,7 +13,7 @@ const forward = address => ({ status: 200, contentType: 'text/html', body: `<!do
 const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url);
 
 export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0 } = {}) {
-  const state = { requests: [], lastfm: [], approvalPending: false, lastfmAnswer: 'token', prefix, administrator, connected: true, favourites: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
+  const state = { requests: [], lastfm: [], approvalPending: false, lastfmAnswer: 'token', prefix, administrator, connected: true, favourites: false, favouritesRunning: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
     historyTracks: [track], delivery: { Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0, Rejected: 0, PendingPersistence: 0 } };
   await page.route('**/*', async route => {
     const request = route.request();
@@ -112,7 +112,7 @@ function history(endpoint, method, url, state) {
 function favourites(endpoint, method, body, state) {
   if (method === 'PUT') state.favourites = body.enabled;
   if (endpoint === 'Me/Favourites/Review') state.removed = true;
-  return json({ Enabled: state.favourites, Status: 'Ready', Total: state.removed ? 0 : 1, Page: 1, Pages: 1, Pending: state.removed ? [] : [{ Id: previewId, Track: track, RemoveFrom: 'lastfm' }] });
+  return json({ Enabled: state.favourites, Status: 'Ready', Total: state.removed ? 0 : 1, Page: 1, Pages: 1, Running: Boolean(state.favouritesRunning), Pending: state.removed ? [] : [{ Id: previewId, Track: track, RemoveFrom: 'lastfm' }] });
 }
 
 function playlists(endpoint, method, body, state) {

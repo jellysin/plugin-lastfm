@@ -200,12 +200,55 @@ Last.fm has no scrobble idempotency key. If it accepts a batch and the response 
 lost, retrying can duplicate a listen. Local occurrence identifiers and receipts
 reduce duplicates but cannot provide an exactly-once guarantee across the network.
 
+### What the server log says about delivery
+
+The plugin writes one line for each submitted batch of plays and each playing-now
+update, so that scrobble activity and delivery results can be read from the
+server log alone:
+
+- `Plays submitted for user ...` at information level, with the number of plays
+  sent in the call, the number Last.fm accepted, the number it ignored, and the
+  ignore codes it gave, or `none`.
+- A warning `Submitting plays for user ... failed with Last.fm error ...` with
+  the error code Last.fm returned and the number of plays in the call. They
+  remain stored.
+- `Playing-now update for user ...: Last.fm accepted it.` at information level.
+- `Playing-now update for user ...: Last.fm ignored it (ignore code ...).` at
+  information level, with the ignore code.
+- `Playing-now update for user ...: Last.fm answered without an error.` at
+  information level, when Last.fm answered without an ignore code.
+- `Playing-now update for user ...: Last.fm refused it with error ... It is not repeated.`
+  at information level, when Last.fm returned an error code.
+
+A line with nothing to report is not written. An update another track overtook leaves
+no line. A user appears as in the
+[sign-in lines](#what-the-server-log-says-about-a-sign-in), never by name or id.
+No line holds an account name or a track.
+
+The ignore codes Last.fm documents: 1 artist ignored, 2 track ignored,
+3 timestamp too old, 4 timestamp too new, 5 daily scrobble limit exceeded.
+
 ## Favourites, history and playlists
 
 Favourite synchronization starts with an additive reconciliation. A detected
 removal becomes a review item rather than immediately removing the other copy.
 Incomplete remote collections pause reconciliation. Before applying a removal,
 the service rechecks the current library identity and remote state.
+
+**Save preference** and **Sync now** start the reconciliation as a run on the
+server and answer within about ten seconds. A longer run continues on the
+server and the page says so; **Refresh review** shows its result. Closing the
+page does not stop the run. Switching the feature off, a change of the Last.fm
+connection and a server stop do; a request that still waits for a stopped run
+answers with the stored state. One run per user exists at a time, and the
+periodic refresh in the background uses the same run.
+
+A run that fails writes one warning that begins `Favourite synchronization for
+user`, names the user as in
+[the sign-in lines](#what-the-server-log-says-about-a-sign-in) and the type of
+the error, never its message, and leaves the status "The last synchronization
+did not finish. Synchronize again." A run without a Last.fm connection writes
+no warning; the page asks to connect.
 
 History import starts with a preview. It raises play counts to the larger of
 existing local and Last.fm aggregate counts and only moves last-played dates

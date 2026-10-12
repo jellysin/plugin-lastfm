@@ -46,7 +46,7 @@ checked at the API boundary.
 | `Me/History`, `Me/Overview`, `Me/Charts` | Private history and listening insights |
 | `Me/History/Preview`, `Continue`, `Import` | Resumable preview and explicit aggregate import |
 | `Me/Discovery`, `Me/Library/Search` | Accessible local results, external suggestions and seed lookup |
-| `Me/Favourites` | Opt-in reconciliation and removal review |
+| `Me/Favourites` | Opt-in reconciliation outside the request and removal review |
 | `Me/Playlists` | User-owned generated playlists and saved recipes |
 | `Admin/Application` | Administrator-only application credential override |
 

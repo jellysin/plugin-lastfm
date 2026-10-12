@@ -20,6 +20,7 @@ public static class FeatureRegistration
         services.AddSingleton<IDiscoveryLibrary>(s => s.GetRequiredService<MusicLibrary>());
         services.AddSingleton<MusicFeatureService>();
         services.AddSingleton<FavouritesService>();
+        services.AddSingleton<FavouriteRuns>();
         services.AddSingleton<DiscoveryService>();
         services.AddSingleton<PlaylistService>();
         services.AddHostedService<FeatureWorker>();
@@ -27,7 +28,7 @@ public static class FeatureRegistration
     }
 }
 
-internal sealed class FeatureWorker(AccountService accounts, FavouritesService favourites, PlaylistService playlists,
+internal sealed class FeatureWorker(AccountService accounts, FavouriteRuns runs, PlaylistService playlists,
     IUserDataManager userData, TimeProvider clock, ILogger<FeatureWorker> logger) : BackgroundService
 {
     private readonly System.Threading.Channels.Channel<Guid> changes = System.Threading.Channels.Channel.CreateBounded<Guid>(256);
@@ -87,7 +88,7 @@ internal sealed class FeatureWorker(AccountService accounts, FavouritesService f
         {
             var account = await accounts.GetAsync(id, ct).ConfigureAwait(false);
             if (account is null || account.NeedsReconnect) return;
-            await RunFeatureAsync(id, token => favourites.SyncAsync(id, token), ct).ConfigureAwait(false);
+            await RunFeatureAsync(id, token => runs.RunToEndAsync(id, token), ct).ConfigureAwait(false);
             if (includePlaylists) await RunFeatureAsync(id, token => playlists.RefreshDueAsync(id, token), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }

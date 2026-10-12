@@ -11,6 +11,7 @@ internal sealed class FeatureFixture : IDisposable
     public FakeMusicLibrary Library { get; } = new();
     public MusicApi Api { get; }
     public FavouritesService Favourites { get; }
+    public FavouriteRuns Runs { get; }
     public MusicFeatureService History { get; }
     public List<MusicTrack> Loved { get; } = [];
     public List<MusicTrack> Top { get; } = [];
@@ -21,6 +22,7 @@ internal sealed class FeatureFixture : IDisposable
     {
         Api = new(Core.Client, Core.Accounts, Core.Clock);
         Favourites = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts);
+        Runs = new(Favourites, Core.Clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<FavouriteRuns>.Instance);
         History = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts);
     }
 
@@ -30,6 +32,27 @@ internal sealed class FeatureFixture : IDisposable
         Library.UserId = Core.UserId;
         Core.Client.Calls.Clear();
         Core.Client.Handler = Respond;
+    }
+
+    /// <summary>The call behind the page's Save control, with the token of that web request.</summary>
+    public Task<FavouriteReview> SaveFromRequestAsync(bool enabled, CancellationToken request) =>
+        Runs.SetEnabledAsync(Core.UserId, enabled, request);
+
+    /// <summary>Completes when no reconciliation runs for the user any more. It starts none.</summary>
+    public async Task ReconciliationEndedAsync(CancellationToken ct)
+    {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        while (Runs.IsRunning(Core.UserId))
+        {
+            Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), "The reconciliation did not end within ten seconds.");
+            await Task.Delay(10, ct).ConfigureAwait(false);
+        }
+    }
+
+    public async Task<FavouriteReview> EnableAndSyncAsync(CancellationToken ct)
+    {
+        await Favourites.SetEnabledAsync(Core.UserId, true, ct).ConfigureAwait(false);
+        return await Favourites.SyncAsync(Core.UserId, ct).ConfigureAwait(false);
     }
 
     public LocalMusic AddLocal(string title, bool favourite = false, int playCount = 0)
@@ -77,7 +100,7 @@ internal sealed class FeatureFixture : IDisposable
             },
         });
 
-    public void Dispose() { Locks.Dispose(); Core.Dispose(); }
+    public void Dispose() { Runs.Dispose(); Locks.Dispose(); Core.Dispose(); }
 }
 
 internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter
@@ -86,10 +109,12 @@ internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter
     public Dictionary<Guid, LocalMusic> Items { get; } = [];
     public List<(Guid Item, bool Favourite)> FavouriteWrites { get; } = [];
     public List<(Guid Item, int Count, DateTime? Date)> HistoryWrites { get; } = [];
+    public Action<CancellationToken>? OnMatch { get; set; }
 
     public MusicMatch Match(Guid userId, MusicTrack track, CancellationToken ct)
     {
         Validate(userId, ct);
+        OnMatch?.Invoke(ct);
         var matches = Items.Values.Where(v => v.Track.Artist == track.Artist && v.Track.Title == track.Title).ToArray();
         return new(track, matches.Length == 1 ? matches[0].Id : null, matches.Length == 0 ? "missing" : matches.Length == 1 ? "matched" : "ambiguous");
     }

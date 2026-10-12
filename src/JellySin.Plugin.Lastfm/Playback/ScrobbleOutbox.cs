@@ -11,6 +11,10 @@ public sealed record ScrobbleReceipt(Guid OccurrenceId, int IgnoredCode, DateTim
 public sealed record OutboxState(List<PendingScrobble> Pending, List<ScrobbleReceipt> Receipts);
 public sealed record OutboxStatus(int Pending, int Blocked, int? LastErrorCode, int? LastIgnoredCode, int Rejected, int? LastRejectedCode);
 
+public sealed record FlushOutcome(int Submitted, int Accepted, IReadOnlyList<int> IgnoredCodes, int? ErrorCode);
+public enum NowPlayingAnswer { NotSent, Accepted, Ignored, NoIgnoreCode }
+public readonly record struct NowPlayingOutcome(NowPlayingAnswer Answer, int IgnoreCode = 0);
+
 public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, ILastfmClient client, TimeProvider clock)
 {
     private const int MaxPending = 10_000;
@@ -48,47 +52,52 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
             (state?.Pending ?? []).Select(item => item with { BlockedCode = null, IgnoredCode = null, NextAttemptAt = null }).ToList(), state?.Receipts ?? []), cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task FlushAsync(Guid userId, CancellationToken cancellationToken)
+    public async Task<FlushOutcome?> FlushAsync(Guid userId, CancellationToken cancellationToken)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, accounts.GetOperationToken(userId));
         var token = linked.Token;
         var account = await accounts.GetAsync(userId, token).ConfigureAwait(false);
-        if (account is null || account.NeedsReconnect || !account.ScrobblingEnabled) return;
+        if (account is null || account.NeedsReconnect || !account.ScrobblingEnabled) return null;
         var state = await store.ReadAsync<OutboxState>(userId, "outbox", token).ConfigureAwait(false);
         var batch = state?.Pending.OrderBy(item => item.Listen.StartedAt)
             .TakeWhile(item => item.BlockedCode is null && item.IgnoredCode is null && (item.NextAttemptAt is null || item.NextAttemptAt <= clock.GetUtcNow())).Take(50).ToArray() ?? [];
-        if (batch.Length == 0) return;
+        if (batch.Length == 0) return null;
         var invalid = batch.Where(item => item.Listen.AccountGeneration != account.Generation || !ValidRequiredMetadata(item.Listen.Track)).ToArray();
         if (invalid.Length > 0)
         {
             await CompleteAsync(userId, invalid, invalid.Select(_ => -1).ToArray(), token).ConfigureAwait(false);
             batch = batch.Except(invalid).ToArray();
-            if (batch.Length == 0) return;
+            if (batch.Length == 0) return null;
         }
         try
         {
             using var response = await client.CallForApplicationAsync("track.scrobble", BuildBatch(batch), account.SessionKey, account.ApplicationIdentity, RequestPriority.Listening, token).ConfigureAwait(false);
             var codes = ReadResults(response.RootElement, batch.Length);
             await CompleteAsync(userId, batch, codes, token).ConfigureAwait(false);
+            var accepted = codes.Count(code => code == 0);
+            var ignoredCodes = codes.Where(code => code != 0).Distinct().OrderBy(code => code).ToArray();
+            return new FlushOutcome(batch.Length, accepted, ignoredCodes, null);
         }
         catch (LastfmException exception)
         {
             if (exception.Code == 9) await accounts.MarkReconnectAsync(userId, token).ConfigureAwait(false);
             await DelayAsync(userId, batch, exception, token).ConfigureAwait(false);
+            return new FlushOutcome(batch.Length, 0, [], exception.Code);
         }
     }
 
-    public async Task NowPlayingAsync(EligibleListen listen, CancellationToken cancellationToken, Func<bool>? isCurrent = null)
+    public async Task<NowPlayingOutcome> NowPlayingAsync(EligibleListen listen, CancellationToken cancellationToken, Func<bool>? isCurrent = null)
     {
-        if (clock.GetUtcNow() - listen.StartedAt > TimeSpan.FromSeconds(20)) return;
+        if (clock.GetUtcNow() - listen.StartedAt > TimeSpan.FromSeconds(20)) return new NowPlayingOutcome(NowPlayingAnswer.NotSent);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, accounts.GetOperationToken(listen.UserId));
         var account = await accounts.GetAsync(listen.UserId, linked.Token).ConfigureAwait(false);
         if (account is null || account.NeedsReconnect || !account.ScrobblingEnabled || account.Generation != listen.AccountGeneration
-            || accounts.GetCaptureBinding(listen.UserId)?.CaptureGeneration != listen.CaptureGeneration) return;
+            || accounts.GetCaptureBinding(listen.UserId)?.CaptureGeneration != listen.CaptureGeneration) return new NowPlayingOutcome(NowPlayingAnswer.NotSent);
         try
         {
             using var response = await client.UpdateNowPlayingAsync(TrackParameters(listen.Track), account.SessionKey, account.ApplicationIdentity,
                 isCurrent ?? (static () => true), linked.Token).ConfigureAwait(false);
+            return ReadNowPlayingResult(response.RootElement);
         }
         catch (LastfmException exception) when (exception.Code == 9)
         {
@@ -145,6 +154,23 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
             return code.ValueKind == JsonValueKind.Number && code.TryGetInt32(out var numeric) ? numeric
                 : code.ValueKind == JsonValueKind.String && int.TryParse(code.GetString(), out var parsed) ? parsed : throw new LastfmException(16);
         }).ToArray();
+    }
+
+    private static NowPlayingOutcome ReadNowPlayingResult(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Object
+            && root.TryGetProperty("nowplaying", out var nowPlaying)
+            && nowPlaying.ValueKind == JsonValueKind.Object
+            && nowPlaying.TryGetProperty("ignoredMessage", out var message)
+            && message.ValueKind == JsonValueKind.Object
+            && message.TryGetProperty("code", out var code))
+        {
+            if (code.ValueKind == JsonValueKind.Number && code.TryGetInt32(out var numeric))
+                return numeric == 0 ? new NowPlayingOutcome(NowPlayingAnswer.Accepted, 0) : new NowPlayingOutcome(NowPlayingAnswer.Ignored, numeric);
+            if (code.ValueKind == JsonValueKind.String && int.TryParse(code.GetString(), out var parsed))
+                return parsed == 0 ? new NowPlayingOutcome(NowPlayingAnswer.Accepted, 0) : new NowPlayingOutcome(NowPlayingAnswer.Ignored, parsed);
+        }
+        return new NowPlayingOutcome(NowPlayingAnswer.NoIgnoreCode);
     }
 
     private Task CompleteAsync(Guid userId, PendingScrobble[] batch, int[] codes, CancellationToken cancellationToken)
