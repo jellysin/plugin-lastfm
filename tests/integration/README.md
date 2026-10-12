@@ -121,3 +121,39 @@ of every failed scenario. `--only <text>` runs the scenarios whose name contains
 the text. The first run of this check, against a build that compared the scheme
 of the page with the scheme the server saw, failed all scenarios at the
 published address with HTTP 403; that defect is what the check guards.
+
+## Plugin pages with a Last.fm stand-in
+
+`page_check.py` opens the plugin's pages in a headless Chromium against the pinned
+server, with a stand-in for Last.fm, and keeps a screenshot of each page:
+
+- the administrator saves the plugin settings and a made-up application on the
+  settings page in the server's own web interface, and the account section must
+  follow the new application;
+- an ordinary user signs in on the dashboard and connects; the browser's request
+  for Last.fm's approval page is answered with an approval for a fixed token;
+- the same user loads charts and recent listens and starts discovery from a
+  library track, which must name one similar track in the library and one beyond it.
+
+The server runs on a Docker network made for the run and reaches Last.fm only
+through `lastfm_stand_in.py`, a proxy in its own container (a pinned Python image)
+on that network. The proxy opens a tunnel to `ws.audioscrobbler.com` alone, ends
+its TLS with a certificate from a certificate authority made for the run, and
+answers the documented methods with fixture names; Jellyfin's own hosts are
+refused and recorded. No port opens on the workstation besides the server's
+loopback port, and no real Last.fm account, application or credential is used.
+The run fails when a page check fails, when the server never asks the stand-in
+for a session, when it rejects the stand-in's certificate, and when the server
+log contains the session key the stand-in issued.
+
+```sh
+npx --no-install playwright install chromium
+python tests/integration/page_check.py \
+  --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
+  --server newest --evidence .workingdir/evidence/page-check
+```
+
+It needs Docker, Node with the repository's locked packages and `openssl`. The
+evidence directory receives the screenshots, `result.json`, the server log, the
+methods the stand-in answered and its tunnel record; keep it out of the
+repository. CI does not run this check yet.
