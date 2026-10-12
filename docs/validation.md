@@ -165,7 +165,32 @@ used the pages; the observations come from the server log, read without changes.
   differs is not yet known.
 
 History and charts views, discovery results and the native administrator form were
-not observed in this run; those rows stay "12.0 only".
+not observed in this run; the page check below covers them without a live account.
+
+## Page check on 2026-10-12 with Jellyfin 12.2.0
+
+[`tests/integration/page_check.py`](../tests/integration/page_check.py) at `97096e5`
+ran on 2026-10-12 at 21:14 (+02:00) against the pinned 12.2.0 image with the plugin
+built from `d8e7364` (DLL SHA-256
+`6dccf9902560361737105e9123c951f4c7eb0f59e13c0d0ce5aca506dd51d59a`). The server ran
+on a Docker network made for the run and reached Last.fm only through the stand-in
+`lastfm_stand_in.py`, which answers the documented methods with fixture data. No
+Last.fm account, project application or credential was used; the application the
+administrator saved is made up. Headless Chromium passed all five checks:
+
+- Administrator settings page: the plugin settings and an application override saved
+  with HTTP 204 each, and the account section followed the new application.
+- An ordinary user connected through the browser grant and the page showed
+  "Connected as stand-in-listener".
+- Charts listed tracks, artists and albums.
+- Recent listens listed the fixture plays.
+- One discovery result listed a match in the library and one result beyond it.
+
+The server asked the stand-in for `auth.getSession` and eight read methods, each once.
+The stand-in opened one Last.fm tunnel and refused the server's own requests to
+`repo.jellyfin.org` and `musicbrainz.org`. The run checks that the server log does not
+contain the session key. The stand-in does not prove behavior against the live
+Last.fm service; the live views remain those observed on 12.0.0.
 
 ## Measurements
 

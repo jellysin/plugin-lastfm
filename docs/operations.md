@@ -184,6 +184,12 @@ Only observed listening counts. Pauses and seeks do not create listening time.
 Tracks must exceed 30 seconds and satisfy the documented half-track or four-minute
 threshold. Original UTC start times are retained when delivery is delayed.
 
+A play that is running while its user connects again, also to the same Last.fm
+account, is not submitted: connecting starts a new capture, and the tracker drops a
+play begun under the previous one and ignores its remaining progress. The next
+track counts as usual. This follows from the code and matches the 2026-10-12
+observation on 12.2.0 in [validation](validation.md#observed-on-2026-10-12-with-jellyfin-1220).
+
 The outbox survives restarts, submits at most 50 scrobbles per request, and keeps
 bounded acknowledgement records. Failed now-playing updates are discarded because
 they describe a transient state. Temporary delivery failures receive bounded
