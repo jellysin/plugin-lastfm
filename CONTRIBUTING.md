@@ -71,7 +71,8 @@ and never merges old runs or trusts summary percentages from the report header.
 Release-please collects commits in a release PR and updates `version.txt`, web
 package versions and the changelog. Its `skip-github-release: true` setting prevents
 tag and release creation. Ordinary pushes and PR merges never publish a release.
-The first release PR targets `1.0.0`; it stays open while changes accumulate.
+The first release PR targets `0.1.0`; later releases stay on 0.x minors until the
+product feature list is complete, and only then does a release PR target `1.0.0`.
 
 Stable `vX.Y.Z` tags map to `X.Y.Z.0` for the assembly and Plugin Repository;
 the minimum Jellyfin ABI is separately recorded in `plugin.json`.
