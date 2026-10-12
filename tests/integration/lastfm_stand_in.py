@@ -179,6 +179,7 @@ def bind(directory: Path, address: tuple[str, int]) -> http.server.ThreadingHTTP
     Record.directory = directory / "out"
     StandIn.session = (directory / "session.txt").read_text(encoding="utf-8").strip()
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(directory / "server.pem", directory / "server.key")
     Tunnel.context = context
     server = http.server.ThreadingHTTPServer(address, Tunnel)

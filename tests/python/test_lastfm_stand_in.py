@@ -16,6 +16,12 @@ import lastfm_stand_in  # noqa: E402
 SESSION = "stand-in-session-test"
 
 
+def client_context(cafile=None):
+    context = ssl.create_default_context(cafile=cafile)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
 class StandInTests(unittest.TestCase):
     def setUp(self):
         scratch = tempfile.TemporaryDirectory()
@@ -49,7 +55,7 @@ class StandInTests(unittest.TestCase):
 
     def test_a_trusting_server_receives_the_documented_answer(self):
         connection = self.tunnel(lastfm_stand_in.API_HOST)
-        context = ssl.create_default_context(cafile=self.directory / "ca.pem")
+        context = client_context(cafile=self.directory / "ca.pem")
         connection.connect()
         connection.sock = context.wrap_socket(connection.sock, server_hostname=lastfm_stand_in.API_HOST)
         connection.request("POST", "/2.0/", body="method=auth.getSession&token=t&format=json",
@@ -65,7 +71,7 @@ class StandInTests(unittest.TestCase):
         connection = self.tunnel(lastfm_stand_in.API_HOST)
         connection.connect()
         with self.assertRaises(ssl.SSLCertVerificationError):
-            ssl.create_default_context().wrap_socket(connection.sock, server_hostname=lastfm_stand_in.API_HOST)
+            client_context().wrap_socket(connection.sock, server_hostname=lastfm_stand_in.API_HOST)
         self.wait_for("tunnels.log", 2)
         self.assertEqual([], self.lines("calls.log"))
         # Depending on the client the stand-in sees the rejection during its handshake or as a tunnel without a request.
