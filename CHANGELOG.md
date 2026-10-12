@@ -20,12 +20,3 @@
 * name users by their log pseudonym in feature refresh warnings ([#74](https://github.com/jellysin/plugin-lastfm/issues/74)) ([044ff89](https://github.com/jellysin/plugin-lastfm/commit/044ff89a4b1a0760fb4f4ad9824d432459569561))
 * offer only Connect until a Last.fm account is connected ([#61](https://github.com/jellysin/plugin-lastfm/issues/61)) ([77870ea](https://github.com/jellysin/plugin-lastfm/commit/77870ea537ca7bf4b6ec348413e011faf91d97ae))
 * run the favourite reconciliation outside the web request ([#70](https://github.com/jellysin/plugin-lastfm/issues/70)) ([f909c9d](https://github.com/jellysin/plugin-lastfm/commit/f909c9d24fce2d3bdbdd6d98ec3d0d275c8322d7)), closes [#69](https://github.com/jellysin/plugin-lastfm/issues/69)
-
-## Changelog
-
-## Unreleased
-
-
-### Features
-
-* introduce JellySin Last.fm for Jellyfin 12 ([#2](https://github.com/jellysin/plugin-lastfm/issues/2)) ([0ab3b9e](https://github.com/jellysin/plugin-lastfm/commit/0ab3b9e19ff9fe09f12195c4aaa918377ff36ab4))
