@@ -1,3 +1,4 @@
+using JellySin.Plugin.Lastfm.Api;
 using JellySin.Plugin.Lastfm.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
@@ -92,13 +93,13 @@ internal sealed class FeatureWorker(AccountService accounts, FavouriteRuns runs,
             if (includePlaylists) await RunFeatureAsync(id, token => playlists.RefreshDueAsync(id, token), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-        catch (Exception ex) { logger.LogWarning("Feature refresh for {UserId} failed with {ErrorType}.", id, ex.GetType().Name); }
+        catch (Exception ex) { logger.LogWarning("Feature refresh for user {User} failed with {ErrorType}.", LogName.Of(id), ex.GetType().Name); }
     }
 
     private async Task RunFeatureAsync(Guid id, Func<CancellationToken, Task> action, CancellationToken ct)
     {
         try { await action(ct).ConfigureAwait(false); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { logger.LogWarning("A feature operation for {UserId} failed with {ErrorType}.", id, ex.GetType().Name); }
+        catch (Exception ex) { logger.LogWarning("A feature operation for user {User} failed with {ErrorType}.", LogName.Of(id), ex.GetType().Name); }
     }
 }
