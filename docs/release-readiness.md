@@ -8,16 +8,18 @@ up. The automated server checks run on Jellyfin 12.0.0 and 12.2.0 on every chang
 the native fixture also on 12.1.0, the first release with the playlist visibility rule.
 Rows marked "12.0 only" rest on observations made on 2026-09-08 with the project
 application and a live Last.fm account on the 12.0 image; they have not been repeated
-on 12.2 and are outstanding for that server.
+on 12.2 and are outstanding for that server. The Last.fm browser grant and a live
+scrobble were repeated on 12.2.0 on 2026-10-12 with a canary build
+([validation record](validation.md#observed-on-2026-10-12-with-jellyfin-1220)).
 
 ## Evidence and remaining work
 
 | Requirement | Evidence / outstanding verification |
 | --- | --- |
 | Fresh Jellyfin 12 implementation | Independent history, GUID and namespace; .NET 10; no 10.11 compatibility branch; one build loaded on Jellyfin 12.0.0 and 12.2.0 |
-| Account connection | Registered project application; real ordinary-user password/Quick Connect passed on 12.0.0 and 12.2.0; Last.fm browser grant passed (12.0 only) |
+| Account connection | Registered project application; real ordinary-user password/Quick Connect passed on 12.0.0 and 12.2.0; Last.fm browser grant passed on 12.0.0 and on 12.2.0 with a canary build |
 | Credential protection | Protected sessions, authorization headers, redaction, per-user auth cancellation, disabled users and application-change regressions passed |
-| Playback and durable delivery | One explicitly authorized live scrobble passed (12.0 only); daily-limit retention, account transitions, enqueue retry and shutdown drain regressions passed |
+| Playback and durable delivery | One explicitly authorized live scrobble passed on 12.0.0, and one live scrobble on 12.2.0 with a canary build; daily-limit retention, account transitions, enqueue retry and shutdown drain regressions passed |
 | Favourite reconciliation | Additive merge, ambiguous identities, reviewed removals, intervening edits and interrupted-addition recovery tested; native revision protection passed |
 | History and charts | Live views passed (12.0 only); bounded complete-date retrieval/resumable application tested; real native stale-write protection and deliberate resets passed on 12.0.0 and 12.2.0 |
 | Personalized discovery | Real local/external results and unknown-seed behavior verified (12.0 only); private cache-first/expiration tests passed; library matching gave the same recorded answers on 12.0.0, 12.1.0 and 12.2.0 |

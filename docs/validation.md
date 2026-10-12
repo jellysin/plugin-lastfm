@@ -143,6 +143,30 @@ reproduced it. Final reports recorded no page errors or attempted Last.fm writes
 The existing connection stayed valid with scrobbling/favourites paused and no
 pending deliveries.
 
+## Observed on 2026-10-12 with Jellyfin 12.2.0
+
+A Jellyfin 12.2.0 server with the project application and a live Last.fm account ran
+the canary build 0.0.7 of commit `d8e7364`, not a release build. The account owner
+used the pages; the observations come from the server log, read without changes.
+
+- The Last.fm browser token/session flow completed: the return was accepted and the
+  account connected.
+- A played track produced a playing-now update that Last.fm accepted, and one play
+  submitted afterwards: one sent, Last.fm accepted one and ignored none.
+- A play that was running while the account signed in again was not submitted. By the
+  code, signing in renews the capture generation and the tracker drops a play that
+  started under the old one; this was read from the code, not traced.
+- Saving the favourites preference and **Sync now** ended without HTTP 408. With build
+  0.0.5 of commit `77870ea`, which ran the reconciliation inside the web request,
+  both had ended with 408 earlier that day.
+- Background favourite runs paused six times, each with the warning naming the
+  `FirstPageChanged` check: 337 tracks reported and read over two pages, all
+  distinct, and page 1 differed when read again. A pause writes nothing. Why page 1
+  differs is not yet known.
+
+History and charts views, discovery results and the native administrator form were
+not observed in this run; those rows stay "12.0 only".
+
 ## Measurements
 
 Callback and library load measurements and their workload limits are in
