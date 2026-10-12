@@ -31,11 +31,19 @@ on 12.2 and are outstanding for that server.
 | Repository checks | PR/squash protections, pinned Actions, locks, Renovate and read-only defaults configured; candidate CI and all four CodeQL analyses passed |
 | Publication and installation | No plugin release is available in the Plugin Repository |
 | Legacy migration | Separate plugin GUID and explicit uninstall/reconnect instructions; existing Last.fm history remains on Last.fm |
+| Last.fm API terms | Closed as the project's own reading of the terms; the clarification is not sent (decision of 2026-10-12, below); no written Last.fm approval exists |
 
-The Last.fm API terms and unresolved distributed-storage/display questions are
-documented in [API research](lastfm-api.md). The clarification draft is unsent;
-neither registration nor a successful API call is represented as separate written
-permission for data redistribution.
+The Last.fm API terms and the storage and display questions across independent
+installations are documented in [API research](lastfm-api.md). On 2026-10-12 the
+maintainer decided not to send the [clarification draft](lastfm-permission-request.md).
+The application key and shared secret identify the application, not a user, and the
+plugin ships them in its DLL as the earlier Jellyfin Last.fm plugin did: its published
+source holds both as constants
+([`Resources/Strings.cs` at `6612157`](https://github.com/jesseward/jellyfin-plugin-lastfm/blob/66121574a59fc3def7a87cbe1e9c17e6ea645557/Jellyfin.Plugin.Lastfm/Resources/Strings.cs#L22-L26), read on 2026-10-12).
+The terms row therefore records the project's own reading, not a confirmation from
+Last.fm. Neither registration nor a successful API call is represented as separate
+written permission for data redistribution. The decision does not change how user
+session keys are stored; they stay protected on each server.
 
 The detailed measured results belong in [validation.md](validation.md) and
 [benchmarks/README.md](../benchmarks/README.md). A passing unit suite alone does not

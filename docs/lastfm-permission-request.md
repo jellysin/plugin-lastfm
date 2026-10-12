@@ -1,10 +1,11 @@
 # Last.fm permission request — unsent draft
 
-Status: not sent; no Last.fm approval received. The project application is registered
-under Lothario87, and live authorization and one approved scrobble passed. Whether
-and when this clarification is sent is open and tracked in
-[issue 62](https://github.com/jellysin/plugin-lastfm/issues/62). Do not put
-API keys, shared secrets or user session keys in this message or its attachments.
+Status: not sent, and on 2026-10-12 the maintainer decided not to send it; the reason
+is recorded in [release readiness](release-readiness.md). No Last.fm approval was
+received. The project application is registered under Lothario87, and live
+authorization and one approved scrobble passed. The draft is kept as the record of
+the open questions. Do not put API keys, shared secrets or user session keys in this
+message or its attachments.
 
 To: partners@last.fm
 Subject: JellySin Last.fm — self-hosted Jellyfin plugin application and display approval

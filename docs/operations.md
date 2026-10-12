@@ -94,7 +94,7 @@ was stored. Last.fm therefore sent the browser back to an address it cannot reac
 itself. That trial delivered no scrobble; no listen was played in it.
 The [API terms review](lastfm-api.md) records the storage,
 attribution and display requirements. The [optional clarification enquiry](lastfm-permission-request.md)
-is unsent; no separate written approval has been obtained or is implied by these
+is not sent, by decision of 2026-10-12; no separate written approval has been obtained or is implied by these
 tests. Account connection uses the registered application's documented API flow.
 
 Release builds include the project application, so a server needs no application
