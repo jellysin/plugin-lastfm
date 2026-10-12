@@ -4,6 +4,9 @@ Last.fm music integration for **Jellyfin 12**: scrobbling, favourites, listening
 insights, discovery and playlists. This is a new implementation with its own
 plugin identity. The plugin is in development; no published release is available.
 
+It is a project of the [JellySin](https://github.com/jellysin) organisation.
+JellySin: Jellyfin plus sin, a little temptation for your media server; said JELLY-sin.
+
 ## Music features
 
 - Now-playing updates and scrobbles based on observed listening, with a bounded
@@ -38,6 +41,29 @@ Jellyfin 10.11 is unsupported. Users of the older Last.fm plugin must remove it,
 restart Jellyfin and reconnect their accounts in this plugin. The new GUID is
 `2034650d-a290-4a16-b195-89fb44cfb932`; old credentials and XML settings are not
 silently copied. See [migration](docs/migration.md).
+
+## Jellyfin versions and clients
+
+The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
+up. Every change is checked on Jellyfin 12.0.0 and 12.2.0, and the playlist fixture
+also on 12.1.0; [release readiness](docs/release-readiness.md) names what each check
+covers.
+
+Scrobbling reads the playback reports the server receives, whichever client sends
+them; a client that reports no playback to the server produces no listen. The checks
+send these reports through the server's API. The account dashboard is a web page of
+the server and was checked in a Chromium browser and in Jellyfin's web interface;
+Jellyfin's TV, mobile and desktop clients were not checked.
+
+Planned work is listed in the repository's
+[milestones](https://github.com/jellysin/plugin-lastfm/milestones).
+
+## Removing the plugin
+
+Removing the plugin in Jellyfin removes its program files only. Its data folder,
+which holds the account state and the key ring, and its settings file stay on the
+server, and Last.fm keeps each authorization until its user revokes it there.
+[Stored data](docs/operations.md#stored-data) names the places and what a check showed.
 
 ## Boundaries
 

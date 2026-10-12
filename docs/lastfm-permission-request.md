@@ -1,9 +1,11 @@
 # Last.fm permission request — unsent draft
 
-Status: not sent; no Last.fm approval received. The project application is registered
-under Lothario87, and live authorization and one approved scrobble passed. This
-optional clarification draft remains unsent following maintainer review. Do not put
-API keys, shared secrets or user session keys in this message or its attachments.
+Status: not sent, and on 2026-10-12 the maintainer decided not to send it; the reason
+is recorded in [release readiness](release-readiness.md). No Last.fm approval was
+received. The project application is registered under Lothario87, and live
+authorization and one approved scrobble passed. The draft is kept as the record of
+the open questions. Do not put API keys, shared secrets or user session keys in this
+message or its attachments.
 
 To: partners@last.fm
 Subject: JellySin Last.fm — self-hosted Jellyfin plugin application and display approval
@@ -31,8 +33,9 @@ counts and playlist membership remain in Jellyfin afterward.
 
 Could you confirm:
 
-1. May independently operated servers share one project application, using the
-   desktop-style token flow for private/LAN installations? The distributed DLL
+1. May independently operated servers share one project application, each using
+   your web authentication flow with a return address on that server, private/LAN
+   installations included? The distributed DLL
    contains the application key and shared secret, which server owners can extract;
    individual user session keys are separate. Are different registration or key
    arrangements required?
@@ -58,8 +61,8 @@ JellySin maintainers
 
 Reviewed 2026-09-08. The official [API terms](https://www.last.fm/api/tos),
 especially §§2.7, 3.1, 4.3.4, 7.1 and 8.2, leave these storage, display and
-distribution questions to confirm with Last.fm. The [desktop authentication
-guide](https://www.last.fm/api/desktopauth) documents the token/session flow;
-it does not by itself approve this deployment model. The linked
+distribution questions to confirm with Last.fm. The [web authentication
+guide](https://www.last.fm/api/webauth), read again on 2026-10-11, documents the
+flow the plugin uses; it does not by itself approve this deployment model. The linked
 [brand resources](https://www.last.fm/resources/) could not be retrieved.
 This draft records open questions, not a permission grant.

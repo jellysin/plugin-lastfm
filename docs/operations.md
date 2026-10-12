@@ -94,7 +94,7 @@ was stored. Last.fm therefore sent the browser back to an address it cannot reac
 itself. That trial delivered no scrobble; no listen was played in it.
 The [API terms review](lastfm-api.md) records the storage,
 attribution and display requirements. The [optional clarification enquiry](lastfm-permission-request.md)
-is unsent; no separate written approval has been obtained or is implied by these
+is not sent, by decision of 2026-10-12; no separate written approval has been obtained or is implied by these
 tests. Account connection uses the registered application's documented API flow.
 
 Release builds include the project application, so a server needs no application
@@ -167,11 +167,28 @@ session data, private caches and pending delivery. It does not delete data alrea
 sent to Last.fm or reverse changes applied to Jellyfin. Last.fm authorization can
 be revoked separately in its application settings.
 
+Removing the plugin in Jellyfin does not remove this data: the plugin has no step
+that runs at removal. Checked on 2026-10-11 with the Jellyfin 12.2.0 container image
+and a build of `1cd8e91` copied into the plugin folder by hand: after the removal the
+server no longer listed the plugin, also after a restart, and the folder with the
+plugin file was gone. Still present were `jellysin-lastfm` in the data directory,
+with a preference the plugin had stored for a user, and the settings file
+`configurations/JellySin.Plugin.Lastfm.xml` in Jellyfin's plugin directory.
+No Last.fm account was connected in that run, so the key ring folder was empty, and
+an installation from the Plugin Repository was not checked. To remove the data as
+well, delete that folder and that file while the server is stopped.
+
 ## Scrobbling
 
 Only observed listening counts. Pauses and seeks do not create listening time.
 Tracks must exceed 30 seconds and satisfy the documented half-track or four-minute
 threshold. Original UTC start times are retained when delivery is delayed.
+
+A play that is running while its user connects again, also to the same Last.fm
+account, is not submitted: connecting starts a new capture, and the tracker drops a
+play begun under the previous one and ignores its remaining progress. The next
+track counts as usual. This follows from the code and matches the 2026-10-12
+observation on 12.2.0 in [validation](validation.md#observed-on-2026-10-12-with-jellyfin-1220).
 
 The outbox survives restarts, submits at most 50 scrobbles per request, and keeps
 bounded acknowledgement records. Failed now-playing updates are discarded because
