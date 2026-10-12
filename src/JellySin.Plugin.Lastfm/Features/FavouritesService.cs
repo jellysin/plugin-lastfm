@@ -1,5 +1,7 @@
+using JellySin.Plugin.Lastfm.Api;
 using JellySin.Plugin.Lastfm.Configuration;
 using JellySin.Plugin.Lastfm.Storage;
+using Microsoft.Extensions.Logging;
 
 namespace JellySin.Plugin.Lastfm.Features;
 
@@ -14,7 +16,7 @@ public sealed record FavouriteState(bool Enabled, Dictionary<Guid, FavouriteObse
     List<FavouriteRemoval> Pending, DateTimeOffset? LastSync = null, string? Status = null, Guid? AfterItem = null);
 
 public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusicWriter writer, IStateStore store,
-    FeatureLocks locks, TimeProvider clock, AccountService accounts)
+    FeatureLocks locks, TimeProvider clock, AccountService accounts, ILogger<FavouritesService> logger)
 {
     private const string Key = "feature-favourites";
     private const string AdditionsKey = "feature-favourite-additions";
@@ -62,6 +64,7 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         var remote = await api.GetAllLovedAsync(userId, ct).ConfigureAwait(false);
         if (!remote.Complete)
         {
+            NotePause(userId, remote.Gap);
             state = state with { Status = "Last.fm returned an incomplete or changing loved-track collection; synchronization is paused." };
             await store.WriteAsync(userId, Key, state, ct).ConfigureAwait(false);
             return Review(state);
@@ -236,4 +239,12 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         await store.ReadAsync<FavouriteState>(id, Key, ct).ConfigureAwait(false) ?? new(false, [], []);
 
     private static FavouriteReview Review(FavouriteState state) => new(state.Enabled, state.Pending, state.LastSync, state.Status);
+
+    private void NotePause(Guid userId, LovedReadGap? gap)
+    {
+        if (gap is null) return;
+        logger.LogWarning(
+            "Favourite synchronization for user {User} paused: Last.fm's loved tracks failed the {Check} check after {PagesRead} of {TotalPages} pages ({FirstTotal} tracks reported first, {LatestTotal} last, {ItemsRead} read, {DistinctItems} distinct).",
+            LogName.Of(userId), gap.Check, gap.PagesRead, gap.TotalPages, gap.FirstTotal, gap.LatestTotal, gap.ItemsRead, gap.DistinctItems);
+    }
 }

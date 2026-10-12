@@ -57,26 +57,44 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
         var tracks = new List<MusicTrack>();
         var expectedPages = -1;
         MusicPage? first = null;
+        MusicPage? last = null;
         for (var page = 1; page <= 50; page++)
         {
             var result = await GetPageAsync(userId, "user.getLovedTracks", page, null, ct, fresh: true).ConfigureAwait(false);
             first ??= result;
-            if (expectedPages >= 0 && expectedPages != result.TotalPages) return new(tracks, page, result.TotalPages, false);
-            if (result.TotalTracks != first.TotalTracks) return new(tracks, page, result.TotalPages, false);
+            last = result;
+            if (expectedPages >= 0 && expectedPages != result.TotalPages) return Unfinished(LovedReadCheck.PageCountChanged, tracks, page, first, result);
+            if (result.TotalTracks != first.TotalTracks) return Unfinished(LovedReadCheck.TotalChanged, tracks, page, first, result);
             expectedPages = result.TotalPages;
             tracks.AddRange(result.Tracks);
             if (result.Complete)
             {
                 var check = await GetPageAsync(userId, "user.getLovedTracks", 1, null, ct, fresh: true).ConfigureAwait(false);
-                var stable = check.TotalTracks == first.TotalTracks && tracks.Count == first.TotalTracks
-                    && check.Tracks.Select(LovedIdentity).SequenceEqual(first.Tracks.Select(LovedIdentity))
-                    && tracks.Select(MusicFeatureService.TrackKey).Distinct(StringComparer.Ordinal).Count() == tracks.Count;
-                return new(tracks, page, result.TotalPages, stable);
+                return Unstable(first, check, tracks) is { } failed
+                    ? Unfinished(failed, tracks, page, first, check)
+                    : new(tracks, page, result.TotalPages, true);
             }
-            if (result.Tracks.Count == 0) break;
+            if (result.Tracks.Count == 0) return Unfinished(LovedReadCheck.EmptyPage, tracks, page, first, result);
         }
-        return new(tracks, 50, expectedPages, false);
+        return Unfinished(LovedReadCheck.PageLimit, tracks, 50, first!, last!);
     }
+
+    /// <summary>The first check a completed read of the loved tracks fails, or none when the collection held still.</summary>
+    private static LovedReadCheck? Unstable(MusicPage first, MusicPage check, List<MusicTrack> tracks)
+    {
+        if (check.TotalTracks != first.TotalTracks) return LovedReadCheck.TotalChanged;
+        if (tracks.Count != first.TotalTracks) return LovedReadCheck.ItemCountDiffers;
+        if (!check.Tracks.Select(LovedIdentity).SequenceEqual(first.Tracks.Select(LovedIdentity))) return LovedReadCheck.FirstPageChanged;
+        if (DistinctTracks(tracks) != tracks.Count) return LovedReadCheck.DuplicateTracks;
+        return null;
+    }
+
+    private static MusicPage Unfinished(LovedReadCheck check, List<MusicTrack> tracks, int page, MusicPage first, MusicPage latest) =>
+        new(tracks, page, latest.TotalPages, false,
+            Gap: new(check, page, latest.TotalPages, first.TotalTracks, latest.TotalTracks, tracks.Count, DistinctTracks(tracks)));
+
+    private static int DistinctTracks(List<MusicTrack> tracks) =>
+        tracks.Select(MusicFeatureService.TrackKey).Distinct(StringComparer.Ordinal).Count();
 
     private static (string Name, string? Id, DateTimeOffset? Date) LovedIdentity(MusicTrack track) =>
         (MusicFeatureService.TrackKey(track), track.MusicBrainzId, track.PlayedAt);
