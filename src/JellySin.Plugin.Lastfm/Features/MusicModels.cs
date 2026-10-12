@@ -15,7 +15,10 @@ public enum LovedReadCheck { PageCountChanged, TotalChanged, ItemCountDiffers, F
 
 /// <summary>Why a read of the loved tracks is not trusted, in counts only: no track, artist or user appears.</summary>
 public sealed record LovedReadGap(LovedReadCheck Check, int PagesRead, int TotalPages, int FirstTotal, int LatestTotal,
-    int ItemsRead, int DistinctItems);
+    int ItemsRead, int DistinctItems, FirstPageDifference? FirstPage = null);
+
+/// <summary>How page 1 read again differs from its first read, in counts only; set for the FirstPageChanged check.</summary>
+public sealed record FirstPageDifference(int Positions, int PositionsDiffering, bool SameTracks, int TiedDates);
 
 public sealed record MusicChart(string Period, IReadOnlyList<MusicTrack> Tracks);
 

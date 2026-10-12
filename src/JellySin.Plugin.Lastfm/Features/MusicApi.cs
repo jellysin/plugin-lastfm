@@ -71,7 +71,7 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
             {
                 var check = await GetPageAsync(userId, "user.getLovedTracks", 1, null, ct, fresh: true).ConfigureAwait(false);
                 return Unstable(first, check, tracks) is { } failed
-                    ? Unfinished(failed, tracks, page, first, check)
+                    ? Unfinished(failed, tracks, page, first, check, failed == LovedReadCheck.FirstPageChanged ? Compare(first, check) : null)
                     : new(tracks, page, result.TotalPages, true);
             }
             if (result.Tracks.Count == 0) return Unfinished(LovedReadCheck.EmptyPage, tracks, page, first, result);
@@ -89,9 +89,23 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
         return null;
     }
 
-    private static MusicPage Unfinished(LovedReadCheck check, List<MusicTrack> tracks, int page, MusicPage first, MusicPage latest) =>
+    private static MusicPage Unfinished(LovedReadCheck check, List<MusicTrack> tracks, int page, MusicPage first, MusicPage latest,
+        FirstPageDifference? firstPage = null) =>
         new(tracks, page, latest.TotalPages, false,
-            Gap: new(check, page, latest.TotalPages, first.TotalTracks, latest.TotalTracks, tracks.Count, DistinctTracks(tracks)));
+            Gap: new(check, page, latest.TotalPages, first.TotalTracks, latest.TotalTracks, tracks.Count, DistinctTracks(tracks), firstPage));
+
+    /// <summary>Whether page 1 moved its tracks or changed them, and how many of them share a loved date, which leaves their order open.</summary>
+    private static FirstPageDifference Compare(MusicPage first, MusicPage again)
+    {
+        var before = first.Tracks.Select(LovedIdentity).ToArray();
+        var after = again.Tracks.Select(LovedIdentity).ToArray();
+        var positions = Math.Max(before.Length, after.Length);
+        var differing = Enumerable.Range(0, positions).Count(i => i >= before.Length || i >= after.Length || before[i] != after[i]);
+        var counts = after.CountBy(identity => identity).ToDictionary();
+        var sameTracks = before.Length == after.Length && before.CountBy(identity => identity).All(group => counts.GetValueOrDefault(group.Key) == group.Value);
+        var tiedDates = first.Tracks.Select(t => t.PlayedAt).OfType<DateTimeOffset>().CountBy(date => date).Where(group => group.Value > 1).Sum(group => group.Value);
+        return new(positions, differing, sameTracks, tiedDates);
+    }
 
     private static int DistinctTracks(List<MusicTrack> tracks) =>
         tracks.Select(MusicFeatureService.TrackKey).Distinct(StringComparer.Ordinal).Count();

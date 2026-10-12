@@ -243,6 +243,14 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
     private void NotePause(Guid userId, LovedReadGap? gap)
     {
         if (gap is null) return;
+        if (gap.FirstPage is { } page)
+        {
+            logger.LogWarning(
+                "Favourite synchronization for user {User} paused: Last.fm's loved tracks failed the {Check} check after {PagesRead} of {TotalPages} pages ({FirstTotal} tracks reported first, {LatestTotal} last, {ItemsRead} read, {DistinctItems} distinct); page 1 read again: {PositionsDiffering} of {Positions} positions differ, same tracks: {SameTracks}, {TiedDates} of its tracks share a loved date with another.",
+                LogName.Of(userId), gap.Check, gap.PagesRead, gap.TotalPages, gap.FirstTotal, gap.LatestTotal, gap.ItemsRead, gap.DistinctItems,
+                page.PositionsDiffering, page.Positions, page.SameTracks ? "yes" : "no", page.TiedDates);
+            return;
+        }
         logger.LogWarning(
             "Favourite synchronization for user {User} paused: Last.fm's loved tracks failed the {Check} check after {PagesRead} of {TotalPages} pages ({FirstTotal} tracks reported first, {LatestTotal} last, {ItemsRead} read, {DistinctItems} distinct).",
             LogName.Of(userId), gap.Check, gap.PagesRead, gap.TotalPages, gap.FirstTotal, gap.LatestTotal, gap.ItemsRead, gap.DistinctItems);

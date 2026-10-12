@@ -71,6 +71,54 @@ public sealed class FavouritesPauseLogTests
         Assert.EndsWith("after 1 of 1 pages (2 tracks reported first, 2 last, 1 read, 1 distinct).", line.Text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task FirstPageWarningCountsAReorderOfTiedDates()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        // Three tracks loved in the same second come back in another order: the same tracks, two positions moved.
+        MusicTrack[] tied = [Track(1, 9), Track(2, 8), Track(3, 7), Track(4)];
+        var calls = 0;
+        f.Core.Client.Handler = (_, parameters, _) =>
+            Loved(++calls == 1 ? tied : [tied[1], tied[0], tied[2], tied[3]], 1, int.Parse(parameters["page"], CultureInfo.InvariantCulture), 4);
+
+        await f.Favourites.SyncAsync(f.Core.UserId, Ct);
+
+        var line = Assert.Single(f.FavouriteLog.Lines);
+        Assert.EndsWith("; page 1 read again: 2 of 4 positions differ, same tracks: yes, 3 of its tracks share a loved date with another.", line.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FirstPageWarningCountsAChangedDate()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        var calls = 0;
+        f.Core.Client.Handler = (_, parameters, _) =>
+            Scenario(LovedReadCheck.FirstPageChanged, int.Parse(parameters["page"], CultureInfo.InvariantCulture), ++calls);
+
+        await f.Favourites.SyncAsync(f.Core.UserId, Ct);
+
+        var line = Assert.Single(f.FavouriteLog.Lines);
+        Assert.EndsWith("; page 1 read again: 1 of 1 positions differ, same tracks: no, 0 of its tracks share a loved date with another.", line.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OtherChecksCarryNoFirstPageCounts()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        f.Core.Client.Handler = (_, parameters, _) =>
+            Scenario(LovedReadCheck.DuplicateTracks, int.Parse(parameters["page"], CultureInfo.InvariantCulture), 1);
+
+        await f.Favourites.SyncAsync(f.Core.UserId, Ct);
+
+        Assert.DoesNotContain("page 1 read again", Assert.Single(f.FavouriteLog.Lines).Text, StringComparison.Ordinal);
+    }
+
     private static JsonDocument Scenario(LovedReadCheck check, int page, int call) => check switch
     {
         LovedReadCheck.PageCountChanged => Loved([Track(page)], page == 1 ? 2 : 3, page, 2),
