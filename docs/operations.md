@@ -189,6 +189,34 @@ Last.fm has no scrobble idempotency key. If it accepts a batch and the response 
 lost, retrying can duplicate a listen. Local occurrence identifiers and receipts
 reduce duplicates but cannot provide an exactly-once guarantee across the network.
 
+### What the server log says about delivery
+
+The plugin writes one line for each submitted batch of plays and each playing-now
+update, so that scrobble activity and delivery results can be read from the
+server log alone:
+
+- `Plays submitted for user ...` at information level, with the number of plays
+  sent in the call, the number Last.fm accepted, the number it ignored, and the
+  ignore codes it gave, or `none`.
+- A warning `Submitting plays for user ... failed with Last.fm error ...` with
+  the error code Last.fm returned and the number of plays in the call. They
+  remain stored.
+- `Playing-now update for user ...: Last.fm accepted it.` at information level.
+- `Playing-now update for user ...: Last.fm ignored it (ignore code ...).` at
+  information level, with the ignore code.
+- `Playing-now update for user ...: Last.fm answered without an error.` at
+  information level, when Last.fm answered without an ignore code.
+- `Playing-now update for user ...: Last.fm refused it with error ... It is not repeated.`
+  at information level, when Last.fm returned an error code.
+
+A line with nothing to report is not written. An update another track overtook leaves
+no line. A user appears as in the
+[sign-in lines](#what-the-server-log-says-about-a-sign-in), never by name or id.
+No line holds an account name or a track.
+
+The ignore codes Last.fm documents: 1 artist ignored, 2 track ignored,
+3 timestamp too old, 4 timestamp too new, 5 daily scrobble limit exceeded.
+
 ## Favourites, history and playlists
 
 Favourite synchronization starts with an additive reconciliation. A detected
