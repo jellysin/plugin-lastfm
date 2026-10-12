@@ -169,8 +169,8 @@ not observed in this run; the page check below covers them without a live accoun
 
 ## Page check on 2026-10-12 with Jellyfin 12.2.0
 
-[`tests/integration/page_check.py`](../tests/integration/page_check.py) at `97096e5`
-ran on 2026-10-12 at 21:14 (+02:00) against the pinned 12.2.0 image with the plugin
+[`tests/integration/page_check.py`](../tests/integration/page_check.py) from pull
+request head `97096e5`, identical in the check's files to `5ce094d` on `main`, ran on 2026-10-12 at 21:14 (+02:00) against the pinned 12.2.0 image with the plugin
 built from `d8e7364` (DLL SHA-256
 `6dccf9902560361737105e9123c951f4c7eb0f59e13c0d0ce5aca506dd51d59a`). The server ran
 on a Docker network made for the run and reached Last.fm only through the stand-in
