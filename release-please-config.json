@@ -3,10 +3,11 @@
   "release-type": "simple",
   "include-component-in-tag": false,
   "draft": true,
+  "bump-minor-pre-major": true,
   "packages": {
     ".": {
       "package-name": "jellysin-lastfm",
-      "initial-version": "1.0.0",
+      "initial-version": "0.1.0",
       "extra-files": [
         {"type": "json", "path": "package.json", "jsonpath": "$.version"},
         {"type": "json", "path": "package-lock.json", "jsonpath": "$.version"},
