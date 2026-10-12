@@ -2,14 +2,16 @@ import { Client } from './client.js';
 import { bind, button, element, line, message } from './view.js';
 import { type Track } from './music.js';
 
-interface Review { enabled: boolean; pending: { id: string; track: Track; removeFrom: string }[]; lastSync?: string; status: string; total: number; page: number; pages: number }
+interface Review { enabled: boolean; pending: { id: string; track: Track; removeFrom: string }[]; lastSync?: string; status: string; total: number; page: number; pages: number; running: boolean }
 
 export function setupFavourites(client: Client): void {
   let page = 1;
   const render = (review: Review): void => {
     page = review.page;
     element<HTMLInputElement>('favourites-enabled').checked = review.enabled;
-    element('favourites-status').textContent = review.status;
+    element('favourites-status').textContent = review.running
+      ? 'Synchronization is running on the server. Select Refresh review to see the result.'
+      : review.status;
     element('favourites-page').textContent = `${review.total} pending · Page ${review.page} of ${review.pages}`;
     element<HTMLButtonElement>('favourites-previous').disabled = page === 1;
     element<HTMLButtonElement>('favourites-next').disabled = page >= review.pages;
@@ -33,5 +35,9 @@ export function setupFavourites(client: Client): void {
   bind('favourites-refresh', async () => { render(await client.api<Review>('Me/Favourites')); });
   bind('favourites-previous', async () => { render(await client.api<Review>(`Me/Favourites?page=${Math.max(1, page - 1)}`)); });
   bind('favourites-next', async () => { render(await client.api<Review>(`Me/Favourites?page=${page + 1}`)); });
-  bind('favourites-sync', async () => { render(await client.api<Review>('Me/Favourites/Sync', 'POST')); message('Favourites synchronized.'); });
+  bind('favourites-sync', async () => {
+    const review = await client.api<Review>('Me/Favourites/Sync', 'POST');
+    render(review);
+    message(review.running ? 'Synchronization continues on the server.' : 'Favourites synchronized.');
+  });
 }

@@ -59,7 +59,7 @@ public sealed class FeatureWorkerTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var track = f.AddLocal("Event favourite", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, ct);
+        await f.EnableAndSyncAsync(ct);
         EventHandler<UserDataSaveEventArgs>? handler = null;
         var attached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var data = new Mock<IUserDataManager>();
