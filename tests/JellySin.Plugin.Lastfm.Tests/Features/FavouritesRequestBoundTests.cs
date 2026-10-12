@@ -188,7 +188,7 @@ public sealed class FavouritesRequestBoundTests
     {
         using var f = new FeatureFixture();
         await f.InitializeAsync();
-        var favourites = new FavouritesService(f.Api, f.Library, f.Library, f.Core.Store, f.Locks, f.Core.Clock, f.Core.Accounts)
+        var favourites = new FavouritesService(f.Api, f.Library, f.Library, f.Core.Store, f.Locks, f.Core.Clock, f.Core.Accounts, f.FavouriteLog)
         {
             LockWait = TimeSpan.FromMilliseconds(50),
         };

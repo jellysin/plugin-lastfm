@@ -239,6 +239,24 @@ the error, never its message, and leaves the status "The last synchronization
 did not finish. Synchronize again." A run without a Last.fm connection writes
 no warning; the page asks to connect.
 
+A run that pauses because Last.fm's loved tracks did not read back as one
+stable, complete collection writes one warning that begins `Favourite
+synchronization for user`, names the user the same way and names the check that
+failed:
+
+| Check | Meaning |
+| --- | --- |
+| `PageCountChanged` | The number of pages changed between two pages of the read. |
+| `TotalChanged` | The reported track total changed during the read or on the closing re-read of page 1. |
+| `ItemCountDiffers` | The tracks read differ in number from the reported total, for example when a loved track has no artist or title. |
+| `FirstPageChanged` | Page 1 read at the end differs from page 1 read at the start. |
+| `DuplicateTracks` | The same track appears more than once. |
+| `EmptyPage` | A page before the last one held no tracks. |
+| `PageLimit` | The collection has more than 50 pages of 200 tracks. |
+
+The warning carries counts only: pages read and reported, the total reported
+first and last, tracks read and distinct tracks. It never carries track names.
+
 History import starts with a preview. It raises play counts to the larger of
 existing local and Last.fm aggregate counts and only moves last-played dates
 forward where an observed remote date is available. It does not add Last.fm totals

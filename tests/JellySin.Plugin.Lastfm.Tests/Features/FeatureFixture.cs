@@ -17,11 +17,12 @@ internal sealed class FeatureFixture : IDisposable
     public List<MusicTrack> Top { get; } = [];
     public List<MusicTrack> Recent { get; } = [];
     public bool IncompleteLoved { get; set; }
+    public LogLines<FavouritesService> FavouriteLog { get; } = new();
 
     public FeatureFixture()
     {
         Api = new(Core.Client, Core.Accounts, Core.Clock);
-        Favourites = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts);
+        Favourites = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts, FavouriteLog);
         Runs = new(Favourites, Core.Clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<FavouriteRuns>.Instance);
         History = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts);
     }
@@ -80,12 +81,12 @@ internal sealed class FeatureFixture : IDisposable
         };
     }
 
-    public static JsonDocument Page(string root, IReadOnlyList<MusicTrack> tracks, int totalPages = 1, int page = 1) =>
+    public static JsonDocument Page(string root, IReadOnlyList<MusicTrack> tracks, int totalPages = 1, int page = 1, int? total = null) =>
         JsonSerializer.SerializeToDocument(new Dictionary<string, object>
         {
             [root] = new Dictionary<string, object>
             {
-                ["@attr"] = new { page, totalPages, total = tracks.Count },
+                ["@attr"] = new { page, totalPages, total = total ?? tracks.Count },
                 ["track"] = tracks.Select(t => new Dictionary<string, object?>
                 {
                     ["artist"] = new { name = t.Artist },
