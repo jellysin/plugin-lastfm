@@ -40,6 +40,7 @@ public sealed class BuiltAssemblyTests
         "JellySin.Plugin.Lastfm.Configuration.ApplicationCredentialService x1",
         "JellySin.Plugin.Lastfm.Configuration.LastfmProtection x1",
         "JellySin.Plugin.Lastfm.Features.DiscoveryService x1",
+        "JellySin.Plugin.Lastfm.Features.FavouriteRuns x1",
         "JellySin.Plugin.Lastfm.Features.FavouritesService x1",
         "JellySin.Plugin.Lastfm.Features.FeatureLocks x1",
         "JellySin.Plugin.Lastfm.Features.IDiscoveryLibrary x1",

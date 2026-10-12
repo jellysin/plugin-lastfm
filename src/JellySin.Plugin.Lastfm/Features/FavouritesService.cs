@@ -19,6 +19,9 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
     private const string Key = "feature-favourites";
     private const string AdditionsKey = "feature-favourite-additions";
 
+    /// <summary>How long a request waits for the user's lock while a reconciliation holds it.</summary>
+    public TimeSpan LockWait { get; init; } = TimeSpan.FromSeconds(10);
+
     public async Task<FavouriteReview> GetReviewAsync(Guid userId, CancellationToken ct) =>
         Review(await ReadAsync(userId, ct).ConfigureAwait(false));
 
@@ -26,14 +29,27 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
     {
         using var accountOperation = accounts.LinkOperation(userId, ct);
         ct = accountOperation.Token;
-        using (await locks.EnterAsync(userId, ct).ConfigureAwait(false))
+        using (await EnterUserLockAsync(userId, ct).ConfigureAwait(false))
         {
             var state = await ReadAsync(userId, ct).ConfigureAwait(false);
             // A fresh opt-in starts an additive merge. Old differences must not become removal instructions.
             state = enabled && !state.Enabled ? new(true, [], []) : state with { Enabled = enabled };
             await store.WriteAsync(userId, Key, state, ct).ConfigureAwait(false);
+            return Review(state);
         }
-        return enabled ? await SyncAsync(userId, ct).ConfigureAwait(false) : await GetReviewAsync(userId, ct).ConfigureAwait(false);
+    }
+
+    public async Task NoteUnfinishedAsync(Guid userId, CancellationToken ct)
+    {
+        using var accountOperation = accounts.LinkOperation(userId, ct);
+        ct = accountOperation.Token;
+        using (await EnterUserLockAsync(userId, ct).ConfigureAwait(false))
+        {
+            var state = await ReadAsync(userId, ct).ConfigureAwait(false);
+            if (!state.Enabled) return;
+            state = state with { Status = "The last synchronization did not finish. Synchronize again." };
+            await store.WriteAsync(userId, Key, state, ct).ConfigureAwait(false);
+        }
     }
 
     public async Task<FavouriteReview> SyncAsync(Guid userId, CancellationToken ct)
@@ -91,7 +107,7 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
     {
         using var accountOperation = accounts.LinkOperation(userId, ct);
         ct = accountOperation.Token;
-        using var lease = await locks.EnterAsync(userId, ct).ConfigureAwait(false);
+        using var lease = await EnterUserLockAsync(userId, ct).ConfigureAwait(false);
         var state = await ReadAsync(userId, ct).ConfigureAwait(false);
         if (!state.Enabled) throw new InvalidOperationException("Favourite synchronization is disabled.");
         var pending = state.Pending.SingleOrDefault(p => p.Id == reviewId) ?? throw new KeyNotFoundException("Review no longer exists.");
@@ -203,6 +219,17 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
             else unresolved.Add(MusicFeatureService.TrackKey(track));
         }
         return (result, unresolved);
+    }
+
+    private async Task<IDisposable> EnterUserLockAsync(Guid userId, CancellationToken ct)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(LockWait);
+        try { return await locks.EnterAsync(userId, limit.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (limit.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            throw new InvalidOperationException("Favourites are being synchronized. Try again when it has finished.");
+        }
     }
 
     private async Task<FavouriteState> ReadAsync(Guid id, CancellationToken ct) =>
