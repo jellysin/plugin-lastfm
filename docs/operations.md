@@ -196,6 +196,21 @@ removal becomes a review item rather than immediately removing the other copy.
 Incomplete remote collections pause reconciliation. Before applying a removal,
 the service rechecks the current library identity and remote state.
 
+**Save preference** and **Sync now** start the reconciliation as a run on the
+server and answer within about ten seconds. A longer run continues on the
+server and the page says so; **Refresh review** shows its result. Closing the
+page does not stop the run. Switching the feature off, a change of the Last.fm
+connection and a server stop do; a request that still waits for a stopped run
+answers with the stored state. One run per user exists at a time, and the
+periodic refresh in the background uses the same run.
+
+A run that fails writes one warning that begins `Favourite synchronization for
+user`, names the user as in
+[the sign-in lines](#what-the-server-log-says-about-a-sign-in) and the type of
+the error, never its message, and leaves the status "The last synchronization
+did not finish. Synchronize again." A run without a Last.fm connection writes
+no warning; the page asks to connect.
+
 History import starts with a preview. It raises play counts to the larger of
 existing local and Last.fm aggregate counts and only moves last-played dates
 forward where an observed remote date is available. It does not add Last.fm totals

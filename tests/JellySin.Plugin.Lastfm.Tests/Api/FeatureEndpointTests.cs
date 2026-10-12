@@ -47,7 +47,7 @@ public sealed class FeatureEndpointTests
         using var fixture = new FeatureFixture();
         await fixture.InitializeAsync();
         var local = fixture.AddLocal("Favourite track", true);
-        var controller = Attach(new FavouritesController(fixture.Favourites), fixture.Core.UserId);
+        var controller = Attach(new FavouritesController(fixture.Favourites, fixture.Runs), fixture.Core.UserId);
         Assert.False((await controller.Get(TestContext.Current.CancellationToken)).Enabled);
         Assert.True((await controller.Enable(new ToggleRequest(true), TestContext.Current.CancellationToken)).Enabled);
         Assert.Single(fixture.Loved);
@@ -57,6 +57,35 @@ public sealed class FeatureEndpointTests
         await controller.Review(new RemovalDecision(removal.Id, true), TestContext.Current.CancellationToken);
         Assert.Empty(fixture.Loved);
         Assert.Empty((await controller.Get(TestContext.Current.CancellationToken)).Pending);
+    }
+
+    [Fact]
+    public async Task FavouriteAnswersSayWhetherARunIsStillGoing()
+    {
+        using var fixture = new FeatureFixture();
+        await fixture.InitializeAsync();
+        var local = fixture.AddLocal("Loved on Last.fm");
+        fixture.Loved.Add(local.Track);
+        using var runs = new FavouriteRuns(fixture.Favourites, fixture.Core.Clock, NullLogger<FavouriteRuns>.Instance)
+        {
+            RequestWait = TimeSpan.FromMilliseconds(50),
+        };
+        var matching = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        fixture.Library.OnMatch = ct => { matching.TrySetResult(); release.Wait(ct); };
+        var controller = Attach(new FavouritesController(fixture.Favourites, runs), fixture.Core.UserId);
+        var ct = TestContext.Current.CancellationToken;
+
+        var saved = await controller.Enable(new ToggleRequest(true), ct).WaitAsync(TimeSpan.FromSeconds(10), ct);
+        await matching.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        Assert.True(saved.Running);
+        Assert.True((await controller.Get(ct)).Running);
+
+        release.Set();
+        await runs.RunToEndAsync(fixture.Core.UserId, ct).WaitAsync(TimeSpan.FromSeconds(10), ct);
+        var ended = await controller.Get(ct);
+        Assert.False(ended.Running);
+        Assert.NotNull(ended.LastSync);
     }
 
     [Fact]
@@ -113,7 +142,7 @@ public sealed class FeatureEndpointTests
             new JellySin.Plugin.Lastfm.Features.MusicTrack("Artist", "Track " + index), "Lastfm")).ToList();
         await fixture.Core.Store.WriteAsync(fixture.Core.UserId, "feature-favourites", new FavouriteState(true, [], pending,
             fixture.Core.Clock.GetUtcNow(), "Review pending changes"), TestContext.Current.CancellationToken);
-        var controller = Attach(new FavouritesController(fixture.Favourites), fixture.Core.UserId);
+        var controller = Attach(new FavouritesController(fixture.Favourites, fixture.Runs), fixture.Core.UserId);
         var result = await controller.Get(TestContext.Current.CancellationToken, page);
         Assert.Equal(expectedCount, result.Pending.Count);
         Assert.Equal(401, result.Total);

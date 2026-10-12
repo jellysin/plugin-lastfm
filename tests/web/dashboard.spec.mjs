@@ -104,6 +104,16 @@ test('favourite removals and disconnect need explicit review', async ({ page }) 
   expect(state.disconnected).toBe(true);
 });
 
+test('favourite synchronization reports running server state', async ({ page }) => {
+  const state = await installServer(page);
+  state.favouritesRunning = true;
+  await passwordLogin(page);
+  await page.getByRole('button', { name: 'Refresh review' }).click();
+  await expect(page.locator('#favourites-status')).toHaveText('Synchronization is running on the server. Select Refresh review to see the result.');
+  await page.getByRole('button', { name: 'Sync now' }).click();
+  await expect(page.locator('#status')).toHaveText('Synchronization continues on the server.');
+});
+
 // What the page offers only with a connected Last.fm account. The list is written out: an element that loses its mark fails here.
 const sections = ['overview', 'history', 'favourites', 'discovery', 'playlists'];
 const needsConnection = [

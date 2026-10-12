@@ -140,7 +140,7 @@ public sealed class HistoryTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         f.Core.Client.Handler = (_, _, _) => JsonDocument.Parse("{\"lovedtracks\":{\"track\":[]}}");
-        await Assert.ThrowsAsync<InvalidDataException>(() => f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct));
+        await Assert.ThrowsAsync<InvalidDataException>(() => f.EnableAndSyncAsync(Ct));
         Assert.Empty(f.Library.FavouriteWrites);
     }
 

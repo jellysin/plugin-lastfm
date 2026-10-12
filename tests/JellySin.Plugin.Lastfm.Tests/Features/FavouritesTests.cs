@@ -20,7 +20,7 @@ public sealed class FavouritesTests
             f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
             throw new IOException("Simulated process loss after remote acceptance.");
         };
-        await Assert.ThrowsAsync<IOException>(() => f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct));
+        await Assert.ThrowsAsync<IOException>(() => f.EnableAndSyncAsync(Ct));
         Assert.Single(f.Loved);
         Assert.NotNull(await f.Core.Store.ReadAsync<List<FavouriteAddition>>(f.Core.UserId, "feature-favourite-additions", Ct));
         f.Core.Client.Handler = f.Respond;
@@ -38,7 +38,7 @@ public sealed class FavouritesTests
         f.AddLocal("Unaccepted love", true);
         f.Core.Client.Handler = (method, arguments, session) => method == "track.love"
             ? throw new IOException("Connection failed before acceptance.") : f.Respond(method, arguments, session);
-        await Assert.ThrowsAsync<IOException>(() => f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct));
+        await Assert.ThrowsAsync<IOException>(() => f.EnableAndSyncAsync(Ct));
         f.Core.Client.Handler = f.Respond;
         Assert.Empty((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
         Assert.Single(f.Loved);
@@ -50,7 +50,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         for (var index = 0; index < 201; index++) f.AddLocal("Bounded " + index, true);
-        var first = await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        var first = await f.EnableAndSyncAsync(Ct);
         Assert.Equal(200, f.Loved.Count);
         Assert.Contains("continue", first.Status!, StringComparison.Ordinal);
         var next = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
@@ -81,7 +81,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var local = f.AddLocal("Local ABA", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Loved.Clear();
         var original = Assert.Single((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
         f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
@@ -98,7 +98,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var local = f.AddLocal("Remote ABA", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
         var original = Assert.Single((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
         f.Loved[0] = f.Loved[0] with { PlayedAt = f.Core.Clock.GetUtcNow().AddSeconds(1) };
@@ -113,7 +113,7 @@ public sealed class FavouritesTests
         await f.InitializeAsync();
         var local = f.AddLocal("Unknown edit", true);
         f.Loved.Add(local.Track);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Library.SetFavourite(f.Core.UserId, local.Id, false, Ct);
         var review = Assert.Single((await f.Favourites.SyncAsync(f.Core.UserId, Ct)).Pending);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.Favourites.ReviewRemovalAsync(f.Core.UserId, review.Id, true, Ct));
@@ -128,7 +128,7 @@ public sealed class FavouritesTests
         var local = f.AddLocal("Local", true);
         var remote = f.AddLocal("Remote");
         f.Loved.Add(remote.Track);
-        var result = await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        var result = await f.EnableAndSyncAsync(Ct);
         Assert.Empty(result.Pending);
         Assert.Contains(f.Loved, t => t.Title == local.Track.Title);
         Assert.True(f.Library.Items[remote.Id].Favourite);
@@ -144,7 +144,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var track = f.AddLocal("Remove", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Library.Items[track.Id] = track with { Favourite = false };
         var review = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
         Assert.Equal("lastfm", Assert.Single(review.Pending).RemoveFrom);
@@ -161,7 +161,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var track = f.AddLocal("Remote removal", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Loved.Clear();
         var review = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
         Assert.True(f.Library.Items[track.Id].Favourite);
@@ -176,7 +176,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var track = f.AddLocal("Changed", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Library.Items[track.Id] = track with { Favourite = false };
         var review = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
         f.Library.Items[track.Id] = track;
@@ -190,7 +190,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var track = f.AddLocal("Incomplete", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Loved.Clear();
         f.IncompleteLoved = true;
         var review = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
@@ -205,7 +205,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var track = f.AddLocal("Duplicate", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.AddLocal("Duplicate");
         var review = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
         Assert.Empty(review.Pending);
@@ -218,7 +218,7 @@ public sealed class FavouritesTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var track = f.AddLocal("Scoped", true);
-        await f.Favourites.SetEnabledAsync(f.Core.UserId, true, Ct);
+        await f.EnableAndSyncAsync(Ct);
         f.Loved.Clear();
         var review = await f.Favourites.SyncAsync(f.Core.UserId, Ct);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.Favourites.ReviewRemovalAsync(Guid.NewGuid(), review.Pending[0].Id, true, Ct));

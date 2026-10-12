@@ -11,6 +11,7 @@ internal sealed class FeatureFixture : IDisposable
     public FakeMusicLibrary Library { get; } = new();
     public MusicApi Api { get; }
     public FavouritesService Favourites { get; }
+    public FavouriteRuns Runs { get; }
     public MusicFeatureService History { get; }
     public List<MusicTrack> Loved { get; } = [];
     public List<MusicTrack> Top { get; } = [];
@@ -21,6 +22,7 @@ internal sealed class FeatureFixture : IDisposable
     {
         Api = new(Core.Client, Core.Accounts, Core.Clock);
         Favourites = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts);
+        Runs = new(Favourites, Core.Clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<FavouriteRuns>.Instance);
         History = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts);
     }
 
@@ -34,10 +36,24 @@ internal sealed class FeatureFixture : IDisposable
 
     /// <summary>The call behind the page's Save control, with the token of that web request.</summary>
     public Task<FavouriteReview> SaveFromRequestAsync(bool enabled, CancellationToken request) =>
-        Favourites.SetEnabledAsync(Core.UserId, enabled, request);
+        Runs.SetEnabledAsync(Core.UserId, enabled, request);
 
-    /// <summary>Completes when no reconciliation runs for the user any more.</summary>
-    public Task ReconciliationEndedAsync(CancellationToken ct) => Task.CompletedTask;
+    /// <summary>Completes when no reconciliation runs for the user any more. It starts none.</summary>
+    public async Task ReconciliationEndedAsync(CancellationToken ct)
+    {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        while (Runs.IsRunning(Core.UserId))
+        {
+            Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), "The reconciliation did not end within ten seconds.");
+            await Task.Delay(10, ct).ConfigureAwait(false);
+        }
+    }
+
+    public async Task<FavouriteReview> EnableAndSyncAsync(CancellationToken ct)
+    {
+        await Favourites.SetEnabledAsync(Core.UserId, true, ct).ConfigureAwait(false);
+        return await Favourites.SyncAsync(Core.UserId, ct).ConfigureAwait(false);
+    }
 
     public LocalMusic AddLocal(string title, bool favourite = false, int playCount = 0)
     {
@@ -84,7 +100,7 @@ internal sealed class FeatureFixture : IDisposable
             },
         });
 
-    public void Dispose() { Locks.Dispose(); Core.Dispose(); }
+    public void Dispose() { Runs.Dispose(); Locks.Dispose(); Core.Dispose(); }
 }
 
 internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter
