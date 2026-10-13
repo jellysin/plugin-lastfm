@@ -14,7 +14,10 @@ public sealed record PlaybackRuntimeStatus(bool LegacyPluginDetected, long Dropp
 public sealed class PlaybackService(ISessionManager sessions, IPluginManager plugins, PlaybackTracker tracker,
     ScrobbleOutbox outbox, AccountService accounts, TimeProvider clock, ILogger<PlaybackService> logger) : BackgroundService
 {
-    public static readonly Guid LegacyPluginId = new("5e7fe7f0-b048-429e-a431-b1a7e69c930d");
+    // A loaded plugin is listed under the Id its assembly declares; the legacy Last.fm plugin declares de7fe7f0-...
+    // while its catalog entry, and so a manifest Jellyfin has not rewritten yet, names 5e7fe7f0-....
+    public static readonly IReadOnlyList<Guid> LegacyPluginIds =
+        [new("de7fe7f0-b048-439e-a431-b1a7e99c930d"), new("5e7fe7f0-b048-429e-a431-b1a7e69c930d")];
     private readonly Channel<PlaybackSnapshot?> _snapshots = Channel.CreateBounded<PlaybackSnapshot?>(new BoundedChannelOptions(4096) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     private readonly Channel<EligibleListen> _nowPlaying = Channel.CreateBounded<EligibleListen>(new BoundedChannelOptions(64) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     private long _dropped;
@@ -41,7 +44,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         await accounts.InitializeCapturesAsync(cancellationToken).ConfigureAwait(false);
-        _legacyPresent = plugins.Plugins.Any(plugin => plugin.Id == LegacyPluginId && (plugin.Instance is not null || plugin.IsEnabledAndSupported));
+        _legacyPresent = plugins.Plugins.Any(plugin => LegacyPluginIds.Contains(plugin.Id) && (plugin.Instance is not null || plugin.IsEnabledAndSupported));
         if (_legacyPresent) logger.LogWarning("JellySin listening is paused because the legacy Last.fm plugin is installed. Remove it and restart Jellyfin.");
         sessions.PlaybackStart += OnStart;
         sessions.PlaybackProgress += OnProgress;
