@@ -176,4 +176,6 @@ A running server lists the legacy plugin under the Id its assembly declares,
 `de7fe7f0-b048-439e-a431-b1a7e99c930d`, not under the GUID of its catalog entry,
 `5e7fe7f0-b048-429e-a431-b1a7e69c930d`; JellySin checks both. The legacy repository is
 archived and names no licence, so the release is only downloaded for this check and
-never kept, packaged or committed. CI does not run this check yet.
+never kept, packaged or committed. For the same reason the check stays manual: CI never
+downloads or runs the legacy release. In CI, a unit test guards that both Ids are
+recognized.
