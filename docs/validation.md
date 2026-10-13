@@ -14,7 +14,8 @@ A third pinned image, Jellyfin 12.1.0
 (`jellyfin/jellyfin:12.1@sha256:78d3ea1207d1322471fcac39a614f004f2ccf7e878f95ab2977d752f07e4dd7e`),
 is used by the native fixture only, because 12.1 is the first release with the
 playlist visibility rule described further down. The smoke harness and
-the library load check were not run on 12.1.
+the library load check were not run on 12.1 for this record; CI runs both there since
+issue #63.
 
 The table records the hosted run for `22a7a2e` with Python 3.14.8; every number in it
 is read from the log of that run. The checks were not repeated locally for that

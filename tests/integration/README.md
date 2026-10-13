@@ -135,6 +135,20 @@ server, with a stand-in for Last.fm, and keeps a screenshot of each page:
 - the same user loads charts and recent listens and starts discovery from a
   library track, which must name one similar track in the library and one beyond it.
 
+After the pages pass, the same user runs three flows through the API, without the
+browser:
+
+- playback: the user plays the seed track for 36 seconds and reports progress every
+  five seconds. The stand-in must record a now-playing call and a scrobble that name
+  the track. Delivery must then report nothing pending, rejected, dropped or failed.
+- history import: the preview must propose, for the seed and the similar track, the
+  larger of the server's play count and the Last.fm play count. After the import,
+  both tracks are applied, the server's own play counts equal those numbers, and the
+  similar track has a last-played date.
+- favourite sync: the user marks the seed track as a favourite on the server and
+  turns the sync on. The stand-in must record a love call for the seed track. The
+  similar track, which Last.fm lists as loved, must become a favourite on the server.
+
 The server runs on a Docker network made for the run and reaches Last.fm only
 through `lastfm_stand_in.py`, a proxy in its own container (a pinned Python image)
 on that network. The proxy opens a tunnel to `ws.audioscrobbler.com` alone, ends
@@ -143,8 +157,10 @@ answers the documented methods with fixture names; Jellyfin's own hosts are
 refused and recorded. No port opens on the workstation besides the server's
 loopback port, and no real Last.fm account, application or credential is used.
 The run fails when a page check fails, when the server never asks the stand-in
-for a session, when it rejects the stand-in's certificate, and when the server
-log contains the session key the stand-in issued.
+for a session, when it rejects the stand-in's certificate, when a listener flow
+fails, and when the server log contains the session key the stand-in issued. For
+track methods the stand-in records the method with the artist and title, never the
+key, session or signature.
 
 ```sh
 npx --no-install playwright install chromium
@@ -156,7 +172,7 @@ python tests/integration/page_check.py \
 It needs Docker, Node with the repository's locked packages and `openssl`. The
 evidence directory receives the screenshots, `result.json`, the server log, the
 methods the stand-in answered and its tunnel record; keep it out of the
-repository. CI does not run this check yet.
+repository. CI runs this check on the newest Jellyfin 12.
 
 ## Legacy Last.fm plugin next to JellySin
 

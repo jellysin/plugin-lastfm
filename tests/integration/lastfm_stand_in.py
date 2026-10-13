@@ -6,7 +6,8 @@ by name and no port opens on the workstation. The proxy ends TLS with the run's 
 documented Last.fm methods with fixture names. Standard library only: the container image carries Python alone.
 
 Usage: lastfm_stand_in.py DIRECTORY. DIRECTORY holds server.pem, server.key and session.txt; the stand-in
-writes out/calls.log (one line per answered method), out/tunnels.log (each tunnel request and whether
+writes out/calls.log (one line per answered method; a track method also names the artist and title of each
+track it carries, never a key, session or signature), out/tunnels.log (each tunnel request and whether
 it carried a request) and out/ready once it listens.
 """
 
@@ -30,6 +31,9 @@ ARTIST = "JellySin Fixture Artist"
 SEED = "JellySin Public Fixture"
 SIMILAR_LOCAL = "JellySin Similar Fixture"
 SIMILAR_REMOTE = "Stand-in Similar Song"
+# Overall play counts the history import proposes as floors for the two library tracks.
+SEED_PLAYS = 42
+SIMILAR_PLAYS = 7
 NOW = int(time.time())
 
 
@@ -46,19 +50,27 @@ def page(root: str, tracks: list[dict[str, Any]]) -> dict[str, Any]:
     return {root: {"@attr": {"page": "1", "totalPages": "1", "total": str(len(tracks))}, "track": tracks}}
 
 
-def answer(method: str, session: str) -> dict[str, Any]:
+def tracks_in(values: dict[str, list[str]]) -> list[tuple[str, str]]:
+    """The artist and title of each track a method carries: plain for one track, indexed for a scrobble batch."""
+    keys = [""] + [f"[{index}]" for index in range(50)]
+    return [((values.get("artist" + key) or [""])[0], (values.get("track" + key) or [""])[0])
+            for key in keys if "artist" + key in values]
+
+
+def answer(method: str, session: str, carried: list[tuple[str, str]] | None = None) -> dict[str, Any]:
     """What the stand-in returns for a Last.fm method: the shapes Last.fm documents, with fixture names."""
     url = "https://www.last.fm/music/" + urllib.parse.quote(ARTIST)
     answers: dict[str, Any] = {
         "auth.getSession": {"session": {"name": LASTFM_USER, "key": session, "subscriber": 0}},
         "user.getInfo": {"user": {"name": LASTFM_USER, "playcount": "1234", "artist_count": "56", "album_count": "78",
                                   "track_count": "90", "url": "https://www.last.fm/user/" + LASTFM_USER}},
-        "user.getTopTracks": page("toptracks", [track(SEED, plays=42), track(SIMILAR_LOCAL, plays=7)]),
+        "user.getTopTracks": page("toptracks", [track(SEED, plays=SEED_PLAYS), track(SIMILAR_LOCAL, plays=SIMILAR_PLAYS)]),
         "user.getTopArtists": {"topartists": {"artist": [{"name": ARTIST, "playcount": "49", "url": url, "mbid": ""}]}},
         "user.getTopAlbums": {"topalbums": {"album": [{"name": "Smoke Album", "artist": {"name": ARTIST}, "playcount": "49",
                                                        "url": url + "/Smoke+Album", "mbid": ""}]}},
         "user.getRecentTracks": page("recenttracks", [track(SEED, played=NOW - 600), track(SIMILAR_LOCAL, played=NOW - 1200)]),
-        "user.getLovedTracks": page("lovedtracks", []),
+        # Loved on Last.fm only, so a favourite synchronization marks it in the library.
+        "user.getLovedTracks": page("lovedtracks", [track(SIMILAR_LOCAL, played=NOW - 300)]),
         "track.getSimilar": {"similartracks": {"track": [track(SIMILAR_LOCAL), track(SIMILAR_REMOTE, "Stand-in Artist")]}},
         "artist.getSimilar": {"similarartists": {"artist": [{"name": "Stand-in Related Artist", "url": "https://www.last.fm/music/Stand-in+Related+Artist", "mbid": ""}]}},
         "artist.getTopAlbums": {"topalbums": {"album": [{"name": "Stand-in Album", "url": url + "/Stand-in+Album", "mbid": ""}]}},
@@ -69,7 +81,10 @@ def answer(method: str, session: str) -> dict[str, Any]:
     if method == "track.updateNowPlaying":
         return {"nowplaying": {"ignoredMessage": {"code": "0", "#text": ""}}}
     if method == "track.scrobble":
-        return {"scrobbles": {"@attr": {"accepted": 1, "ignored": 0}, "scrobble": []}}
+        # One accepted entry per submitted track, as Last.fm answers a batch.
+        accepted = [{"artist": {"#text": artist, "corrected": "0"}, "track": {"#text": title, "corrected": "0"},
+                     "ignoredMessage": {"code": "0", "#text": ""}} for artist, title in carried or []]
+        return {"scrobbles": {"@attr": {"accepted": len(accepted), "ignored": 0}, "scrobble": accepted}}
     return answers.get(method, {"error": 3, "message": "Invalid Method - No method with that name in this package"})
 
 
@@ -105,8 +120,9 @@ class StandIn(http.server.BaseHTTPRequestHandler):
     def reply(self, values: dict[str, list[str]], signed: bool) -> None:
         method = (values.get("method") or [""])[0]
         self.answered = True
-        Record.write("calls.log", ("POST " if signed else "GET ") + method)
-        body = json.dumps(answer(method, StandIn.session)).encode()
+        carried = tracks_in(values) if method.startswith("track.") else []
+        Record.write("calls.log", ("POST " if signed else "GET ") + method + "".join(f" | {artist} - {title}" for artist, title in carried))
+        body = json.dumps(answer(method, StandIn.session, carried)).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
