@@ -14,3 +14,11 @@ TestResults/
 test-results/
 playwright-report/
 src/JellySin.Plugin.Lastfm/Web/*.js
+
+# BEGIN praetor private artifacts (praetorctl adopt)
+.workingdir/
+.workingdir2/
+/.standards/worktrees/
+/.agents/mcp_config.json
+/.standards/cache/
+# END praetor private artifacts

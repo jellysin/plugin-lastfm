@@ -1,0 +1,48 @@
+{
+  "name": "jellysin/plugin-lastfm",
+  "build": {
+    "dockerfile": "Dockerfile.praetor",
+    "context": "."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false,
+      "upgradePackages": true
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {},
+    "ghcr.io/devcontainers/features/go:1": {}
+  },
+  "customizations": {
+    "praetor": {
+      "bootstrap": {
+        "version": 1,
+        "state": "source-bundle",
+        "builderImage": "docker.io/library/golang@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d",
+        "baseImage": "mcr.microsoft.com/devcontainers/base@sha256:91eff046d5c12318fc98e59258982b87ba896c467427ed8b5dab5a02107a5db7",
+        "sourceSHA256": "sha256:c779a771f5c7a0ac8b126216769e22818a6f9307d78047eabce386dd0f93c3fe",
+        "archiveSHA256": "sha256:af164f2b791ef1b5c2733a80358b4983288d50353e217218c3bfaac1ea31319e",
+        "archiveParts": 6,
+        "dockerfileSHA256": "sha256:4d91c7d60fb7ccb433a36585844185f1f5adb08fdf538303f53f1ce6551634d6"
+      }
+    },
+    "vscode": {
+      "extensions": [
+        "GitHub.vscode-pull-request-github",
+        "aquasecurity.trivy-vulnerability-scanner",
+        "eamodio.gitlens",
+        "github.copilot",
+        "golang.go"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "go.lintOnSave": "package",
+        "go.lintTool": "golangci-lint",
+        "go.toolsManagement.autoUpdate": false,
+        "go.useLanguageServer": true,
+        "security.workspace.trust.enabled": true
+      }
+    }
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "export PATH=\"/usr/local/bin:$PATH\"; /usr/local/bin/praetorctl compile-context && /usr/bin/make verify-all"
+}
