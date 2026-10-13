@@ -83,8 +83,11 @@ jobs:
           if vulnerable:
               raise SystemExit('Vulnerable dependencies: ' + ', '.join(sorted(set(vulnerable))))
           PY
+      # The self-test shows the budgets refuse planted results just above them before a measurement is trusted.
       - name: Measure production playback callbacks
-        run: dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
+        run: |
+          dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build -- --self-test
+          dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
       - uses: jellysin/release-helper/actions/check@1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
       - name: Validate workflows and scan tracked history for secrets
         env:
