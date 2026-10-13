@@ -17,6 +17,8 @@ import wave
 
 from smoke import Client, DockerHost, PREFIX, SmokeFailure, add_library, add_server_options, chosen_image, create_user, plugin_settings, require, setup_server
 
+P95_BUDGET_MILLISECONDS = 1000
+
 
 def fixtures(root: Path, count: int) -> None:
     for index in range(count):
@@ -83,6 +85,19 @@ def request_workload(origin: str, token: str, item: str, worker: int, count: int
     return ("playbackHttp" if playback else "pluginSearchHttp"), timings
 
 
+def summarize(results: list[tuple[str, list[float]]]) -> dict:
+    """Percentiles per request kind; refuse a kind without samples or one whose p95 exceeds the budget."""
+    metrics = {}
+    for kind in ("playbackHttp", "pluginSearchHttp"):
+        values = sorted(value for name, samples in results if name == kind for value in samples)
+        require(bool(values), f"The load run measured no {kind} requests.")
+        metrics[kind] = {"samples": len(values), "p50Milliseconds": values[len(values) // 2],
+                         "p95Milliseconds": values[int(len(values) * .95)], "p99Milliseconds": values[int(len(values) * .99)]}
+        require(metrics[kind]["p95Milliseconds"] <= P95_BUDGET_MILLISECONDS,
+                f"The real-library HTTP p95 budget of {P95_BUDGET_MILLISECONDS} ms was exceeded.")
+    return metrics
+
+
 def exercise(host: DockerHost, count: int) -> dict:
     fixtures(host.fixture_directory, count)
     host.start()
@@ -98,18 +113,13 @@ def exercise(host: DockerHost, count: int) -> dict:
     with ThreadPoolExecutor(max_workers=8) as executor:
         pending = [executor.submit(request_workload, host.origin, listener.token, item, worker, count) for worker in range(8)]
         results = [future.result(timeout=180) for future in pending]
-    metrics = {}
-    for kind in ("playbackHttp", "pluginSearchHttp"):
-        values = sorted(value for name, samples in results if name == kind for value in samples)
-        metrics[kind] = {"samples": len(values), "p50Milliseconds": values[len(values) // 2],
-                         "p95Milliseconds": values[int(len(values) * .95)], "p99Milliseconds": values[int(len(values) * .99)]}
-        require(metrics[kind]["p95Milliseconds"] <= 1000, "The real-library HTTP p95 budget of 1000 ms was exceeded.")
+    metrics = summarize(results)
     delivery = listener.request(PREFIX + "/Me/Delivery")
     require(delivery["pending"] == 0 and delivery["failedwrites"] == 0 and delivery["droppedsnapshots"] == 0,
             "The unconnected load-test account must have no queued scrobbles or failed observations.")
     return {"image": host.image, "server": host.version, "libraryTracks": count, "scanSeconds": scan_seconds,
             "containerCpus": 2, "containerMemoryMiB": 1536, "parallelHttpWorkers": 8,
-            "hostNetworkIncluded": True, "lastfmCalls": 0, "p95BudgetMilliseconds": 1000, "metrics": metrics}
+            "hostNetworkIncluded": True, "lastfmCalls": 0, "p95BudgetMilliseconds": P95_BUDGET_MILLISECONDS, "metrics": metrics}
 
 
 def main() -> int:

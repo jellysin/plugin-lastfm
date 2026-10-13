@@ -14,6 +14,12 @@ using MediaBrowser.Controller.Session;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 
+if (args is ["--self-test"])
+{
+    CallbackBudget.SelfTest();
+    return;
+}
+
 var root = Path.Combine(Path.GetTempPath(), "jellysin-benchmark-" + Guid.NewGuid().ToString("N"));
 try
 {
@@ -78,17 +84,38 @@ try
         processorCount = Environment.ProcessorCount,
         linkedAccounts = music.Length,
         results,
-        budgets = new { p95Microseconds = 50, p99Microseconds = 200, allocatedBytesPerCallback = 1024 },
+        budgets = new { p95Microseconds = CallbackBudget.P95Microseconds, p99Microseconds = CallbackBudget.P99Microseconds, allocatedBytesPerCallback = CallbackBudget.AllocatedBytesPerCallback },
         droppedSnapshots = 0,
         failedWrites = 0
     }, new JsonSerializerOptions { WriteIndented = true }));
-    if (results.Any(result => result.P95Microseconds > 50 || result.P99Microseconds > 200 || result.AverageAllocatedBytesPerCallback > 1024))
+    if (results.Any(CallbackBudget.Exceeded))
         throw new InvalidOperationException("Production callback latency or allocation budget exceeded.");
 }
 finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
 
 public sealed record CallbackResult(int ProducerThreads, int Samples, double P50Microseconds, double P95Microseconds,
     double P99Microseconds, double AverageAllocatedBytesPerCallback);
+
+/// <summary>The regression budgets of one scenario; the self-test shows that each one refuses a planted result just above it.</summary>
+public static class CallbackBudget
+{
+    public const double P95Microseconds = 50;
+    public const double P99Microseconds = 200;
+    public const double AllocatedBytesPerCallback = 1024;
+
+    public static bool Exceeded(CallbackResult result) =>
+        result.P95Microseconds > P95Microseconds || result.P99Microseconds > P99Microseconds || result.AverageAllocatedBytesPerCallback > AllocatedBytesPerCallback;
+
+    public static void SelfTest()
+    {
+        var limit = new CallbackResult(4, 20_480, 1, P95Microseconds, P99Microseconds, AllocatedBytesPerCallback);
+        CallbackResult[] planted = [limit with { P95Microseconds = P95Microseconds + 0.01 }, limit with { P99Microseconds = P99Microseconds + 0.01 },
+            limit with { AverageAllocatedBytesPerCallback = AllocatedBytesPerCallback + 0.01 }];
+        if (Exceeded(limit)) throw new InvalidOperationException("Budget self-test: a result at the budget was refused.");
+        if (planted.Count(Exceeded) != planted.Length) throw new InvalidOperationException("Budget self-test: a planted result over the budget passed.");
+        Console.WriteLine($"Budget self-test: {planted.Length} planted over-budget results refused, the result at the budget accepted.");
+    }
+}
 
 public class SessionEvents : DispatchProxy
 {

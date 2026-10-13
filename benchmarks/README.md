@@ -13,6 +13,8 @@ entities are outside the measurement. The harness rejects unlinked accounts and
 fails on queue overflow, failed writes, p95 above 50 microseconds, p99 above 200
 microseconds or allocation above 1,024 bytes per callback. These are regression
 budgets; no network, disk or library query runs inside the playback callback.
+CI first runs the harness with `--self-test`, which requires each budget to refuse a
+planted result just above it and to accept one at the budget.
 
 Measured on 2026-10-11 for `5489d0a`. The harness runs in one process against the
 Jellyfin 12.0.0 interfaces the plugin is compiled with; no server takes part, so
