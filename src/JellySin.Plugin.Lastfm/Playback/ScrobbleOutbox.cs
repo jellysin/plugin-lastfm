@@ -9,7 +9,7 @@ namespace JellySin.Plugin.Lastfm.Playback;
 public sealed record PendingScrobble(EligibleListen Listen, int Attempts = 0, DateTimeOffset? NextAttemptAt = null, int? BlockedCode = null, int? IgnoredCode = null);
 public sealed record ScrobbleReceipt(Guid OccurrenceId, int IgnoredCode, DateTimeOffset CompletedAt);
 public sealed record OutboxState(List<PendingScrobble> Pending, List<ScrobbleReceipt> Receipts);
-public sealed record OutboxStatus(int Pending, int Blocked, int? LastErrorCode, int? LastIgnoredCode, int Rejected, int? LastRejectedCode);
+public sealed record OutboxStatus(int Pending, int Blocked, int? LastErrorCode, int? LastIgnoredCode, int Rejected, int? LastRejectedCode, int? OldestPendingDays = null);
 
 public sealed record FlushOutcome(int Submitted, int Accepted, IReadOnlyList<int> IgnoredCodes, int? ErrorCode);
 public enum NowPlayingAnswer { NotSent, Accepted, Ignored, NoIgnoreCode }
@@ -46,7 +46,16 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
         return new OutboxStatus(state?.Pending.Count ?? 0, state?.Pending.Count(item => item.BlockedCode.HasValue || item.IgnoredCode.HasValue) ?? 0,
             state?.Pending.LastOrDefault(item => item.BlockedCode.HasValue)?.BlockedCode,
             state?.Pending.LastOrDefault(item => item.IgnoredCode.HasValue)?.IgnoredCode,
-            state?.Receipts.Count(item => item.IgnoredCode != 0) ?? 0, state?.Receipts.LastOrDefault(item => item.IgnoredCode != 0)?.IgnoredCode);
+            state?.Receipts.Count(item => item.IgnoredCode != 0) ?? 0, state?.Receipts.LastOrDefault(item => item.IgnoredCode != 0)?.IgnoredCode,
+            OldestPendingDays(state));
+    }
+
+    // Whole days since the oldest play still waiting for delivery started; the page warns from its own threshold.
+    private int? OldestPendingDays(OutboxState? state)
+    {
+        if (state is null || state.Pending.Count == 0) return null;
+        var age = clock.GetUtcNow() - state.Pending.Min(item => item.Listen.StartedAt);
+        return Math.Max(0, (int)Math.Floor(age.TotalDays));
     }
 
     public async Task ResumeAsync(Guid userId, CancellationToken cancellationToken)

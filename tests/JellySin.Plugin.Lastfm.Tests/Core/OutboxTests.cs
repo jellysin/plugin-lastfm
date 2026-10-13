@@ -344,6 +344,22 @@ public sealed class OutboxTests
         Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
     }
 
+    [Fact]
+    public async Task StatusReportsWholeDaysSinceTheOldestHeldPlayStarted()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var outbox = NewOutbox(fixture);
+        Assert.Null((await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).OldestPendingDays);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        fixture.Clock.Advance(3 * 86400);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        fixture.Clock.Advance(4 * 86400 - 1);
+        Assert.Equal(6, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).OldestPendingDays);
+        fixture.Clock.Advance(1);
+        Assert.Equal(7, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).OldestPendingDays);
+    }
+
     private static ScrobbleOutbox NewOutbox(CoreFixture fixture) => new(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
     private static EligibleListen Listen(CoreFixture fixture) => new(Guid.NewGuid(), fixture.UserId, new MusicTrack(Guid.NewGuid(), "Artist", "Song", "Album", null, 180), fixture.Clock.GetUtcNow(),
         fixture.Accounts.GetCaptureBinding(fixture.UserId)?.AccountGeneration ?? Guid.Empty, fixture.Accounts.GetCaptureBinding(fixture.UserId)?.CaptureGeneration ?? Guid.Empty);

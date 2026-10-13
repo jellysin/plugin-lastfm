@@ -55,9 +55,12 @@ async function start(): Promise<void> {
 
 interface Delivery {
   pending: number; blocked: number; lastErrorCode?: number; lastIgnoredCode?: number;
-  rejected: number; lastRejectedCode?: number; pendingPersistence: number;
+  rejected: number; lastRejectedCode?: number; oldestPendingDays?: number; pendingPersistence: number;
   legacyPluginDetected: boolean; droppedSnapshots: number; failedWrites: number;
 }
+
+// The plugin's own threshold: Last.fm documents no fixed age limit, only that it ignores plays it finds too old.
+const HELD_PLAY_WARNING_DAYS = 7;
 
 function deliveryStatus(state: Delivery): string {
   const details = [`${state.pending} saved for delivery`, `${state.blocked} awaiting retry`];
@@ -66,6 +69,7 @@ function deliveryStatus(state: Delivery): string {
   else if (state.lastErrorCode === 29 || state.lastErrorCode === 429) details.push('Last.fm rate limit reached; submissions retained');
   else if (state.lastErrorCode === 9) details.push('Reconnect Last.fm to resume delivery');
   else if (state.lastErrorCode) details.push(`Last.fm error ${state.lastErrorCode}`);
+  if ((state.oldestPendingDays ?? 0) >= HELD_PLAY_WARNING_DAYS) details.push(`Oldest held play is ${state.oldestPendingDays} days old; Last.fm drops plays it finds too old`);
   if (state.rejected) details.push(`${state.rejected} rejected by Last.fm${state.lastRejectedCode ? ` (reason ${state.lastRejectedCode})` : ''}`);
   if (state.pendingPersistence) details.push(`${state.pendingPersistence} still waiting for storage; these listens cannot yet survive a server restart`);
   if (state.legacyPluginDetected) details.push('Remove the legacy plugin to enable delivery');

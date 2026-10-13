@@ -302,6 +302,20 @@ test('delivery explains that a play time ahead of Last.fm retries by itself', as
   await expect(page.locator('#delivery-status')).not.toContainText('daily limit');
 });
 
+test('delivery warns once the oldest held play is seven days old', async ({ page }) => {
+  const state = await installServer(page);
+  state.delivery = { ...state.delivery, Pending: 3, OldestPendingDays: 6 };
+  await passwordLogin(page);
+  await page.getByText('Delivery status', { exact: true }).click();
+  await page.locator('#delivery-refresh').click();
+  await expect(page.locator('#delivery-status')).toContainText('3 saved for delivery');
+  await expect(page.locator('#delivery-status')).not.toContainText('Oldest held play');
+  state.delivery = { ...state.delivery, OldestPendingDays: 7 };
+  await page.locator('#delivery-refresh').click();
+  await expect(page.locator('#delivery-status')).toContainText('Oldest held play is 7 days old; Last.fm drops plays it finds too old');
+  await expect(page.locator('#delivery-status')).not.toContainText('14');
+});
+
 test('keyboard sign-in, disclosure controls and cancellation preserve focus', async ({ page }) => {
   await installServer(page);
   await page.keyboard.press('Tab');
