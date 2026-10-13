@@ -1,0 +1,17 @@
+{
+  "tasks": [
+    {
+      "command": "make verify-all",
+      "group": {
+        "isDefault": true,
+        "kind": "test"
+      },
+      "label": "Standards: Verify All",
+      "problemMatcher": [
+        "$go"
+      ],
+      "type": "shell"
+    }
+  ],
+  "version": "2.0.0"
+}

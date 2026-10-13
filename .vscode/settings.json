@@ -1,0 +1,19 @@
+{
+  "[go]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "always"
+    },
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true
+  },
+  "antigravity.searchMaxWorkspaceFileCount": 50000,
+  "files.watcherExclude": {
+    "**/.standards/worktrees/**": true,
+    "**/.workingdir/**": true,
+    "**/.workingdir2/**": true,
+    "**/bin/**": true,
+    "**/dist/**": true
+  },
+  "go.useLanguageServer": true,
+  "standards.sentinel.headroomMB": 1024
+}
