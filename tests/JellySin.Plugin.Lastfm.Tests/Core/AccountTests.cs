@@ -67,6 +67,44 @@ public sealed class AccountTests
     }
 
     [Fact]
+    public async Task NativeUpdateEventSuspendsOnlyADisabledUser()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var lifecycle = new AccountLifecycle(fixture.Accounts, NullLogger<AccountLifecycle>.Instance);
+        var user = new User("listener", "auth", "password") { Id = fixture.UserId };
+        var cancellation = fixture.Accounts.GetOperationToken(fixture.UserId);
+        await lifecycle.OnEvent(new UserUpdatedEventArgs(user));
+        Assert.False(cancellation.IsCancellationRequested);
+        Assert.NotNull(fixture.Accounts.GetCaptureBinding(fixture.UserId));
+        Assert.False((await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken))!.NeedsReconnect);
+        user.SetPermission(PermissionKind.IsDisabled, true);
+        await lifecycle.OnEvent(new UserUpdatedEventArgs(user));
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.Null(fixture.Accounts.GetCaptureBinding(fixture.UserId));
+        Assert.True((await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken))!.NeedsReconnect);
+    }
+
+    [Fact]
+    public async Task NativeLockoutEventSuspendsAnEnabledUserAndNoOtherAccount()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var other = Guid.NewGuid();
+        await fixture.ConnectAsync(other);
+        var cancellation = fixture.Accounts.GetOperationToken(fixture.UserId);
+        var unaffected = fixture.Accounts.GetOperationToken(other);
+        await new AccountLifecycle(fixture.Accounts, NullLogger<AccountLifecycle>.Instance)
+            .OnEvent(new UserLockedOutEventArgs(new User("listener", "auth", "password") { Id = fixture.UserId }));
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.Null(fixture.Accounts.GetCaptureBinding(fixture.UserId));
+        Assert.True((await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken))!.NeedsReconnect);
+        Assert.False(unaffected.IsCancellationRequested);
+        Assert.NotNull(fixture.Accounts.GetCaptureBinding(other));
+        Assert.False((await fixture.Accounts.GetAsync(other, TestContext.Current.CancellationToken))!.NeedsReconnect);
+    }
+
+    [Fact]
     public async Task MissingProtectionKeyRequiresReconnectWithoutExposingAnOldSession()
     {
         using var fixture = new CoreFixture();
