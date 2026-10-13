@@ -306,6 +306,42 @@ public sealed class DeliveryLogTests
         Assert.Equal(AccountMarker, (await fixture.Accounts.GetAsync(fixture.UserId, Ct))!.Username);
     }
 
+    [Theory]
+    [InlineData("Various Artists", "Various Artists")]
+    [InlineData(ArtistMarker, null)]
+    [InlineData(null, null)]
+    public async Task AlbumArtistReachesLastfmOnlyWhenItDiffersFromTheTrackArtist(string? albumArtist, string? expected)
+    {
+        using var fixture = new CoreFixture();
+        await ConnectWithMarkerAsync(fixture);
+        string[] albumArtists = albumArtist is null ? [] : [albumArtist];
+        fixture.Client.Handler = (method, _, _) => method switch
+        {
+            "track.scrobble" => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}"),
+            "track.updateNowPlaying" => JsonDocument.Parse("{\"nowplaying\":{\"ignoredMessage\":{\"code\":\"0\"}}}"),
+            _ => JsonDocument.Parse("{}")
+        };
+        foreach (var play in new Action<Mock<ISessionManager>>[]
+        {
+            sessions => PlayNowPlaying(sessions, fixture, albumArtists: albumArtists),
+            sessions => PlayScrobble(sessions, fixture, albumArtists: albumArtists)
+        })
+        {
+            var (sessions, _, _, outbox, playback, logger) = CreateServices(fixture);
+            await playback.StartAsync(Ct);
+            play(sessions);
+            await playback.StopAsync(Ct);
+            using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+            await delivery.RunOnceAsync(Ct);
+            AssertNoSecretsOrMarkers(logger.Lines, fixture);
+        }
+
+        var nowPlaying = Assert.Single(fixture.Client.Calls, call => call.Method == "track.updateNowPlaying").Values;
+        Assert.Equal(expected, nowPlaying.GetValueOrDefault("albumArtist"));
+        var scrobble = Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble").Values;
+        Assert.Equal(expected, scrobble.GetValueOrDefault("albumArtist[0]"));
+    }
+
     private static async Task<LogLines<DeliveryService>> DeliverPlayingNowAsync(CoreFixture fixture, Func<JsonDocument> answer, int secondsBeforeDelivery = 0)
     {
         await ConnectWithMarkerAsync(fixture);
@@ -320,7 +356,7 @@ public sealed class DeliveryLogTests
         return logger;
     }
 
-    private static PlaybackProgressEventArgs CreatePlaybackArgs(CoreFixture fixture, string sessionId = "session-1") => new()
+    private static PlaybackProgressEventArgs CreatePlaybackArgs(CoreFixture fixture, string sessionId = "session-1", string[]? albumArtists = null) => new()
     {
         Item = new Audio
         {
@@ -328,6 +364,7 @@ public sealed class DeliveryLogTests
             Name = TrackMarker,
             Artists = [ArtistMarker],
             Album = AlbumMarker,
+            AlbumArtists = albumArtists ?? [],
             RunTimeTicks = TimeSpan.FromSeconds(120).Ticks
         },
         Users = [new User(UserMarker, "auth", "password") { Id = fixture.UserId }],
@@ -335,9 +372,9 @@ public sealed class DeliveryLogTests
         PlaybackPositionTicks = 0
     };
 
-    private static void PlayScrobble(Mock<ISessionManager> sessions, CoreFixture fixture, string sessionId = "session-1")
+    private static void PlayScrobble(Mock<ISessionManager> sessions, CoreFixture fixture, string sessionId = "session-1", string[]? albumArtists = null)
     {
-        var args = CreatePlaybackArgs(fixture, sessionId);
+        var args = CreatePlaybackArgs(fixture, sessionId, albumArtists);
         sessions.Raise(value => value.PlaybackStart += null, args);
         fixture.Clock.Advance(30);
         args.PlaybackPositionTicks = TimeSpan.FromSeconds(30).Ticks;
@@ -354,9 +391,9 @@ public sealed class DeliveryLogTests
         });
     }
 
-    private static void PlayNowPlaying(Mock<ISessionManager> sessions, CoreFixture fixture, string sessionId = "session-now")
+    private static void PlayNowPlaying(Mock<ISessionManager> sessions, CoreFixture fixture, string sessionId = "session-now", string[]? albumArtists = null)
     {
-        var args = CreatePlaybackArgs(fixture, sessionId);
+        var args = CreatePlaybackArgs(fixture, sessionId, albumArtists);
         sessions.Raise(value => value.PlaybackStart += null, args);
     }
 

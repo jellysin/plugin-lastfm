@@ -4,7 +4,8 @@ namespace JellySin.Plugin.Lastfm.Playback;
 
 public enum PlaybackSignal { Start, Progress, Stop }
 
-public sealed record MusicTrack(Guid ItemId, string Artist, string Title, string? Album, string? MusicBrainzId, double DurationSeconds);
+public sealed record MusicTrack(Guid ItemId, string Artist, string Title, string? Album, string? MusicBrainzId, double DurationSeconds,
+    string? AlbumArtist = null);
 
 public sealed record PlaybackSnapshot(string SessionId, Guid UserId, MusicTrack Track, PlaybackSignal Signal, long PositionTicks, bool Paused, bool Automated, long MonotonicTimestamp, DateTimeOffset UtcTimestamp, Guid AccountGeneration = default, Guid CaptureGeneration = default, long PluginGeneration = default);
 
