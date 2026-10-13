@@ -196,8 +196,21 @@ they describe a transient state. Temporary delivery failures receive bounded
 backoff; invalid sessions require reconnecting and blocked errors are visible in
 the account dashboard.
 
-Daily-limit and rate-limit rejections remain queued. The dashboard distinguishes
-durably saved submissions from observations still waiting for an outbox write.
+Daily-limit and rate-limit rejections remain queued. A play Last.fm ignores with
+code 4 or 5 holds that user's delivery, so later plays wait behind it and keep
+their order:
+
+- Code 4 (timestamp too new) usually means the server's clock is ahead of
+  Last.fm's. The held play is sent again by itself after a delay that grows from
+  about 15 seconds to at most an hour, together with the plays behind it.
+- Code 5 (daily scrobble limit exceeded) holds until the user chooses **Retry**
+  on the Delivery page, once the limit has reset.
+
+The Delivery page counts held plays as awaiting retry and says whether they
+retry by themselves (code 4) or wait for the daily limit (code 5).
+
+The dashboard distinguishes durably saved submissions from observations still
+waiting for an outbox write.
 If storage is unavailable, the bounded recovery buffer can retry while the process
 is alive; those not-yet-saved observations cannot survive a crash or guarantee
 persistence through continued disk failure.

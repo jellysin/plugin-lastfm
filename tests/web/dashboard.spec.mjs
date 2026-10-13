@@ -291,6 +291,17 @@ test('delivery exposes retained daily limits, rejected submissions and pending d
   expect(state.requests.some(request => request.path.endsWith('/Delivery/Retry'))).toBe(false);
 });
 
+test('delivery explains that a play time ahead of Last.fm retries by itself', async ({ page }) => {
+  const state = await installServer(page);
+  state.delivery = { ...state.delivery, Pending: 2, Blocked: 1, LastIgnoredCode: 4 };
+  await passwordLogin(page);
+  await page.getByText('Delivery status', { exact: true }).click();
+  await page.locator('#delivery-refresh').click();
+  await expect(page.locator('#delivery-status')).toContainText('1 awaiting retry');
+  await expect(page.locator('#delivery-status')).toContainText('play time ahead of its clock; retrying automatically');
+  await expect(page.locator('#delivery-status')).not.toContainText('daily limit');
+});
+
 test('keyboard sign-in, disclosure controls and cancellation preserve focus', async ({ page }) => {
   await installServer(page);
   await page.keyboard.press('Tab');

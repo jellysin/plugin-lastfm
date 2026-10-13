@@ -62,6 +62,7 @@ interface Delivery {
 function deliveryStatus(state: Delivery): string {
   const details = [`${state.pending} saved for delivery`, `${state.blocked} awaiting retry`];
   if (state.lastIgnoredCode === 5) details.push('Last.fm daily limit reached; submissions retained');
+  else if (state.lastIgnoredCode === 4) details.push('Last.fm found a play time ahead of its clock; retrying automatically');
   else if (state.lastErrorCode === 29 || state.lastErrorCode === 429) details.push('Last.fm rate limit reached; submissions retained');
   else if (state.lastErrorCode === 9) details.push('Reconnect Last.fm to resume delivery');
   else if (state.lastErrorCode) details.push(`Last.fm error ${state.lastErrorCode}`);
