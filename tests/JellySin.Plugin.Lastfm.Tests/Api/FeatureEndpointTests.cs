@@ -124,6 +124,7 @@ public sealed class FeatureEndpointTests
         var before = JsonSerializer.SerializeToElement(await controller.Status(TestContext.Current.CancellationToken));
         Assert.Equal(1, before.GetProperty("Blocked").GetInt32());
         Assert.Equal(29, before.GetProperty("LastErrorCode").GetInt32());
+        Assert.Equal(0, before.GetProperty("OldestPendingDays").GetInt32());
         Assert.IsType<NoContentResult>(await controller.Retry(TestContext.Current.CancellationToken));
         var after = JsonSerializer.SerializeToElement(await controller.Status(TestContext.Current.CancellationToken));
         Assert.Equal(0, after.GetProperty("Blocked").GetInt32());
