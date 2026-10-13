@@ -113,7 +113,8 @@ def prepare_server(host: DockerHost) -> dict[str, Any]:
     password, listener_password = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
     admin = Client(host.origin)
     admin_user = setup_server(admin, password)
-    fixture_music(host.fixture_directory / "Public", SIMILAR_LOCAL, name="similar")
+    # Named after its title: Jellyfin lists a new track under its file name until the embedded title is read.
+    fixture_music(host.fixture_directory / "Public", SIMILAR_LOCAL)
     add_library(admin, "Public")
     admin.request("/Library/Refresh", "POST", expected=204)
     tracks = wait_music(admin)
