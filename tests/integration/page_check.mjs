@@ -103,7 +103,7 @@ const checks = {
     const page = run.page;
     await page.click('#charts-refresh');
     await page.locator('#chart-artists', { hasText: run.artist }).waitFor({ timeout: wait });
-    for (const id of ['#chart-tracks', '#chart-albums']) require((await text(page, id)).length > 1_000_000, `${id} is empty`); // PLANTED: shows the CI step fails; removed before merge
+    for (const id of ['#chart-tracks', '#chart-albums']) require((await text(page, id)).length > 0, `${id} is empty`);
     await shot(page, '3-charts', '#overview');
     return `tracks: ${JSON.stringify((await text(page, '#chart-tracks')).slice(0, 80))}`;
   },
