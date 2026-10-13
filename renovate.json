@@ -51,6 +51,17 @@
       "depNameTemplate": "SonarAnalyzer.CSharp",
       "datasourceTemplate": "nuget",
       "versioningTemplate": "nuget"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^tools/sdk\\.sh$/"
+      ],
+      "matchStrings": [
+        "_IMAGE=\"(?<depName>mcr\\.microsoft\\.com/dotnet/sdk|node):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     }
   ],
   "packageRules": [
@@ -118,6 +129,15 @@
         ".devcontainer/Dockerfile.praetor"
       ],
       "enabled": false
+    },
+    {
+      "description": "The local gate's SDK containers in tools/sdk.sh carry the versions of global.json and .node-version; one pull request moves all three. tests/python/test_sdk_pin.py compares them.",
+      "matchFileNames": [
+        "global.json",
+        ".node-version",
+        "tools/sdk.sh"
+      ],
+      "groupName": "SDK toolchain"
     }
   ]
 }
