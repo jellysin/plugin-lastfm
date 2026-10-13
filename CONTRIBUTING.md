@@ -45,7 +45,8 @@ userdata check also on Jellyfin 12.1 (`--server 12.1`). On the newest server
 behind a proxy that ends TLS and compares the server log with the clicks; its
 README section names what it needs to run locally. `tests/integration/page_check.py`
 then opens the plugin's pages there with a Last.fm stand-in on the run's own Docker
-network; a page that fails its check fails the step. CodeQL scans source and
+network and plays, imports history and syncs favourites as a listener; a page or a
+listener flow that fails its check fails the step. CodeQL scans source and
 Actions separately.
 The secret scan covers every fetched ref. An exception is one full fingerprint in
 `.gitleaksignore` with a reason and an expiry date; from that date the finding fails
