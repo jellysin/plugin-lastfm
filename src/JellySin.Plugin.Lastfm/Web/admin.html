@@ -41,17 +41,18 @@
     function showApplication(source) {
       byId('jellysin-application-status').textContent = source === 'Override'
         ? 'In use: an application override stored on this server. Connected accounts must connect again after a change.'
+        : source === 'Unreadable' ? 'Not in use: the application override stored on this server cannot be read with its keys, as after a restore without them. Enter the application again or remove the override.'
         : source === 'Project' ? 'In use: the Last.fm application included with this build.' : 'No Last.fm application is available on this server.';
-      byId('jellysin-remove-override').hidden = source !== 'Override';
+      byId('jellysin-remove-override').hidden = source !== 'Override' && source !== 'Unreadable';
       byId('jellysin-remove-confirmation').hidden = true;
-      if (source === 'None') byId('jellysin-advanced').open = true;
+      if (source === 'None' || source === 'Unreadable') byId('jellysin-advanced').open = true;
     }
 
     async function loadApplication() {
       const application = await ApiClient.ajax({ type: 'GET', url: api('Admin/Application'), dataType: 'json' });
       const source = String(read(application, 'Source') ?? (read(application, 'Configured') ? 'Project' : 'None'));
       showApplication(source);
-      return source !== 'None';
+      return source === 'Project' || source === 'Override';
     }
 
     function showConnection(connection, available, note) {
@@ -63,8 +64,9 @@
       byId('jellysin-connect-label').textContent = connected ? 'Reconnect Last.fm' : 'Connect Last.fm';
       byId('jellysin-connect').hidden = !offered;
       byId('jellysin-connect').disabled = false;
-      byId('jellysin-connection-status').textContent = note || (offered || connected ? state
-        : available ? state + ' Connect from the music dashboard of this server.' : 'Add a Last.fm application under Advanced before connecting.');
+      byId('jellysin-connection-status').textContent = note || (offered || (connected && available) ? state
+        : available ? state + ' Connect from the music dashboard of this server.'
+        : (connected ? state + ' ' : '') + 'Add a Last.fm application under Advanced before connecting.');
     }
 
     async function loadConnection(available) {

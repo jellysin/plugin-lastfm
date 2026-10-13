@@ -343,7 +343,7 @@ async function openSettings(page, options = {}) {
   await page.addInitScript(input => {
     const config = { Enabled: true, HostSetting: 'preserved' };
     // The calls outlive a visit to Last.fm in the same tab, so that a test can read what the page sent before it left.
-    const state = { calls: JSON.parse(sessionStorage.getItem('fixture-calls') ?? '[]'), application: { Configured: input.source !== 'None', Source: input.source },
+    const state = { calls: JSON.parse(sessionStorage.getItem('fixture-calls') ?? '[]'), application: { Configured: input.source === 'Project' || input.source === 'Override', Source: input.source },
       connection: { Connected: false, Username: null, NeedsReconnect: false, ScrobblingEnabled: true, ApprovalPending: false, ...input.connection } };
     globalThis.fixture = state;
     const answer = (path, type, data) => {
@@ -422,6 +422,16 @@ test('an application override is removed only after a second, explicit step', as
   await expect(page.getByRole('button', { name: 'Remove override', exact: true })).toBeHidden();
   await expect(page.locator('#jellysin-remove-confirmation')).toBeHidden();
   expect((await calls(page, 'Admin/Application')).filter(call => call.type === 'DELETE')).toHaveLength(1);
+});
+
+test('an override the server cannot read asks for the application again and offers no connection', async ({ page }) => {
+  await openSettings(page, { source: 'Unreadable', connection: { Connected: true, Username: 'Listener', NeedsReconnect: true } });
+  await expect(page.locator('#jellysin-advanced')).toHaveAttribute('open', '');
+  await expect(page.locator('#jellysin-application-status')).toContainText('cannot be read with its keys');
+  await expect(page.getByRole('button', { name: 'Remove override', exact: true })).toBeVisible();
+  await expect(page.locator('#jellysin-connect')).toBeHidden();
+  await expect(page.locator('#jellysin-connection-status')).toHaveText(
+    'Last.fm is connected as Listener. Last.fm asks you to connect again. Add a Last.fm application under Advanced before connecting.');
 });
 
 test('the administrator connects the own account with one button on the settings page', async ({ page }) => {

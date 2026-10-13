@@ -151,7 +151,10 @@ read on the same day.
 
 The plugin stores state under `jellysin-lastfm/state` and its protection key ring
 under `jellysin-lastfm/keys` inside Jellyfin's data directory. Back up both together
-when moving the server. Losing the key ring requires reconnecting accounts.
+when moving the server. Losing the key ring requires reconnecting accounts. An
+application override stored under the lost key ring is not used: the administration
+page reports it as unreadable, and nothing reaches Last.fm until an administrator
+enters the application again or removes the override.
 Server administrators can access host files and remain trusted.
 
 The state store has an 80 MB aggregate accounting budget, an 8 MB document limit
