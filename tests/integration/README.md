@@ -173,3 +173,25 @@ It needs Docker, Node with the repository's locked packages and `openssl`. The
 evidence directory receives the screenshots, `result.json`, the server log, the
 methods the stand-in answered and its tunnel record; keep it out of the
 repository. CI runs this check on the newest Jellyfin 12.
+
+## Legacy Last.fm plugin next to JellySin
+
+`tests/integration/legacy_plugin.py` checks that JellySin pauses listening while the
+previous Last.fm plugin is installed, so that the two plugins never send the same play
+twice. It downloads that plugin's last release (jesseward/jellyfin-plugin-lastfm
+10.0.0.0) into a temporary folder, refuses it unless its SHA-256 matches the pinned
+value, and mounts it as an installed plugin on a disposable Jellyfin 12 host next to the
+production plugin. It fails unless the server lists the legacy plugin as active and an
+ordinary user's delivery status reports it:
+
+```sh
+python tests/integration/legacy_plugin.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest
+```
+
+A running server lists the legacy plugin under the Id its assembly declares,
+`de7fe7f0-b048-439e-a431-b1a7e99c930d`, not under the GUID of its catalog entry,
+`5e7fe7f0-b048-429e-a431-b1a7e69c930d`; JellySin checks both. The legacy repository is
+archived and names no licence, so the release is only downloaded for this check and
+never kept, packaged or committed. For the same reason the check stays manual: CI never
+downloads or runs the legacy release. In CI, a unit test guards that both Ids are
+recognized.

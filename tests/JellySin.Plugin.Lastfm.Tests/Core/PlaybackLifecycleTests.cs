@@ -138,15 +138,17 @@ public sealed class PlaybackLifecycleTests
         Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
     }
 
-    [Fact]
-    public async Task LegacyPluginPreventsAnyNewListening()
+    [Theory]
+    [InlineData("de7fe7f0-b048-439e-a431-b1a7e99c930d")] // the Id the legacy assembly declares and a running server lists
+    [InlineData("5e7fe7f0-b048-429e-a431-b1a7e69c930d")] // the legacy catalog entry
+    public async Task LegacyPluginPreventsAnyNewListening(string legacyId)
     {
         using var fixture = new CoreFixture();
         await fixture.ConnectAsync();
         var sessions = new Mock<ISessionManager>();
         var plugins = new Mock<IPluginManager>();
         plugins.SetupGet(value => value.Plugins).Returns([new LocalPlugin("legacy", true, new PluginManifest
-        { Id = PlaybackService.LegacyPluginId, Name = "Last.fm", Version = "10.11.10.0", Status = MediaBrowser.Model.Plugins.PluginStatus.Active })]);
+        { Id = Guid.Parse(legacyId), Name = "Last.fm", Version = "10.11.10.0", Status = MediaBrowser.Model.Plugins.PluginStatus.Active })]);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
         using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
