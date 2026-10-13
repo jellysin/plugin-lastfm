@@ -43,7 +43,9 @@ server address that the Last.fm sign-in must name as its return), and the native
 userdata check also on Jellyfin 12.1 (`--server 12.1`). On the newest server
 `tests/integration/proxied_sign_in.py` starts the Last.fm sign-in in a browser
 behind a proxy that ends TLS and compares the server log with the clicks; its
-README section names what it needs to run locally. CodeQL scans source and
+README section names what it needs to run locally. `tests/integration/page_check.py`
+then opens the plugin's pages there with a Last.fm stand-in on the run's own Docker
+network; a page that fails its check fails the step. CodeQL scans source and
 Actions separately.
 The secret scan covers every fetched ref. An exception is one full fingerprint in
 `.gitleaksignore` with a reason and an expiry date; from that date the finding fails
