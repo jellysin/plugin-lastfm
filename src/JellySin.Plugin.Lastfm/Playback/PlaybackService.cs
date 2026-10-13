@@ -149,7 +149,8 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
             var duration = (audio.RunTimeTicks ?? 0) / (double)TimeSpan.TicksPerSecond;
             if (duration is <= 30 or > int.MaxValue) return;
             var track = new MusicTrack(audio.Id, artist, audio.Name, audio.Album?.Length <= 4096 ? audio.Album : null,
-                Guid.TryParse(mbid, out var identifier) ? identifier.ToString() : null, duration);
+                Guid.TryParse(mbid, out var identifier) ? identifier.ToString() : null, duration,
+                audio.AlbumArtists.FirstOrDefault() is { Length: <= 1024 } albumArtist ? albumArtist : null);
             var timestamp = clock.GetTimestamp();
             var utc = clock.GetUtcNow();
             foreach (var user in args.Users.Take(32))

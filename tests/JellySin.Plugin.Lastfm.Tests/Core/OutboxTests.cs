@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using JellySin.Plugin.Lastfm.Playback;
 using JellySin.Plugin.Lastfm.Transport;
 
@@ -64,6 +65,23 @@ public sealed class OutboxTests
             return JsonDocument.Parse("""{"scrobbles":{"scrobble":{"ignoredMessage":{"code":0}}}}""");
         };
         await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
+    }
+
+    [Fact]
+    public async Task OutboxEntryWrittenBeforeAlbumArtistIsDeliveredWithoutOne()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var outbox = NewOutbox(fixture);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        var state = await fixture.Store.ReadAsync<JsonObject>(fixture.UserId, "outbox", TestContext.Current.CancellationToken);
+        Assert.True(state!["pending"]![0]!["listen"]!["track"]!.AsObject().Remove("albumArtist"));
+        await fixture.Store.WriteAsync(fixture.UserId, "outbox", state, TestContext.Current.CancellationToken);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var scrobble = Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble").Values;
+        Assert.Equal("Album", scrobble["album[0]"]);
+        Assert.DoesNotContain("albumArtist[0]", scrobble.Keys);
         Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
     }
 

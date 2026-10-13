@@ -116,6 +116,7 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
             ["duration"] = ((int)track.DurationSeconds).ToString(CultureInfo.InvariantCulture)
         };
         if (!string.IsNullOrWhiteSpace(track.Album)) values["album"] = track.Album;
+        if (track.AlbumArtist is not null) values["albumArtist"] = track.AlbumArtist;
         if (!string.IsNullOrWhiteSpace(track.MusicBrainzId)) values["mbid"] = track.MusicBrainzId;
         return values;
     }
@@ -123,6 +124,9 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
     private static MusicTrack NormalizeTrack(MusicTrack track) => track with
     {
         Album = track.Album?.Length <= 4096 ? track.Album : null,
+        // Last.fm takes the album artist only when it differs from the track artist.
+        AlbumArtist = !string.IsNullOrWhiteSpace(track.AlbumArtist) && track.AlbumArtist.Length <= 1024
+            && !string.Equals(track.AlbumArtist, track.Artist, StringComparison.Ordinal) ? track.AlbumArtist : null,
         MusicBrainzId = Guid.TryParse(track.MusicBrainzId, out var id) ? id.ToString() : null
     };
 
