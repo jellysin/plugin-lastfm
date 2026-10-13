@@ -195,3 +195,32 @@ archived and names no licence, so the release is only downloaded for this check 
 never kept, packaged or committed. For the same reason the check stays manual: CI never
 downloads or runs the legacy release. In CI, a unit test guards that both Ids are
 recognized.
+
+## Account carried across an upgrade and a restore
+
+`state_carryover.py` connects an ordinary user through the Last.fm stand-in of the
+page check on the oldest supported Jellyfin 12 and has a library favourite loved.
+The same configuration then goes through three steps, and each one must keep what
+`docs/operations.md` promises:
+
+- upgrade: the newest Jellyfin 12 starts on the same volume. The user is still
+  connected and a second favourite is loved, which needs the stored session key.
+- restore: the configuration is copied into a fresh volume and the newest release
+  starts on it with an empty cache. The user is still connected and a third
+  favourite is loved.
+- restore without the key ring: the same copy without `jellysin-lastfm/keys`. The
+  server starts, the administration page reports the application override as
+  unreadable, the account asks for a new connection, and a synchronization is
+  refused without any call to the stand-in.
+
+```sh
+python tests/integration/state_carryover.py \
+  --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll
+```
+
+It needs Docker and `openssl`, and removes its servers, volumes and the stand-in
+afterwards. Against a build before the unreadable-override handling, the server
+without its key ring did not start: reading the override threw while Jellyfin
+loaded the plugin. That defect is what the last step guards. An upgrade from a
+published plugin release is not part of the check, since no release has been
+published yet. The check stays manual.
