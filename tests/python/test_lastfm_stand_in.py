@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "integration"))
@@ -53,19 +54,42 @@ class StandInTests(unittest.TestCase):
         self.addCleanup(connection.close)
         return connection
 
-    def test_a_trusting_server_receives_the_documented_answer(self):
+    def post(self, body):
         connection = self.tunnel(lastfm_stand_in.API_HOST)
         context = client_context(cafile=self.directory / "ca.pem")
         connection.connect()
         connection.sock = context.wrap_socket(connection.sock, server_hostname=lastfm_stand_in.API_HOST)
-        connection.request("POST", "/2.0/", body="method=auth.getSession&token=t&format=json",
-                           headers={"Content-Type": "application/x-www-form-urlencoded"})
+        connection.request("POST", "/2.0/", body=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
         answer = json.loads(connection.getresponse().read())
         connection.close()
+        return answer
+
+    def test_a_trusting_server_receives_the_documented_answer(self):
+        answer = self.post("method=auth.getSession&token=t&format=json")
         self.assertEqual({"name": lastfm_stand_in.LASTFM_USER, "key": SESSION, "subscriber": 0}, answer["session"])
         self.assertEqual(["POST auth.getSession"], self.lines("calls.log"))
         self.wait_for("tunnels.log", 2)
         self.assertEqual(["opened ws.audioscrobbler.com", "tls-ended ws.audioscrobbler.com TLSv1.3"], self.lines("tunnels.log"))
+
+    def test_a_scrobble_batch_is_accepted_per_track_and_recorded_by_name_alone(self):
+        body = urllib.parse.urlencode({"method": "track.scrobble", "artist[0]": "A & B", "track[0]": "First", "timestamp[0]": "1",
+                                       "artist[1]": "C", "track[1]": "Second", "timestamp[1]": "2", "sk": SESSION, "api_sig": "f" * 32})
+        answer = self.post(body)
+        self.assertEqual({"accepted": 2, "ignored": 0}, answer["scrobbles"]["@attr"])
+        self.assertEqual([("A & B", "First", "0"), ("C", "Second", "0")],
+                         [(entry["artist"]["#text"], entry["track"]["#text"], entry["ignoredMessage"]["code"]) for entry in answer["scrobbles"]["scrobble"]])
+        self.assertEqual(["POST track.scrobble | A & B - First | C - Second"], self.lines("calls.log"))
+
+    def test_a_single_track_method_names_its_track_and_never_the_session(self):
+        self.post(urllib.parse.urlencode({"method": "track.updateNowPlaying", "artist": "A", "track": "T", "sk": SESSION, "api_sig": "f" * 32}))
+        self.post(urllib.parse.urlencode({"method": "user.getInfo", "user": "someone", "sk": SESSION}))
+        self.assertEqual(["POST track.updateNowPlaying | A - T", "POST user.getInfo"], self.lines("calls.log"))
+        self.assertNotIn(SESSION, (self.directory / "out" / "calls.log").read_text(encoding="utf-8"))
+
+    def test_the_loved_collection_holds_a_track_the_library_has(self):
+        loved = lastfm_stand_in.answer("user.getLovedTracks", SESSION)["lovedtracks"]["track"]
+        self.assertEqual([lastfm_stand_in.SIMILAR_LOCAL], [entry["name"] for entry in loved])
+        self.assertIn("uts", loved[0]["date"])
 
     def test_a_server_that_rejects_the_certificate_is_recorded(self):
         connection = self.tunnel(lastfm_stand_in.API_HOST)
