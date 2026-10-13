@@ -5,7 +5,7 @@ validation below records observed checks, not approval for production publicatio
 
 The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
 up. The automated server checks run on Jellyfin 12.0.0 and 12.2.0 on every change, and
-the native fixture also on 12.1.0, the first release with the playlist visibility rule.
+the native fixture, the smoke harness and the library load budget also on 12.1.0.
 Observations named for 12.0.0 were made on 2026-09-08 with the project application
 and a live Last.fm account on the 12.0 image. The Last.fm browser grant and a live
 scrobble were repeated on 12.2.0 on 2026-10-12 with a canary build

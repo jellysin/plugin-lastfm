@@ -126,6 +126,11 @@ jobs:
         run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server '12.1' --report build/native-userdata-12.1.json
       - name: Enforce real-library search and concurrent playback budgets
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server newest
+      # Support starts at 12.0.0, so the release between the floor and the newest loads the same build under the same checks.
+      - name: Exercise load, account isolation and restart on Jellyfin 12.1
+        run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server '12.1'
+      - name: Enforce real-library search and concurrent playback budgets on Jellyfin 12.1
+        run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server '12.1'
       - name: Validate installable package and release metadata
         uses: jellysin/release-helper/actions/package@1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
         with:

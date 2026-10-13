@@ -3,6 +3,7 @@ using JellySin.Plugin.Lastfm.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +42,43 @@ public sealed class RequestValidationTests
         provider.GetRequiredService<IObjectModelValidator>().Validate(action, validationState: null, prefix: string.Empty, model: request);
         Assert.Equal(valid, action.ModelState.IsValid);
         if (!valid) Assert.NotEmpty(action.ModelState.Values.SelectMany(value => value.Errors));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(128, true)]
+    [InlineData(129, false)]
+    public void LibrarySearchQueryLengthIsValidatedAsAnActionParameter(int? length, bool valid)
+    {
+        var parameter = typeof(MusicController).GetMethod(nameof(MusicController.Seeds))!.GetParameters().Single(value => value.Name == "query");
+        Assert.Equal(valid, Validate(length is null ? null : new string('q', length.Value), parameter));
+    }
+
+    [Theory]
+    [InlineData(1, 1, true)]
+    [InlineData(100, 200, true)]
+    [InlineData(1, 0, false)]
+    [InlineData(1, 201, false)]
+    [InlineData(101, 50, false)]
+    [InlineData(0, 50, false)]
+    public void PlaylistNameAndTrackLimitAreValidatedAtTheirBounds(int nameLength, int limit, bool valid) =>
+        Assert.Equal(valid, Validate(new PlaylistInput(Guid.Empty, new string('n', nameLength), PlaylistSource.Top, Limit: limit), parameter: null));
+
+    /// <summary>Runs MVC's own validator over a request body, or over one action parameter as the parameter binder does.</summary>
+    private static bool Validate(object? model, System.Reflection.ParameterInfo? parameter)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddControllers();
+        using var provider = services.BuildServiceProvider();
+        var action = new ActionContext(new DefaultHttpContext { RequestServices = provider }, new RouteData(), new ActionDescriptor());
+        var validator = (ObjectModelValidator)provider.GetRequiredService<IObjectModelValidator>();
+        var metadata = provider.GetRequiredService<IModelMetadataProvider>();
+        if (parameter is null) validator.Validate(action, validationState: null, prefix: string.Empty, model: model);
+        else validator.Validate(action, null, parameter.Name!, model, ((ModelMetadataProvider)metadata).GetMetadataForParameter(parameter), container: null);
+        return action.ModelState.IsValid;
     }
 
     [Theory]

@@ -39,8 +39,9 @@ CI also audits npm/NuGet dependencies, checks repository policy and Action pins,
 runs actionlint and Gitleaks, packages the DLL, and exercises real Jellyfin 12
 containers, the oldest supported and the newest, through `tools/smoke.py`
 (`--server floor` or `--server newest`, the newest started with a published
-server address that the Last.fm sign-in must name as its return), and the native
-userdata check also on Jellyfin 12.1 (`--server 12.1`). On the newest server
+server address that the Last.fm sign-in must name as its return), and on Jellyfin
+12.1 (`--server 12.1`) the smoke harness, the library load budget and the native
+userdata check. On the newest server
 `tests/integration/proxied_sign_in.py` starts the Last.fm sign-in in a browser
 behind a proxy that ends TLS and compares the server log with the clicks; its
 README section names what it needs to run locally. `tests/integration/page_check.py`
@@ -110,8 +111,8 @@ with it.
 
 An entry named after a release, such as `12.1`, keeps that release because a check
 depends on what changed in it: Jellyfin 12.1 is the first release that hides a
-playlist whose tracks a parental limit blocks, and the native userdata check runs
-there as well. Renovate moves only its digest, and the Python tests fail when the
+playlist whose tracks a parental limit blocks, and the smoke harness, the library
+load budget and the native userdata check run there as well. Renovate moves only its digest, and the Python tests fail when the
 entry, its Renovate rule or the pattern Renovate reads the entries with would let it
 run another release.
 

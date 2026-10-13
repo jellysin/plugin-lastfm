@@ -1,5 +1,6 @@
 using System.Text.Json;
 using JellySin.Plugin.Lastfm.Api;
+using JellySin.Plugin.Lastfm.Configuration;
 using JellySin.Plugin.Lastfm.Features;
 using JellySin.Plugin.Lastfm.Playback;
 using JellySin.Plugin.Lastfm.Tests.Features;
@@ -151,6 +152,56 @@ public sealed class FeatureEndpointTests
         Assert.True(result.Enabled);
         Assert.Equal("Review pending changes", result.Status);
         Assert.Equal(pending[(Math.Min(page, 3) - 1) * 200].Id, result.Pending[0].Id);
+    }
+
+    [Fact]
+    public async Task ChartsReturnTheCallersTopTracksForASupportedPeriodOnly()
+    {
+        using var fixture = new FeatureFixture();
+        await fixture.InitializeAsync();
+        fixture.Top.Add(new JellySin.Plugin.Lastfm.Features.MusicTrack("Artist", "Chart track", PlayCount: 7));
+        var discovery = new DiscoveryService(fixture.Api, fixture.Library, Mock.Of<IDiscoveryLibrary>(), fixture.Core.Accounts);
+        var controller = Attach(new MusicController(fixture.History, discovery), fixture.Core.UserId);
+        controller.Request.QueryString = new QueryString("?userId=" + Guid.NewGuid());
+        var chart = await controller.Charts("7day", TestContext.Current.CancellationToken);
+        Assert.Equal("7day", chart.Period);
+        var track = Assert.Single(chart.Tracks);
+        Assert.Equal(("Artist", "Chart track", 7), (track.Artist, track.Title, track.PlayCount));
+        var call = Assert.Single(fixture.Core.Client.Calls);
+        Assert.Equal("user.getTopTracks", call.Method);
+        Assert.Equal(("TestListener", "7day", "1"), (call.Values["user"], call.Values["period"], call.Values["page"]));
+        await Assert.ThrowsAsync<ArgumentException>(() => controller.Charts("1week", TestContext.Current.CancellationToken));
+        var stranger = Attach(new MusicController(fixture.History, discovery), Guid.NewGuid());
+        await Assert.ThrowsAsync<NotConnectedException>(() => stranger.Charts("7day", TestContext.Current.CancellationToken));
+        Assert.Single(fixture.Core.Client.Calls);
+    }
+
+    [Fact]
+    public async Task StopManagingAnUnknownOrForeignRecipeChangesNothingAndAnswersAlike()
+    {
+        using var fixture = new FeatureFixture();
+        await fixture.InitializeAsync();
+        var other = Guid.NewGuid();
+        var discovery = new DiscoveryService(fixture.Api, fixture.Library, Mock.Of<IDiscoveryLibrary>(), fixture.Core.Accounts);
+        var manager = new Mock<IPlaylistManager>(MockBehavior.Strict);
+        var service = new PlaylistService(fixture.Api, discovery, fixture.Library, Mock.Of<ILibraryManager>(), manager.Object,
+            fixture.Core.Store, fixture.Locks, fixture.Core.Clock, fixture.Core.Accounts);
+        var own = new PlaylistRecipe(Guid.NewGuid(), "Mine", PlaylistSource.Top, PlaylistId: Guid.NewGuid());
+        var foreign = new PlaylistRecipe(Guid.NewGuid(), "Theirs", PlaylistSource.Loved, PlaylistId: Guid.NewGuid());
+        var pending = new PlaylistRecipe(Guid.NewGuid(), "Theirs pending", PlaylistSource.Top, PlaylistId: Guid.NewGuid());
+        var operation = new PlaylistOperation(pending, [Guid.NewGuid()], pending.PlaylistId, Guid.NewGuid());
+        await fixture.Core.Store.WriteAsync(fixture.Core.UserId, "feature-playlists", new List<PlaylistRecipe> { own }, TestContext.Current.CancellationToken);
+        await fixture.Core.Store.WriteAsync(other, "feature-playlists", new List<PlaylistRecipe> { foreign }, TestContext.Current.CancellationToken);
+        await fixture.Core.Store.WriteAsync(other, "feature-playlist-operation", operation, TestContext.Current.CancellationToken);
+        var controller = Attach(new PlaylistsController(service), fixture.Core.UserId);
+        foreach (var id in new[] { Guid.NewGuid(), foreign.Id, pending.Id })
+            Assert.IsType<NoContentResult>(await controller.StopManaging(id, TestContext.Current.CancellationToken));
+        Assert.Equal(own.Id, Assert.Single(await controller.Get(TestContext.Current.CancellationToken)).Id);
+        Assert.Equal([foreign.Id, pending.Id], (await service.GetRecipesAsync(other, TestContext.Current.CancellationToken)).Select(recipe => recipe.Id));
+        Assert.Equal(operation.OperationId, (await service.GetPendingOperationAsync(other, TestContext.Current.CancellationToken))!.OperationId);
+        Assert.IsType<NoContentResult>(await controller.StopManaging(own.Id, TestContext.Current.CancellationToken));
+        Assert.Empty(await controller.Get(TestContext.Current.CancellationToken));
+        manager.VerifyNoOtherCalls();
     }
 
     private static T Attach<T>(T controller, Guid userId) where T : ControllerBase
