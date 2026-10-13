@@ -45,8 +45,7 @@ silently copied. See [migration](docs/migration.md).
 ## Jellyfin versions and clients
 
 The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
-up. Every change is checked on Jellyfin 12.0.0 and 12.2.0, and the playlist fixture
-also on 12.1.0; [release readiness](docs/release-readiness.md) names what each check
+up. Every change is checked on Jellyfin 12.0.0, 12.1.0 and 12.2.0; [release readiness](docs/release-readiness.md) names what each check
 covers.
 
 Scrobbling reads the playback reports the server receives, whichever client sends
