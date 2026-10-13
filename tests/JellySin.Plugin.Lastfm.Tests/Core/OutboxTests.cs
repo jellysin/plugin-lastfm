@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using JellySin.Plugin.Lastfm.Playback;
 using JellySin.Plugin.Lastfm.Transport;
@@ -172,6 +173,51 @@ public sealed class OutboxTests
         Assert.Equal(1, status.Blocked);
         Assert.Equal(error, status.LastErrorCode);
         Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
+    }
+
+    [Fact]
+    public async Task TimestampTooNewHoldsTheOrderAndRetriesByItselfAfterADelay()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var outbox = NewOutbox(fixture);
+        var held = Listen(fixture);
+        await outbox.EnqueueAsync(held, TestContext.Current.CancellationToken);
+        fixture.Client.Handler = (_, _, _) => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"4\"}}}}");
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        fixture.Clock.Advance(5);
+        var later = Listen(fixture);
+        await outbox.EnqueueAsync(later, TestContext.Current.CancellationToken);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var status = await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal((2, 1, (int?)4), (status.Pending, status.Blocked, status.LastIgnoredCode));
+        Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
+        fixture.Client.Handler = (_, _, _) => JsonSerializer.SerializeToDocument(new
+        { scrobbles = new { scrobble = new[] { new { ignoredMessage = new { code = 0 } }, new { ignoredMessage = new { code = 0 } } } } });
+        fixture.Clock.Advance(26);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
+        var retry = fixture.Client.Calls.Where(call => call.Method == "track.scrobble").Skip(1).Single().Values;
+        Assert.Equal((held.StartedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture), later.StartedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)),
+            (retry["timestamp[0]"], retry["timestamp[1]"]));
+    }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(99)]
+    public async Task DailyLimitAndUnknownRejectionsStayHeldUntilRetry(int ignored)
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var outbox = NewOutbox(fixture);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        fixture.Client.Handler = (_, _, _) => JsonSerializer.SerializeToDocument(new { scrobbles = new { scrobble = new { ignoredMessage = new { code = ignored } } } });
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        fixture.Clock.Advance(2 * 3600);
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
+        var status = await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.Equal((1, 1, (int?)ignored), (status.Pending, status.Blocked, status.LastIgnoredCode));
     }
 
     [Theory]

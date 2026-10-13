@@ -19,6 +19,9 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
 {
     private const int MaxPending = 10_000;
     private const int MaxReceipts = 2000;
+    // Last.fm ignore code 4 (timestamp too new) usually means the clocks disagree; the item retries by itself after a delay.
+    // Code 5 (daily limit) and unknown codes stay held until Retry.
+    private const int TimestampTooNew = 4;
 
     public async Task EnqueueAsync(EligibleListen listen, CancellationToken cancellationToken)
     {
@@ -60,7 +63,7 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
         if (account is null || account.NeedsReconnect || !account.ScrobblingEnabled) return null;
         var state = await store.ReadAsync<OutboxState>(userId, "outbox", token).ConfigureAwait(false);
         var batch = state?.Pending.OrderBy(item => item.Listen.StartedAt)
-            .TakeWhile(item => item.BlockedCode is null && item.IgnoredCode is null && (item.NextAttemptAt is null || item.NextAttemptAt <= clock.GetUtcNow())).Take(50).ToArray() ?? [];
+            .TakeWhile(item => item.BlockedCode is null && item.IgnoredCode is null or TimestampTooNew && (item.NextAttemptAt is null || item.NextAttemptAt <= clock.GetUtcNow())).Take(50).ToArray() ?? [];
         if (batch.Length == 0) return null;
         var invalid = batch.Where(item => item.Listen.AccountGeneration != account.Generation || !ValidRequiredMetadata(item.Listen.Track)).ToArray();
         if (invalid.Length > 0)
@@ -181,10 +184,16 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
             state.Pending.RemoveAll(item => identifiers.Contains(item.Listen.OccurrenceId));
             state.Receipts.AddRange(batch.Select((item, index) => new ScrobbleReceipt(item.Listen.OccurrenceId, codes[index], clock.GetUtcNow())).Where(item => identifiers.Contains(item.OccurrenceId)));
             var deferred = batch.Select((item, index) => (item.Listen.OccurrenceId, Code: codes[index])).Where(item => !identifiers.Contains(item.OccurrenceId)).ToDictionary(item => item.OccurrenceId, item => item.Code);
-            state = state with { Pending = state.Pending.Select(item => deferred.TryGetValue(item.Listen.OccurrenceId, out var code) ? item with { IgnoredCode = code } : item).ToList() };
+            state = state with { Pending = state.Pending.Select(item => deferred.TryGetValue(item.Listen.OccurrenceId, out var code) ? Hold(item, code) : item).ToList() };
             if (state.Receipts.Count > MaxReceipts) state.Receipts.RemoveRange(0, state.Receipts.Count - MaxReceipts);
             return state;
         }, cancellationToken);
+
+    private PendingScrobble Hold(PendingScrobble item, int code) => code == TimestampTooNew
+        ? item with { IgnoredCode = code, Attempts = Math.Min(item.Attempts + 1, 20), NextAttemptAt = RetryAt(item.Attempts) }
+        : item with { IgnoredCode = code };
+
+    private DateTimeOffset RetryAt(int attempts) => clock.GetUtcNow().AddSeconds(Math.Min(3600, 15 * Math.Pow(2, Math.Min(attempts, 8))) + Random.Shared.Next(0, 15));
 
     private Task DelayAsync(Guid userId, PendingScrobble[] batch, LastfmException error, CancellationToken cancellationToken)
         => store.UpdateAsync<OutboxState>(userId, "outbox", current =>
@@ -197,7 +206,7 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
                 ? item with
                 {
                     Attempts = Math.Min(item.Attempts + 1, 20),
-                    NextAttemptAt = error.Retryable ? clock.GetUtcNow().AddSeconds(Math.Min(3600, 15 * Math.Pow(2, Math.Min(item.Attempts, 8))) + Random.Shared.Next(0, 15)) : null,
+                    NextAttemptAt = error.Retryable ? RetryAt(item.Attempts) : null,
                     BlockedCode = error.Retryable ? null : error.Code
                 } : item).ToList()
             };
