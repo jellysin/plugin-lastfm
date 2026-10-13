@@ -104,6 +104,36 @@ public sealed class LibraryTests
     }
 
     [Fact]
+    public void FavouriteWritesNeedACoordinatedHostAndTheCurrentRevision()
+    {
+        var user = new User("Listener", "provider", "reset");
+        var item = new Audio { Id = Guid.NewGuid(), Name = "Track" };
+        var state = new UserItemData { Key = "track", PlayCount = 3, IsFavorite = true };
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        var manager = new Mock<ILibraryManager>();
+        manager.Setup(l => l.GetItemById<Audio>(item.Id, user.Id)).Returns(item);
+        var data = new Mock<IUserDataManager>();
+        data.Setup(d => d.GetUserData(user, item)).Returns(() => new UserItemData { Key = state.Key, PlayCount = state.PlayCount, IsFavorite = state.IsFavorite });
+        data.Setup(d => d.SaveUserData(user, item, It.IsAny<UserItemData>(), UserDataSaveReason.UpdateUserData, Ct))
+            .Callback<User, BaseItem, UserItemData, UserDataSaveReason, CancellationToken>((_, _, value, _, _) => state = value);
+        var coordinated = new CoordinatedUserData(data.Object);
+        var library = new MusicLibrary(manager.Object, users.Object, coordinated);
+        var observed = coordinated.FavouriteRevision(user, item);
+        Assert.True(library.TrySetFavourite(user.Id, item.Id, false, observed, Ct));
+        Assert.False(state.IsFavorite);
+        Assert.Equal(3, state.PlayCount);
+        Assert.False(library.TrySetFavourite(user.Id, item.Id, true, observed, Ct)); // The removal moved the revision.
+        Assert.False(state.IsFavorite);
+        Assert.Throws<KeyNotFoundException>(() => library.TrySetFavourite(user.Id, Guid.NewGuid(), true, observed, Ct));
+        var uncoordinated = new MusicLibrary(manager.Object, users.Object, data.Object);
+        var current = coordinated.FavouriteRevision(user, item);
+        Assert.Throws<InvalidOperationException>(() => uncoordinated.TrySetFavourite(user.Id, item.Id, true, current, Ct));
+        Assert.False(state.IsFavorite);
+        data.Verify(d => d.SaveUserData(user, item, It.IsAny<UserItemData>(), UserDataSaveReason.UpdateUserData, Ct), Times.Once);
+    }
+
+    [Fact]
     public void NameFallbackRejectsAmbiguityAndSearchIsBoundedToAccessibleMusic()
     {
         var user = new User("Listener", "provider", "reset");

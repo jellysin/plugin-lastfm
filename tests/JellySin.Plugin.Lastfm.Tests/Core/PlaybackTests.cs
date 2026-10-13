@@ -152,6 +152,24 @@ public sealed class PlaybackTests
         Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Start, 0) with { Track = _track with { DurationSeconds = duration } }).NowPlaying);
     }
 
+    [Fact]
+    public void SessionCapRefusesANewSessionUntilIdleSessionsPassFifteenMinutes()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        var listens = Enumerable.Range(0, 1024)
+            .Select(index => tracker.Observe(Snapshot(PlaybackSignal.Start, 0) with { SessionId = $"session-{index}" }).NowPlaying!)
+            .ToArray();
+        Assert.Throws<InvalidOperationException>(() => tracker.Observe(Snapshot(PlaybackSignal.Start, 0) with { SessionId = "one more" }));
+        _clock.Advance(10);
+        tracker.Observe(Snapshot(PlaybackSignal.Progress, 10) with { SessionId = "session-0" });
+        _clock.Advance(890);
+        Assert.Throws<InvalidOperationException>(() => tracker.Observe(Snapshot(PlaybackSignal.Start, 0) with { SessionId = "one more" }));
+        _clock.Advance(1);
+        Assert.NotNull(tracker.Observe(Snapshot(PlaybackSignal.Start, 0) with { SessionId = "one more" }).NowPlaying);
+        Assert.True(tracker.IsCurrent(listens[0]));
+        Assert.False(tracker.IsCurrent(listens[1]));
+    }
+
     private PlaybackSnapshot Snapshot(PlaybackSignal signal, int position)
         => new("session", _user, _track, signal, TimeSpan.FromSeconds(position).Ticks, false, false, _clock.GetTimestamp(), _clock.GetUtcNow());
 }
