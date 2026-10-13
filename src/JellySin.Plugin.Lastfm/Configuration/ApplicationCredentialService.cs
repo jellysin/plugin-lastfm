@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.DataProtection;
 
 namespace JellySin.Plugin.Lastfm.Configuration;
 
-public enum ApplicationSource { None, Project, Override }
+public enum ApplicationSource { None, Project, Override, Unreadable }
 
 public sealed class ApplicationCredentialService(IStateStore store, IDataProtectionProvider protection)
 {
@@ -18,7 +18,7 @@ public sealed class ApplicationCredentialService(IStateStore store, IDataProtect
     {
         var value = await store.ReadAsync<StoredCredentials>(Guid.Empty, "credentials", cancellationToken).ConfigureAwait(false);
         if (value is null) return ProjectCredentials();
-        return new ApplicationCredentials(_protector.Unprotect(value.Key), _protector.Unprotect(value.Secret));
+        return Unprotect(value) ?? new ApplicationCredentials(string.Empty, string.Empty);
     }
 
     public Task SetAsync(ApplicationCredentials credentials, CancellationToken cancellationToken)
@@ -31,7 +31,8 @@ public sealed class ApplicationCredentialService(IStateStore store, IDataProtect
     /// <summary>Where the application in use comes from: an administrator's override, the build, or nowhere.</summary>
     public async Task<ApplicationSource> GetSourceAsync(CancellationToken cancellationToken)
     {
-        if (await store.ReadAsync<StoredCredentials>(Guid.Empty, "credentials", cancellationToken).ConfigureAwait(false) is not null) return ApplicationSource.Override;
+        if (await store.ReadAsync<StoredCredentials>(Guid.Empty, "credentials", cancellationToken).ConfigureAwait(false) is { } value)
+            return Unprotect(value) is null ? ApplicationSource.Unreadable : ApplicationSource.Override;
         return ProjectCredentials().IsConfigured ? ApplicationSource.Project : ApplicationSource.None;
     }
 
@@ -39,6 +40,16 @@ public sealed class ApplicationCredentialService(IStateStore store, IDataProtect
     public Task DeleteAsync(CancellationToken cancellationToken) => store.DeleteAsync(Guid.Empty, "credentials", cancellationToken);
 
     public sealed record StoredCredentials(string Key, string Secret);
+
+    /// <summary>
+    /// An override this server's key ring cannot read, as after a restore without jellysin-lastfm/keys, is not used and
+    /// not replaced by the build's application: nothing reaches Last.fm until an administrator enters it again.
+    /// </summary>
+    private ApplicationCredentials? Unprotect(StoredCredentials value)
+    {
+        try { return new ApplicationCredentials(_protector.Unprotect(value.Key), _protector.Unprotect(value.Secret)); }
+        catch (Exception error) when (error is CryptographicException or FormatException) { return null; }
+    }
 
     private static ApplicationCredentials ProjectCredentials()
     {

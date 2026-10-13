@@ -9,8 +9,9 @@ oldest supported Jellyfin 12 release and has a library favourite loved on Last.f
   and a second favourite is loved, which needs the stored session key read back with the stored key ring.
 - restore: the configuration is copied into a fresh volume, as a backup restored on a new server would be, and
   the newest release starts on it with a fresh cache. The user is still connected and a third favourite is loved.
-- restore without the key ring: the same copy without jellysin-lastfm/keys. The account is kept but asks for a
-  new connection, as docs/operations.md says, and no favourite reaches the stand-in.
+- restore without the key ring: the same copy without jellysin-lastfm/keys. The server starts, the administrator
+  page reports the stored application override as unreadable, the account is kept but asks for a new connection, as
+  docs/operations.md says, and no favourite reaches the stand-in.
 """
 
 from __future__ import annotations
@@ -151,10 +152,10 @@ class Servers:
         return failures
 
 
-def signed_in(host: DockerHost, password: str) -> Client:
-    listener = Client(host.origin)
-    listener.authenticate("SmokeListener", password)
-    return listener
+def signed_in(host: DockerHost, password: str, name: str = "SmokeListener") -> Client:
+    client = Client(host.origin)
+    client.authenticate(name, password)
+    return client
 
 
 def require_connected(listener: Client, after: str) -> None:
@@ -189,6 +190,7 @@ def upgrade(servers: Servers, before: DockerHost, image: str, password: str) -> 
 
 
 def restore(servers: Servers, source: DockerHost, image: str, password: str, keep_keys: bool) -> None:
+    calls_before = len(servers.stand_in.lines("calls.log"))
     host = servers.start(image, servers.copy_configuration(image, source.config, keep_keys))
     listener = signed_in(host, password)
     title = FAVOURITES["restore" if keep_keys else "keyless"]
@@ -197,17 +199,21 @@ def restore(servers: Servers, source: DockerHost, image: str, password: str, kee
         love(listener, servers.stand_in, title, first=False)
         print(f"PASS: restore on Jellyfin {host.version}: still connected; a favourite reached the stand-in.", flush=True)
     else:
+        application = lower_keys(signed_in(host, password, "SmokeAdmin").request(PREFIX + "/Admin/Application"))
+        require(application == {"configured": False, "source": "Unreadable"},
+                f"After a restore without the key ring the administrator page reads {application}.")
         status = connection(listener)
         require(status["connected"] and status["needsreconnect"],
                 f"After a restore without the key ring the account reads {status}, not a request to connect again.")
         item = next(entry["id"] for entry in wait_music(listener, LIBRARY_TRACKS) if entry["name"] == title)
         listener.request("/UserFavoriteItems/" + item, "POST")
-        refused = listener.request(PREFIX + "/Me/Favourites/Sync", "POST", expected=(200, 400, 409), raw=True)[2]
+        # Without a readable application the client refuses before sending (Last.fm error 10), which the API answers with 502.
+        listener.request(PREFIX + "/Me/Favourites/Sync", "POST", expected=502)
         time.sleep(5)
-        require(not any(line.endswith(named(title)) for line in servers.stand_in.lines("calls.log")),
-                "A favourite reached the stand-in although the key ring was not restored.")
-        print(f"PASS: restore without the key ring on Jellyfin {host.version}: the account asks to connect again; "
-              f"a synchronization answered HTTP {refused} and reached nothing.", flush=True)
+        reached = servers.stand_in.lines("calls.log")[calls_before:]
+        require(not reached, f"The server without its key ring still reached the stand-in: {reached}.")
+        print(f"PASS: restore without the key ring on Jellyfin {host.version}: the override reads as unreadable, the account "
+              "asks to connect again, and a synchronization was refused without a call to the stand-in.", flush=True)
     servers.stop(host)
 
 

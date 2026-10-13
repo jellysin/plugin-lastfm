@@ -4,6 +4,7 @@ using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Database.Implementations.Enums;
 using JellySin.Plugin.Lastfm.Configuration;
 using MediaBrowser.Controller.Library;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -113,6 +114,25 @@ public sealed class AccountTests
         var account = await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken);
         Assert.True(account!.NeedsReconnect);
         Assert.Empty(account.SessionKey);
+    }
+
+    [Fact]
+    public async Task OverrideFromAnotherKeyRingIsUnreadableAndAccountsAskToConnectAgain()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        // A configuration restored without jellysin-lastfm/keys: the same state, read with a key ring that never protected it.
+        var restored = new EphemeralDataProtectionProvider();
+        var credentials = new ApplicationCredentialService(fixture.Store, restored);
+        using var accounts = new AccountService(fixture.Store, fixture.Client, credentials, restored, fixture.Clock);
+        Assert.False((await credentials.GetAsync(TestContext.Current.CancellationToken)).IsConfigured);
+        Assert.Equal(ApplicationSource.Unreadable, await credentials.GetSourceAsync(TestContext.Current.CancellationToken));
+        Assert.Equal([fixture.UserId], await accounts.GetAccountsAsync(TestContext.Current.CancellationToken));
+        var account = await accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.True(account!.NeedsReconnect);
+        Assert.Empty(account.SessionKey);
+        await credentials.SetAsync(new ApplicationCredentials(new string('a', 32), new string('b', 32)), TestContext.Current.CancellationToken);
+        Assert.Equal(ApplicationSource.Override, await credentials.GetSourceAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
