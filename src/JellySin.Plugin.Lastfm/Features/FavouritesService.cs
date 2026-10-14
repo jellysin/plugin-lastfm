@@ -16,7 +16,7 @@ public sealed record FavouriteState(bool Enabled, Dictionary<Guid, FavouriteObse
     List<FavouriteRemoval> Pending, DateTimeOffset? LastSync = null, string? Status = null, Guid? AfterItem = null);
 
 public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusicWriter writer, IStateStore store,
-    FeatureLocks locks, TimeProvider clock, AccountService accounts, ILogger<FavouritesService> logger)
+    FeatureLocks locks, TimeProvider clock, AccountService accounts, ILogger<FavouritesService> logger, LovedReuse? reuse = null)
 {
     private const string Key = "feature-favourites";
     private const string AdditionsKey = "feature-favourite-additions";
@@ -61,7 +61,7 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         using var lease = await locks.EnterAsync(userId, ct).ConfigureAwait(false);
         var state = await ReadAsync(userId, ct).ConfigureAwait(false);
         if (!state.Enabled) return Review(state);
-        var remote = await api.GetAllLovedAsync(userId, ct).ConfigureAwait(false);
+        var remote = await ReadLovedAsync(userId, ct).ConfigureAwait(false);
         if (!remote.Complete)
         {
             NotePause(userId, remote.Gap);
@@ -114,7 +114,7 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         var state = await ReadAsync(userId, ct).ConfigureAwait(false);
         if (!state.Enabled) throw new InvalidOperationException("Favourite synchronization is disabled.");
         var pending = state.Pending.SingleOrDefault(p => p.Id == reviewId) ?? throw new KeyNotFoundException("Review no longer exists.");
-        var remote = await api.GetAllLovedAsync(userId, ct).ConfigureAwait(false);
+        var remote = await ReadLovedAsync(userId, ct).ConfigureAwait(false);
         if (!remote.Complete) throw new InvalidOperationException("Cannot verify this removal while Last.fm's collection is incomplete.");
         var (remoteItems, unresolved) = Resolve(userId, remote.Tracks, ct);
         if (unresolved.Contains(MusicFeatureService.TrackKey(pending.Track)))
@@ -212,14 +212,28 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         await store.DeleteAsync(userId, AdditionsKey, ct).ConfigureAwait(false);
     }
 
+    /// <summary>The loved collection; a run reuses the one kept from an earlier run while a fresh page 1 shows it unchanged.</summary>
+    private async Task<MusicPage> ReadLovedAsync(Guid userId, CancellationToken ct)
+    {
+        if (reuse is null) return await api.GetAllLovedAsync(userId, ct).ConfigureAwait(false);
+        var account = await accounts.GetAsync(userId, ct).ConfigureAwait(false) ?? throw new NotConnectedException();
+        var first = await api.GetPageAsync(userId, "user.getLovedTracks", 1, null, ct, fresh: true).ConfigureAwait(false);
+        if (reuse.Reuse(userId, account.Username, first) is { } kept) return kept;
+        var remote = await api.GetAllLovedAsync(userId, ct, first).ConfigureAwait(false);
+        reuse.Keep(userId, account.Username, first, remote);
+        return remote;
+    }
+
     private (Dictionary<Guid, MusicTrack> Matched, HashSet<string> Unresolved) Resolve(Guid userId, IReadOnlyList<MusicTrack> tracks, CancellationToken ct)
     {
+        var ids = reuse is null ? tracks.Select(track => library.Match(userId, track, ct).ItemId).ToArray()
+            : reuse.Match(userId, tracks, track => library.Match(userId, track, ct).ItemId);
         var result = new Dictionary<Guid, MusicTrack>();
         var unresolved = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var track in tracks)
+        for (var index = 0; index < tracks.Count; index++)
         {
-            if (library.Match(userId, track, ct).ItemId is { } id) result.TryAdd(id, track);
-            else unresolved.Add(MusicFeatureService.TrackKey(track));
+            if (ids[index] is { } id) result.TryAdd(id, tracks[index]);
+            else unresolved.Add(MusicFeatureService.TrackKey(tracks[index]));
         }
         return (result, unresolved);
     }

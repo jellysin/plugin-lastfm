@@ -8,7 +8,9 @@ documented Last.fm methods with fixture names. Standard library only: the contai
 Usage: lastfm_stand_in.py DIRECTORY. DIRECTORY holds server.pem, server.key and session.txt; the stand-in
 writes out/calls.log (one line per answered method; a track method also names the artist and title of each
 track it carries, never a key, session or signature), out/tunnels.log (each tunnel request and whether
-it carried a request) and out/ready once it listens.
+it carried a request) and out/ready once it listens. An optional loved-count.txt in DIRECTORY makes
+user.getLovedTracks serve that many loved tracks named as tools/library_load.py names its generated library,
+200 to a page, for tools/favourites_load.py.
 """
 
 from __future__ import annotations
@@ -35,6 +37,8 @@ SIMILAR_REMOTE = "Stand-in Similar Song"
 SEED_PLAYS = 42
 SIMILAR_PLAYS = 7
 NOW = int(time.time())
+LOVED_PAGE = 200
+MAX_LOVED = 20_000
 
 
 def track(title: str, artist: str = ARTIST, played: int | None = None, plays: int = 0) -> dict[str, Any]:
@@ -50,6 +54,16 @@ def page(root: str, tracks: list[dict[str, Any]]) -> dict[str, Any]:
     return {root: {"@attr": {"page": "1", "totalPages": "1", "total": str(len(tracks))}, "track": tracks}}
 
 
+def loved_page(count: int, values: dict[str, list[str]]) -> dict[str, Any]:
+    """One page of count loved tracks, newest first, with fixed loved dates so every read sees the same pages."""
+    number = max(1, int((values.get("page") or ["1"])[0]))
+    pages = max(1, -(-count // LOVED_PAGE))
+    tracks = [{**track(f"JellySin Load {index:06d}", f"Artist {index // 100:04d}", played=NOW - 60 * index),
+               "album": {"#text": "Load Album"}}
+              for index in range((number - 1) * LOVED_PAGE, min(count, number * LOVED_PAGE))]
+    return {"lovedtracks": {"@attr": {"page": str(number), "totalPages": str(pages), "total": str(count)}, "track": tracks}}
+
+
 def tracks_in(values: dict[str, list[str]]) -> list[tuple[str, str]]:
     """The artist and title of each track a method carries: plain for one track, indexed for a scrobble batch."""
     keys = [""] + [f"[{index}]" for index in range(50)]
@@ -57,8 +71,11 @@ def tracks_in(values: dict[str, list[str]]) -> list[tuple[str, str]]:
             for key in keys if "artist" + key in values]
 
 
-def answer(method: str, session: str, carried: list[tuple[str, str]] | None = None) -> dict[str, Any]:
+def answer(method: str, session: str, carried: list[tuple[str, str]] | None = None,
+           values: dict[str, list[str]] | None = None, loved: int = 0) -> dict[str, Any]:
     """What the stand-in returns for a Last.fm method: the shapes Last.fm documents, with fixture names."""
+    if method == "user.getLovedTracks" and loved:
+        return loved_page(loved, values or {})
     url = "https://www.last.fm/music/" + urllib.parse.quote(ARTIST)
     answers: dict[str, Any] = {
         "auth.getSession": {"session": {"name": LASTFM_USER, "key": session, "subscriber": 0}},
@@ -105,6 +122,7 @@ class StandIn(http.server.BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
     session = ""
+    loved = 0
     answered = False
 
     def log_message(self, _format: str, *args: Any) -> None:
@@ -122,7 +140,7 @@ class StandIn(http.server.BaseHTTPRequestHandler):
         self.answered = True
         carried = tracks_in(values) if method.startswith("track.") else []
         Record.write("calls.log", ("POST " if signed else "GET ") + method + "".join(f" | {artist} - {title}" for artist, title in carried))
-        body = json.dumps(answer(method, StandIn.session, carried)).encode()
+        body = json.dumps(answer(method, StandIn.session, carried, values, StandIn.loved)).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -194,6 +212,8 @@ def bind(directory: Path, address: tuple[str, int]) -> http.server.ThreadingHTTP
     """The proxy, listening but not yet serving, with its records in DIRECTORY/out."""
     Record.directory = directory / "out"
     StandIn.session = (directory / "session.txt").read_text(encoding="utf-8").strip()
+    count = directory / "loved-count.txt"
+    StandIn.loved = min(MAX_LOVED, int(count.read_text(encoding="utf-8"))) if count.exists() else 0
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(directory / "server.pem", directory / "server.key")

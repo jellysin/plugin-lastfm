@@ -67,6 +67,54 @@ These numbers include Docker networking, HTTP, authorization and Jellyfin's own
 work. They do not describe the plugin callback alone. The playback requests are
 paused and use an unconnected test account, so this workload cannot send scrobbles.
 
+## Favourite synchronization
+
+```sh
+python tools/favourites_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server newest
+```
+
+The harness generates and scans the same library as the real library workload, in
+a container with the same limits. The Last.fm stand-in of the page check serves
+every generated track but the last as loved, 200 to a page, under a made-up
+application. One ordinary user connects, and the harness times three phases:
+
+- **Initial:** favourites are turned on, and every loved track becomes a favourite.
+- **Unchanged:** a synchronization with nothing changed on either side.
+- **One favourite:** the last track is marked a favourite in Jellyfin. The phase ends
+  when the love has reached the stand-in and the reconciliation has completed.
+
+A run reconciles at most 200 track ids, so each phase triggers runs back to back
+until it is done, and records its runs and the loved pages the stand-in served.
+**Time to the love** is how long after the mark the stand-in received the love.
+No real Last.fm account, application or credential takes part.
+
+Measured on 2026-10-14 on Jellyfin 12.2.0, one run each, on the local host of the
+table above (other work running, load average 6 to 15 at the start of each run).
+**Before** is `09423ea`. **Reuse** is this change applied to `2979a9d`; the commit
+between the two changes only the held-play warning.
+
+| Tracks | Phase | Before | Before pages | Reuse | Reuse pages |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1,000 | Initial | 41.8 s | 30 | 31.8 s | 10 |
+| | Unchanged | 23.5 s | 30 | 3.7 s | 5 |
+| | One favourite | 28.9 s | 30 | 6.7 s | 5 |
+| | Time to the love | 9.7 s | | 3.8 s | |
+| 10,000 | Initial | 2,267.0 s | 2,550 | 348.7 s | 100 |
+| | Unchanged | 2,152.8 s | 2,550 | 68.5 s | 50 |
+| | One favourite | 2,067.2 s | 2,550 | 80.2 s | 50 |
+| | Time to the love | 213.1 s | | 21.5 s | |
+
+Before, every run read the whole loved collection and matched every loved track
+against the library again. With reuse, a run reads page 1 and keeps the earlier
+collection while that page is unchanged. It keeps a track's library match until
+the library or the user's access changes. The initial phase writes favourites, and
+each write changes the library, so its runs still match again.
+
+In production, runs do not follow one another back to back. The periodic refresh
+starts one every five minutes, so at 10,000 loved tracks a change can wait about
+50 refreshes for the run whose 200 ids hold it. Reuse makes each run cheaper but
+does not change that wait.
+
 ## Browser budgets
 
 Playwright measures the plugin page at 320 and 1,280 pixels wide, with Chromium
