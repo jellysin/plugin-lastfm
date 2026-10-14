@@ -1,0 +1,18 @@
+---
+version: 1
+pinned_version: v0.0.0+catalog.33773a292166
+digest: sha256:f4287e77f346c7ce99c130fe07d6b2b7f200af2994773dc3193faee42c6ff8b7
+profiles:
+  - id: app-service
+    version: v0.0.0+catalog.33773a292166
+    digest:
+      sha256:b5182c545f4ce96743d65b86d3d81ddd929445077316f1da507e48db25559308
+facets:
+  - id: security:high
+    version: v0.0.0+catalog.33773a292166
+    digest:
+      sha256:9bd59f0725d472b1516ba74556feada0e3868f4642bc08dd2d67a2cc26e87778
+  - id: agent:sandboxed
+    version: v0.0.0+catalog.33773a292166
+    digest:
+      sha256:bc87486dea71e54d20549d6054dcf290d3d700e37b304cbdb6d6c1a2def895f2

@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "generated_at": "2026-10-13T22:25:40Z",
+  "repository": "jellysin/plugin-lastfm",
+  "commit_sha": "09423ea46d3ba7b09c4b3a482ff922373cf02fbb",
+  "total_infractions": 20,
+  "infractions": [
+    {
+      "rule_id": "HISS-04",
+      "file_path": "tests/integration/native_userdata.py",
+      "line_number": 199,
+      "symbol": "playlist_checks",
+      "message": "Function 'playlist_checks' (102 LOC) exceeds HISS-04 / NASA Rule 4 limit of 60 LOC",
+      "anchor": "fn:playlist_checks",
+      "fingerprint": "tests/integration/native_userdata.py:HISS-04:fn:playlist_checks#1"
+    },
+    {
+      "rule_id": "HISS-07",
+      "file_path": "tests/integration/page_check.mjs",
+      "line_number": 142,
+      "message": ".catch with an empty handler swallows the rejection; handle it or let it propagate",
+      "anchor": "text:fee7192b1e8d",
+      "fingerprint": "tests/integration/page_check.mjs:HISS-07:text:fee7192b1e8d#1"
+    },
+    {
+      "rule_id": "HISS-07",
+      "file_path": "tests/integration/proxied_sign_in.mjs",
+      "line_number": 76,
+      "message": ".catch with an empty handler swallows the rejection; handle it or let it propagate",
+      "anchor": "fn:refusal",
+      "fingerprint": "tests/integration/proxied_sign_in.mjs:HISS-07:fn:refusal#1"
+    },
+    {
+      "rule_id": "HISS-07",
+      "file_path": "tests/integration/proxied_sign_in.mjs",
+      "line_number": 148,
+      "message": ".catch with an empty handler swallows the rejection; handle it or let it propagate",
+      "anchor": "text:3f820412b310",
+      "fingerprint": "tests/integration/proxied_sign_in.mjs:HISS-07:text:3f820412b310#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "tools/smoke.py",
+      "line_number": 74,
+      "symbol": "lower_keys",
+      "message": "Direct recursion in lower_keys; the call graph must form an acyclic DAG",
+      "anchor": "fn:lower_keys",
+      "fingerprint": "tools/smoke.py:HISS-01:fn:lower_keys#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "tools/smoke.py",
+      "line_number": 76,
+      "symbol": "lower_keys",
+      "message": "Direct recursion in lower_keys; the call graph must form an acyclic DAG",
+      "anchor": "fn:lower_keys",
+      "fingerprint": "tools/smoke.py:HISS-01:fn:lower_keys#2"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "tools/smoke.py",
+      "line_number": 301,
+      "symbol": "own_entries",
+      "message": "Direct recursion in own_entries; the call graph must form an acyclic DAG",
+      "anchor": "fn:own_entries",
+      "fingerprint": "tools/smoke.py:HISS-01:fn:own_entries#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "tools/smoke.py",
+      "line_number": 306,
+      "symbol": "own_entries",
+      "message": "Direct recursion in own_entries; the call graph must form an acyclic DAG",
+      "anchor": "fn:own_entries",
+      "fingerprint": "tools/smoke.py:HISS-01:fn:own_entries#2"
+    },
+    {
+      "rule_id": "HISS-07",
+      "file_path": "web/app.ts",
+      "line_number": 14,
+      "message": "Empty catch block swallows the error; handle, rethrow or wrap it",
+      "anchor": "fn:start",
+      "fingerprint": "web/app.ts:HISS-07:fn:start#1"
+    },
+    {
+      "rule_id": "HISS-04",
+      "file_path": "web/auth.ts",
+      "line_number": 6,
+      "symbol": "setupAuthentication",
+      "message": "Function 'setupAuthentication' (61 LOC) exceeds HISS-04 / NASA Rule 4 limit of 60 LOC",
+      "anchor": "fn:setupAuthentication",
+      "fingerprint": "web/auth.ts:HISS-04:fn:setupAuthentication#1"
+    },
+    {
+      "rule_id": "HISS-02",
+      "file_path": "web/client.ts",
+      "line_number": 15,
+      "message": "Unbounded loop in JavaScript without an explicit scalar bound",
+      "anchor": "fn:readJson",
+      "fingerprint": "web/client.ts:HISS-02:fn:readJson#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "web/client.ts",
+      "line_number": 32,
+      "symbol": "normalize",
+      "message": "Direct recursion in normalize; the call graph must form an acyclic DAG",
+      "anchor": "fn:normalize",
+      "fingerprint": "web/client.ts:HISS-01:fn:normalize#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "web/client.ts",
+      "line_number": 38,
+      "symbol": "normalize",
+      "message": "Direct recursion in normalize; the call graph must form an acyclic DAG",
+      "anchor": "fn:normalize",
+      "fingerprint": "web/client.ts:HISS-01:fn:normalize#2"
+    },
+    {
+      "rule_id": "HISS-07",
+      "file_path": "web/client.ts",
+      "line_number": 79,
+      "message": "Empty catch block swallows the error; handle, rethrow or wrap it",
+      "anchor": "fn:acceptSession",
+      "fingerprint": "web/client.ts:HISS-07:fn:acceptSession#1"
+    },
+    {
+      "rule_id": "HISS-07",
+      "file_path": "web/client.ts",
+      "line_number": 85,
+      "message": "Empty catch block swallows the error; handle, rethrow or wrap it",
+      "anchor": "fn:clearSession",
+      "fingerprint": "web/client.ts:HISS-07:fn:clearSession#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "web/favourites.ts",
+      "line_number": 25,
+      "symbol": "render",
+      "message": "Direct recursion in render; the call graph must form an acyclic DAG",
+      "anchor": "fn:render",
+      "fingerprint": "web/favourites.ts:HISS-01:fn:render#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "web/playlists.ts",
+      "line_number": 22,
+      "symbol": "refresh",
+      "message": "Direct recursion in refresh; the call graph must form an acyclic DAG",
+      "anchor": "fn:refresh",
+      "fingerprint": "web/playlists.ts:HISS-01:fn:refresh#1"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "web/playlists.ts",
+      "line_number": 23,
+      "symbol": "refresh",
+      "message": "Direct recursion in refresh; the call graph must form an acyclic DAG",
+      "anchor": "fn:refresh",
+      "fingerprint": "web/playlists.ts:HISS-01:fn:refresh#2"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "web/playlists.ts",
+      "line_number": 27,
+      "symbol": "refresh",
+      "message": "Direct recursion in refresh; the call graph must form an acyclic DAG",
+      "anchor": "fn:refresh",
+      "fingerprint": "web/playlists.ts:HISS-01:fn:refresh#3"
+    },
+    {
+      "rule_id": "HISS-01",
+      "file_path": "web/playlists.ts",
+      "line_number": 62,
+      "symbol": "showPending",
+      "message": "Direct recursion in showPending; the call graph must form an acyclic DAG",
+      "anchor": "fn:showPending",
+      "fingerprint": "web/playlists.ts:HISS-01:fn:showPending#1"
+    }
+  ]
+}

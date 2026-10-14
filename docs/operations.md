@@ -212,6 +212,11 @@ their order:
 The Delivery page counts held plays as awaiting retry and says whether they
 retry by themselves (code 4) or wait for the daily limit (code 5).
 
+The Delivery page also reports the age of the oldest play still waiting for
+delivery, and warns once that play is 7 days old. The 7 days are the plugin's own
+choice: Last.fm documents no fixed age limit, only that it ignores plays it
+finds too old (ignore code 3).
+
 The dashboard distinguishes durably saved submissions from observations still
 waiting for an outbox write.
 If storage is unavailable, the bounded recovery buffer can retry while the process

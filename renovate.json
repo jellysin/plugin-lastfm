@@ -1,64 +1,143 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
   "dependencyDashboard": true,
   "minimumReleaseAge": "3 days",
   "rangeStrategy": "pin",
   "automerge": false,
   "prConcurrentLimit": 5,
-  "labels": ["dependencies"],
-  "vulnerabilityAlerts": {"enabled": true, "minimumReleaseAge": null},
+  "labels": [
+    "dependencies"
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": null
+  },
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^runtime-dependencies\\.json$/"],
-      "matchStrings": ["\"id\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""],
+      "managerFilePatterns": [
+        "/^runtime-dependencies\\.json$/"
+      ],
+      "matchStrings": [
+        "\"id\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
       "datasourceTemplate": "nuget",
       "versioningTemplate": "nuget"
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^tools/smoke\\.py$/"],
-      "matchStrings": ["\"(?<depType>floor|newest|[0-9]+\\.[0-9]+)\":\\s*\"jellyfin/jellyfin:(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)@(?<currentDigest>sha256:[a-f0-9]{64})\""],
+      "managerFilePatterns": [
+        "/^tools/smoke\\.py$/"
+      ],
+      "matchStrings": [
+        "\"(?<depType>floor|newest|[0-9]+\\.[0-9]+)\":\\s*\"jellyfin/jellyfin:(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
       "depNameTemplate": "jellyfin/jellyfin",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^tools/JellySin\\.CodePolicy/README\\.md$/"],
-      "matchStrings": ["https://github\\.com/SonarSource/sonar-dotnet/releases/tag/(?<currentValue>[0-9]+(?:\\.[0-9]+){3})"],
+      "managerFilePatterns": [
+        "/^tools/JellySin\\.CodePolicy/README\\.md$/"
+      ],
+      "matchStrings": [
+        "https://github\\.com/SonarSource/sonar-dotnet/releases/tag/(?<currentValue>[0-9]+(?:\\.[0-9]+){3})"
+      ],
       "depNameTemplate": "SonarAnalyzer.CSharp",
       "datasourceTemplate": "nuget",
       "versioningTemplate": "nuget"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^tools/sdk\\.sh$/"
+      ],
+      "matchStrings": [
+        "_IMAGE=\"(?<depName>mcr\\.microsoft\\.com/dotnet/sdk|node):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     }
   ],
   "packageRules": [
-    {"matchManagers": ["github-actions"], "groupName": "GitHub Actions"},
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    },
     {
       "description": "The code policy README links the analyzer release its project file pins; one pull request moves both. The Python tests compare the two.",
-      "matchPackageNames": ["SonarAnalyzer.CSharp"],
+      "matchPackageNames": [
+        "SonarAnalyzer.CSharp"
+      ],
       "groupName": "SonarAnalyzer.CSharp"
     },
-    {"matchUpdateTypes": ["major"], "groupName": null},
-    {"matchPackageNames": ["/^Jellyfin\\./", "jellyfin/jellyfin"], "allowedVersions": "/^12(?:\\.|$)/", "groupName": "Jellyfin 12"},
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": null
+    },
+    {
+      "matchPackageNames": [
+        "/^Jellyfin\\./",
+        "jellyfin/jellyfin"
+      ],
+      "allowedVersions": "/^12(?:\\.|$)/",
+      "groupName": "Jellyfin 12"
+    },
     {
       "description": "The plugin compiles against the oldest supported Jellyfin (targetAbi in plugin.json); a newer reference does not load there. See CONTRIBUTING.",
-      "matchDatasources": ["nuget"],
-      "matchPackageNames": ["/^Jellyfin\\./"],
+      "matchDatasources": [
+        "nuget"
+      ],
+      "matchPackageNames": [
+        "/^Jellyfin\\./"
+      ],
       "enabled": false
     },
     {
       "description": "The floor server image keeps the release named by targetAbi in plugin.json; only its digest moves. tools/abi_floor.py compares this pattern with the descriptor.",
-      "matchPackageNames": ["jellyfin/jellyfin"],
-      "matchDepTypes": ["floor"],
+      "matchPackageNames": [
+        "jellyfin/jellyfin"
+      ],
+      "matchDepTypes": [
+        "floor"
+      ],
       "allowedVersions": "/^12\\.0(?:\\.|$)/"
     },
     {
       "description": "A server image named after a release in tools/smoke.py keeps that release; only its digest moves. The Python tests compare this pattern with the entry.",
-      "matchPackageNames": ["jellyfin/jellyfin"],
-      "matchDepTypes": ["12.1"],
+      "matchPackageNames": [
+        "jellyfin/jellyfin"
+      ],
+      "matchDepTypes": [
+        "12.1"
+      ],
       "allowedVersions": "/^12\\.1(?:\\.|$)/"
+    },
+    {
+      "description": "praetor-managed files: praetorctl adopt ships their updates and praetorctl audit locks them byte for byte",
+      "matchFileNames": [
+        ".devcontainer/devcontainer.json",
+        ".devcontainer/Dockerfile.praetor"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The local gate's SDK containers in tools/sdk.sh carry the versions of global.json and .node-version; one pull request moves all three. tests/python/test_sdk_pin.py compares them.",
+      "matchFileNames": [
+        "global.json",
+        ".node-version",
+        "tools/sdk.sh"
+      ],
+      "groupName": "SDK toolchain"
     }
   ]
 }

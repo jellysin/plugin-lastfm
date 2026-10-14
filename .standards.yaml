@@ -1,0 +1,58 @@
+---
+version: 1
+repository:
+  owner: jellysin
+  name: plugin-lastfm
+  visibility: public
+  description: "Last.fm integration for Jellyfin 12"
+  homepage: ""
+  topics: []
+profiles:
+  - app-service
+# Agent clients and editors in use. Praetor generates and verifies files of these only.
+agent_clients:
+  - claude
+  - codex
+  - gemini
+editors:
+  - universal
+  - vscode
+  - antigravity
+facets:
+  - security:high
+  - agent:sandboxed
+# One maintainer: review mode renders zero required approvals. The count stays, so that
+# restoring independent review keeps the minimum.
+overrides:
+  branch_protection:
+    required_approving_reviewers: 1
+    review_mode: single_maintainer
+register:
+  sources:
+    expected: 13
+    sha256:
+      sha256:530d5c2a5a78d0b3861b257d587ef50a2c7092518078aa16430b1f2f19c4619c
+    inputs:
+      - path: .paperclip/harness.json
+        surface: prompts
+        kind: message
+        format: json
+        selector: operating_contract.*
+      - path: .paperclip/harness.json
+        surface: prompts
+        kind: message
+        format: json
+        selector: invariants.*
+exceptions:
+  - rule: HISS-11
+    path: .github/workflows/release.yml
+    reason: category A, 90 days; adoption found the release workflows short of the declared supply chain (SLSA Build Level 3 declared, Level 2 measured; enforce_cosign without a cosign signing step; require_sbom without an SBOM step); raise them as docs/guides/releasing.md in Praetor describes, then remove this entry
+    expires: "2027-01-12"
+  - rule: declared-linters
+    tool: semgrep
+    reason: category A, 90 days; adoption scaffolds no CI job for semgrep declared by profile "app-service", facet "agent:sandboxed"; run it in a workflow, or remove this entry
+    expires: "2027-01-12"
+  - rule: declared-linters
+    tool: trivy
+    reason: category A, 90 days; adoption scaffolds no CI job for trivy declared by facet "security:high"; run it in a workflow, or remove this entry
+    expires: "2027-01-12"

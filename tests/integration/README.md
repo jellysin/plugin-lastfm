@@ -27,9 +27,17 @@ method restoring the exact intended order. It also checks recipe idempotence,
 pending-operation cleanup and denial to a second ordinary user.
 
 This explicitly injects the initial journal and native failure boundary. It does not
-simulate Last.fm recipe resolution or claim an unprompted scheduler recovery: after
-restart the fixture invokes the actual production `RefreshDueAsync` method. The
-recipe has `DailyRefresh=false`, so recovery needs no Last.fm account or traffic.
+simulate Last.fm recipe resolution: after the first restart the fixture invokes the
+actual production `RefreshDueAsync` method. The recipe has `DailyRefresh=false`, so
+recovery needs no Last.fm traffic.
+
+A second fixture user then shows the recovery without that call. The plugin's scheduler
+refreshes only connected accounts, and connecting a first account clears the user's
+stored state, so this user connects first, through the Last.fm stand-in of the page
+check with a made-up application. Its write is interrupted at the same native fault and
+the host restarts. From then on the harness only reads: the plugin's own scheduler,
+which runs at startup and then every five minutes, must restore the exact intended
+order and remove the pending-operation record within one interval and a minute.
 
 Library matching runs the production `IMusicLibrary.Match` and
 `IDiscoveryLibrary.MatchEntity` against a third scanned library, `/media/Match/`, whose

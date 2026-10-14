@@ -1,3 +1,8 @@
 * text=auto eol=lf
 *.png binary
 *.zip binary
+
+# BEGIN praetor managed attributes (praetorctl adopt)
+# praetorctl audit hashes these files; keep their checkout bytes the same on every platform.
+.devcontainer/Dockerfile.praetor text eol=lf
+# END praetor managed attributes

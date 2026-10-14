@@ -1,5 +1,27 @@
 # JellySin Last.fm
 
+<!-- praetor:readme-governance:start -->
+[![HISS Adopted][praetor-hiss-badge]][praetor-hiss-agents]
+
+Praetor manages this repository's declared governance policy. This managed
+block records adoption state; it is not a verification certificate.
+
+**Verification**: `make verify-all` runs the repository's configured
+verification cascade.
+
+**HISS Audit**: `praetorctl audit` enforces policy, generated-surface
+integrity, and the debt ratchet.
+
+**Context Sync**: `praetorctl compile-context --verify` verifies every
+generated agent context against `AGENTS.md`.
+
+**Debt Baseline**: `.standards-baseline.json` anchors the debt ratchet at
+20 recorded infractions; audit forbids growth.
+
+[praetor-hiss-badge]: https://img.shields.io/badge/Standards-HISS%20Adopted%20(20%20baselined)-yellow
+[praetor-hiss-agents]: https://github.com/jellysin/plugin-lastfm/blob/HEAD/AGENTS.md
+<!-- praetor:readme-governance:end -->
+
 Last.fm music integration for **Jellyfin 12**: scrobbling, favourites, listening
 insights, discovery and playlists. This is a new implementation with its own
 plugin identity. The plugin is in development; no published release is available.
