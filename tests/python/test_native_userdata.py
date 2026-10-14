@@ -1,4 +1,4 @@
-"""The native userdata probe refuses each planted defect in the history, favourite and playlist answers it reads."""
+"""The native userdata probe refuses each planted defect in the history, favourite, playlist and scheduler answers it reads."""
 
 import json
 import sys
@@ -8,7 +8,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "integration"))
 import native_userdata  # noqa: E402
-from native_userdata import PROBE, favourite_checks, history_checks, playlist_checks, validate  # noqa: E402
+from native_userdata import PROBE, favourite_checks, history_checks, playlist_checks, scheduler_checks, validate  # noqa: E402
 from smoke import SmokeFailure, lower_keys  # noqa: E402
 
 USER = "0c" * 16
@@ -34,6 +34,8 @@ class Server:
         self.native = {"PlayCount": 0, "LastPlayedDate": None}
         self.favourite, self.revision = False, 0
         self.playlists, self.pending, self.recipes, self.injected = {}, None, [], False
+        # Only the scheduler check's host runs the plugin's scheduler at startup.
+        self.scheduler = False
 
     def answer(self, role, path, method, body):
         route = path.split("?")[0]
@@ -143,6 +145,8 @@ class Server:
         self.origin = "http://127.0.0.1:2"
         if "status lost on restart" in self.faults and self.pending is not None:
             self.pending["Status"] = ""
+        if self.scheduler and "scheduler idle" not in self.faults and self.pending is not None:
+            self.recover()
 
 
 class Account:
@@ -175,7 +179,20 @@ def probe(*faults):
             "history": history_checks(admin, listener, ITEM),
             "favourites": favourite_checks(admin, listener, ITEM),
             "playlist": playlist_checks(server, admin, listener, {"id": USER}),
+            "scheduler_playlist_recovery": scheduled(),
         }
+
+
+def scheduled(*faults):
+    """Run the scheduler check against a connected listener on a host whose restart starts the plugin's scheduler."""
+    server = Server(*faults)
+    server.scheduler = True
+    admin, listener, viewer = accounts(server)
+    # A zero wait refuses a write still pending after the restart without sleeping through the real interval.
+    with mock.patch.object(native_userdata, "probe_user", return_value=(listener, {"id": USER})), \
+            mock.patch.object(native_userdata, "approve"), \
+            mock.patch.object(native_userdata, "SCHEDULER_SECONDS", 0):
+        return scheduler_checks(server, admin, viewer)
 
 
 class ValidateTests(unittest.TestCase):
@@ -195,6 +212,7 @@ class ValidateTests(unittest.TestCase):
             ("favourites", "stale_review_rejected", False): "stale review erased",
             ("favourites", "revision_changed", False): "did not advance the review revision",
             ("favourites", "fresh_review_accepted", False): "current favourite review was incorrectly rejected",
+            ("scheduler_playlist_recovery", "scheduler_recovered_without_probe_call", False): "scheduler did not finish the interrupted playlist write",
         }
         for (section, key, value), message in planted.items():
             result = probe()
@@ -243,6 +261,22 @@ class HostFaultTests(unittest.TestCase):
         for fault, message in planted.items():
             with self.subTest(fault), self.assertRaisesRegex(SmokeFailure, message):
                 probe(fault)
+
+
+class SchedulerFaultTests(unittest.TestCase):
+    def test_a_host_whose_scheduler_recovers_the_write_passes(self):
+        result = scheduled()
+        self.assertTrue(all(value is True for key, value in result.items() if key != "scheduler_recovery_seconds_after_restart"))
+
+    def test_each_planted_scheduler_fault_is_refused(self):
+        planted = {
+            "scheduler idle": "did not finish the interrupted write within 0 seconds of the restart",
+            "no injected failure": "native fault did not interrupt the connected user's write",
+            "recovery reorders": "scheduler's recovery changed the intended playlist order",
+        }
+        for fault, message in planted.items():
+            with self.subTest(fault), self.assertRaisesRegex(SmokeFailure, message):
+                scheduled(fault)
 
 
 if __name__ == "__main__":
