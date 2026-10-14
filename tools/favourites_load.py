@@ -9,8 +9,9 @@ credential is used. One ordinary user connects and the run records four favourit
   through at most 200 tracks, so 10,000 loved tracks take about 50 runs; every loved track becomes a favourite.
 - unchanged: a synchronization with nothing changed on either side, again until the reconciliation completes.
 - one favourite: the last generated track is marked a favourite in Jellyfin and synchronized again until it is loved,
-  then until the reconciliation completes. A run reconciles the next 200 track ids in id order, so the change waits
-  for the run whose window holds it; secondsToChange records when the love reached the stand-in.
+  then until the reconciliation completes. A run reconciles the next 200 track ids in id order and, after the first
+  full pass, the tracks changed since the last run first; secondsToChange records when the love reached the stand-in,
+  which lists the love from then on, newest first, as Last.fm does.
 - one removal: the stand-in stops serving the oldest loved track and the user synchronizes until that track is proposed
   for removal from Jellyfin, then until the reconciliation completes; secondsToChange records when the proposal appeared.
   The review then applies the proposal, and the run records how long that request took and the loved pages it read.

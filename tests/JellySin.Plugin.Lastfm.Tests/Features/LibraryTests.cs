@@ -156,6 +156,26 @@ public sealed class LibraryTests
     }
 
     [Fact]
+    public void AListedFavouriteCarriesTheRevisionOfASingleRead()
+    {
+        var user = new User("Listener", "provider", "reset");
+        var item = new Audio { Id = Guid.NewGuid(), Name = "Track", Artists = ["Artist"] };
+        var state = new UserItemData { Key = "key", IsFavorite = true };
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        var manager = new Mock<ILibraryManager>();
+        manager.Setup(l => l.GetItemList(It.IsAny<InternalItemsQuery>())).Returns([item]);
+        manager.Setup(l => l.GetItemById<Audio>(item.Id, user.Id)).Returns(item);
+        var data = new Mock<IUserDataManager>();
+        data.Setup(d => d.GetUserDataBatch(It.IsAny<IReadOnlyList<BaseItem>>(), user)).Returns(() => new Dictionary<Guid, UserItemData> { [item.Id] = state });
+        data.Setup(d => d.GetUserData(user, item)).Returns(() => state);
+        var library = new MusicLibrary(manager.Object, users.Object, new CoordinatedUserData(data.Object));
+        var listed = Assert.Single(library.GetFavourites(user.Id, Ct)).FavouriteRevision;
+        Assert.NotEqual("", listed);
+        Assert.Equal(library.Get(user.Id, item.Id, Ct).FavouriteRevision, listed);
+    }
+
+    [Fact]
     public void FavouriteReadsUseABatchAndWritesPreserveOtherUserFields()
     {
         var user = new User("Listener", "provider", "reset");
