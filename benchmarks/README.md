@@ -76,16 +76,22 @@ python tools/favourites_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/
 The harness generates and scans the same library as the real library workload, in
 a container with the same limits. The Last.fm stand-in of the page check serves
 every generated track but the last as loved, 200 to a page, under a made-up
-application. One ordinary user connects, and the harness times three phases:
+application. One ordinary user connects, and the harness times four phases:
 
 - **Initial:** favourites are turned on, and every loved track becomes a favourite.
 - **Unchanged:** a synchronization with nothing changed on either side.
 - **One favourite:** the last track is marked a favourite in Jellyfin. The phase ends
   when the love has reached the stand-in and the reconciliation has completed.
+- **One removal:** the stand-in stops serving the oldest loved track. The phase ends
+  when the plugin proposes removing that favourite from Jellyfin and the
+  reconciliation has completed. The review then applies the proposal in one request.
 
 A run reconciles at most 200 track ids, so each phase triggers runs back to back
 until it is done, and records its runs and the loved pages the stand-in served.
-**Time to the love** is how long after the mark the stand-in received the love.
+**Time to the love** is how long after the mark the stand-in received the love, and
+**time to the proposal** how long after the drop the removal was proposed.
+**Review** is the request that applies the proposal; it reads the loved collection
+again to confirm the removal before it changes the favourite.
 No real Last.fm account, application or credential takes part.
 
 Measured on 2026-10-14 on Jellyfin 12.2.0, one run each, on the local host of the
@@ -103,6 +109,23 @@ between the two changes only the held-play warning.
 | | Unchanged | 2,152.8 s | 2,550 | 68.5 s | 50 |
 | | One favourite | 2,067.2 s | 2,550 | 80.2 s | 50 |
 | | Time to the love | 213.1 s | | 21.5 s | |
+
+The removal phase and its review were measured later the same day, one run each, with
+the harness of this section: **Before** is again `09423ea`, **Reuse** is `b07a4c6`,
+which carries the change. The 10,000-track before run started at a load average of 4
+and ended at 37.
+
+| Tracks | Phase | Before | Before pages | Reuse | Reuse pages |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1,000 | One removal | 32.8 s | 30 | 13.2 s | 10 |
+| | Time to the proposal | 28.1 s | | 12.4 s | |
+| | Review | 4.0 s | 6 | 0.05 s | 1 |
+| 10,000 | One removal | 2,875.1 s | 2,550 | 100.9 s | 100 |
+| | Time to the proposal | 777.0 s | | 54.2 s | |
+| | Review | 75.9 s | 51 | 0.1 s | 1 |
+
+The review reads page 1 and, before the change, the whole collection again; with
+reuse it keeps the collection the run read, because page 1 has not changed since.
 
 Before, every run read the whole loved collection and matched every loved track
 against the library again. With reuse, a run reads page 1 and keeps the earlier

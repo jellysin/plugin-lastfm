@@ -3,7 +3,7 @@
 
 The library is the one tools/library_load.py generates. The stand-in of the page check serves every generated
 track but the last as loved, 200 to a page, under a made-up application; no real Last.fm account, application or
-credential is used. One ordinary user connects and the run records three favourite runs:
+credential is used. One ordinary user connects and the run records four favourite phases:
 
 - initial: favourites are turned on and synchronized again until the reconciliation completes. A run works
   through at most 200 tracks, so 10,000 loved tracks take about 50 runs; every loved track becomes a favourite.
