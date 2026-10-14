@@ -52,7 +52,8 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
         return result;
     }
 
-    public async Task<MusicPage> GetAllLovedAsync(Guid userId, CancellationToken ct)
+    /// <summary>The whole loved collection; <paramref name="firstPage"/> is a fresh page 1 the caller already read.</summary>
+    public async Task<MusicPage> GetAllLovedAsync(Guid userId, CancellationToken ct, MusicPage? firstPage = null)
     {
         var tracks = new List<MusicTrack>();
         var expectedPages = -1;
@@ -60,7 +61,8 @@ public sealed class MusicApi(ILastfmClient client, AccountService accounts, Time
         MusicPage? last = null;
         for (var page = 1; page <= 50; page++)
         {
-            var result = await GetPageAsync(userId, "user.getLovedTracks", page, null, ct, fresh: true).ConfigureAwait(false);
+            var result = page == 1 && firstPage is not null ? firstPage
+                : await GetPageAsync(userId, "user.getLovedTracks", page, null, ct, fresh: true).ConfigureAwait(false);
             first ??= result;
             last = result;
             if (expectedPages >= 0 && expectedPages != result.TotalPages) return Unfinished(LovedReadCheck.PageCountChanged, tracks, page, first, result);

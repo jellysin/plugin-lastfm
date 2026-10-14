@@ -12,6 +12,7 @@ internal sealed class FeatureFixture : IDisposable
     public MusicApi Api { get; }
     public FavouritesService Favourites { get; }
     public FavouriteRuns Runs { get; }
+    public LovedReuse Reuse { get; }
     public MusicFeatureService History { get; }
     public List<MusicTrack> Loved { get; } = [];
     public List<MusicTrack> Top { get; } = [];
@@ -22,7 +23,8 @@ internal sealed class FeatureFixture : IDisposable
     public FeatureFixture()
     {
         Api = new(Core.Client, Core.Accounts, Core.Clock);
-        Favourites = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts, FavouriteLog);
+        Reuse = new(Library, Core.Clock);
+        Favourites = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts, FavouriteLog, Reuse);
         Runs = new(Favourites, Core.Clock, Microsoft.Extensions.Logging.Abstractions.NullLogger<FavouriteRuns>.Instance);
         History = new(Api, Library, Library, Core.Store, Locks, Core.Clock, Core.Accounts);
     }
@@ -104,9 +106,15 @@ internal sealed class FeatureFixture : IDisposable
     public void Dispose() { Runs.Dispose(); Locks.Dispose(); Core.Dispose(); }
 }
 
-internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter
+internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter, ILibraryGeneration
 {
     public Guid UserId { get; set; }
+    /// <summary>Stands in for Jellyfin's item events: every added, removed or renamed item moves it, favourite flags do not.</summary>
+    public long Current => unchecked(Items.Count + Items.Sum(entry => (long)HashCode.Combine(entry.Key, entry.Value.Track)));
+    /// <summary>Stands in for the user's policy fingerprint.</summary>
+    public string Policy { get; set; } = "all-libraries";
+    public string Access(Guid userId) => Policy;
+    public int MatchCalls { get; private set; }
     public Dictionary<Guid, LocalMusic> Items { get; } = [];
     public List<(Guid Item, bool Favourite)> FavouriteWrites { get; } = [];
     public List<(Guid Item, int Count, DateTime? Date)> HistoryWrites { get; } = [];
@@ -115,6 +123,7 @@ internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter
     public MusicMatch Match(Guid userId, MusicTrack track, CancellationToken ct)
     {
         Validate(userId, ct);
+        MatchCalls++;
         OnMatch?.Invoke(ct);
         var matches = Items.Values.Where(v => v.Track.Artist == track.Artist && v.Track.Title == track.Title).ToArray();
         return new(track, matches.Length == 1 ? matches[0].Id : null, matches.Length == 0 ? "missing" : matches.Length == 1 ? "matched" : "ambiguous");

@@ -20,6 +20,9 @@ public static class FeatureRegistration
         services.AddSingleton<IMusicWriter>(s => s.GetRequiredService<MusicLibrary>());
         services.AddSingleton<IDiscoveryLibrary>(s => s.GetRequiredService<MusicLibrary>());
         services.AddSingleton<MusicFeatureService>();
+        services.AddSingleton<LibraryGeneration>();
+        services.AddSingleton<ILibraryGeneration>(s => s.GetRequiredService<LibraryGeneration>());
+        services.AddSingleton<LovedReuse>();
         services.AddSingleton<FavouritesService>();
         services.AddSingleton<FavouriteRuns>();
         services.AddSingleton<DiscoveryService>();

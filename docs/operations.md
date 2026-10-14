@@ -270,6 +270,16 @@ connection and a server stop do; a request that still waits for a stopped run
 answers with the stored state. One run per user exists at a time, and the
 periodic refresh in the background uses the same run.
 
+A run handles at most 200 tracks, and the periodic refresh starts one every five
+minutes, so a large collection takes several runs to reconcile. Each run reads page
+1 of the loved tracks. When page 1 is unchanged, the run reuses the collection read
+by an earlier run. It also reuses a loved track's library match until the
+library or the user's access changes. A new love or a removal on Last.fm changes
+page 1, so the next run reads the whole collection again. The server keeps this in
+memory only, for at most 24 hours, 8 users and 10,000 tracks per user, and a
+restart discards it. The [benchmarks](../benchmarks/README.md#favourite-synchronization)
+show what it changes.
+
 A run that fails writes one warning that begins `Favourite synchronization for
 user`, names the user as in
 [the sign-in lines](#what-the-server-log-says-about-a-sign-in) and the type of

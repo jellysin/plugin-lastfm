@@ -91,6 +91,17 @@ class StandInTests(unittest.TestCase):
         self.assertEqual([lastfm_stand_in.SIMILAR_LOCAL], [entry["name"] for entry in loved])
         self.assertIn("uts", loved[0]["date"])
 
+    def test_a_loved_count_serves_the_generated_library_in_fixed_pages(self):
+        first = lastfm_stand_in.answer("user.getLovedTracks", SESSION, values={}, loved=450)["lovedtracks"]
+        last = lastfm_stand_in.answer("user.getLovedTracks", SESSION, values={"page": ["3"]}, loved=450)["lovedtracks"]
+        beyond = lastfm_stand_in.answer("user.getLovedTracks", SESSION, values={"page": ["4"]}, loved=450)["lovedtracks"]
+        self.assertEqual({"page": "1", "totalPages": "3", "total": "450"}, first["@attr"])
+        self.assertEqual((200, 50, 0), (len(first["track"]), len(last["track"]), len(beyond["track"])))
+        self.assertEqual(("JellySin Load 000000", "Artist 0000", "Load Album"),
+                         (first["track"][0]["name"], first["track"][0]["artist"]["name"], first["track"][0]["album"]["#text"]))
+        self.assertEqual(("JellySin Load 000449", "Artist 0004"), (last["track"][-1]["name"], last["track"][-1]["artist"]["name"]))
+        self.assertEqual(first, lastfm_stand_in.answer("user.getLovedTracks", SESSION, values={"page": ["1"]}, loved=450)["lovedtracks"])
+
     def test_a_server_that_rejects_the_certificate_is_recorded(self):
         connection = self.tunnel(lastfm_stand_in.API_HOST)
         connection.connect()
