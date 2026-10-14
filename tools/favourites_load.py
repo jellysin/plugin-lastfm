@@ -42,16 +42,16 @@ UNFINISHED = "Processed 200 tracks."
 
 def described(admin: Client, count: int) -> float:
     """Waits until every generated track carries its artist and album; the scan counts a track before it reads its tags."""
-    started = time.monotonic()
-    while True:
+    started, ready = time.monotonic(), 0
+    while time.monotonic() - started < RUN_SECONDS:
         ready = 0
         for offset in range(0, count, 2000):
             items = admin.request(f"/Items?recursive=true&includeItemTypes=Audio&fields=Artists&startIndex={offset}&limit=2000")["items"]
             ready += sum(1 for item in items if item.get("artists") and item.get("album") == "Load Album")
         if ready == count:
             return time.monotonic() - started
-        require(time.monotonic() - started < RUN_SECONDS, f"{ready} of {count} tracks carried their tags after {RUN_SECONDS} seconds.")
         time.sleep(5)
+    raise SmokeFailure(f"{ready} of {count} tracks carried their tags after {RUN_SECONDS} seconds.")
 
 
 def loved_reads(stand_in: StandInContainer) -> int:
@@ -78,7 +78,7 @@ def timed(stand_in: StandInContainer, listener: Client, name: str, start: Any, d
     if done:
         # A run reconciles the next 200 track ids in id order, so the changed track waits for the run whose window holds it;
         # synchronize again, as background refresh would every five minutes, until the change reaches the stand-in.
-        while True:
+        for _ in range(limit):
             waited = time.monotonic()
             # The change worker waits two seconds before its run starts; a run that is not running after three has ended.
             while not done() and (time.monotonic() - waited < 3 or listener.request(PREFIX + "/Me/Favourites")["running"]):
@@ -87,9 +87,11 @@ def timed(stand_in: StandInContainer, listener: Client, name: str, start: Any, d
             if done():
                 reached = round(time.monotonic() - started, 2)
                 break
-            require(runs < limit, f"The {name} change did not reach the stand-in within {limit} runs.")
+            if runs == limit:
+                break
             listener.request(PREFIX + "/Me/Favourites/Sync", "POST")
             runs += 1
+        require(reached is not None, f"The {name} change did not reach the stand-in within {limit} runs.")
     review = settle(listener, listener.request(PREFIX + "/Me/Favourites"), time.monotonic())
     while (review.get("status") or "").startswith(UNFINISHED):
         require(runs < limit, f"The {name} phase did not complete within {limit} runs.")

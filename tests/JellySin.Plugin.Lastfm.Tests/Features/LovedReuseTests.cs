@@ -1,5 +1,11 @@
+using Jellyfin.Database.Implementations.Entities;
 using JellySin.Plugin.Lastfm.Features;
 using JellySin.Plugin.Lastfm.Tests.Core;
+using MediaBrowser.Controller.Entities.Audio;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Users;
+using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Features;
 
@@ -207,6 +213,37 @@ public sealed class LovedReuseTests
         Assert.Equal(users.Length, calls);
         reuse.Match(users[0], tracks, Match);
         Assert.Equal(users.Length + 1, calls);
+    }
+
+    [Fact]
+    public void EveryLibraryItemEventMovesTheGenerationUntilDisposed()
+    {
+        var library = new Mock<ILibraryManager>();
+        var generation = new LibraryGeneration(library.Object, Mock.Of<IUserManager>());
+        var args = new ItemChangeEventArgs { Item = new Audio() };
+        library.Raise(value => value.ItemAdded += null, library.Object, args);
+        library.Raise(value => value.ItemUpdated += null, library.Object, args);
+        library.Raise(value => value.ItemRemoved += null, library.Object, args);
+        Assert.Equal(3, generation.Current);
+        generation.Dispose();
+        library.Raise(value => value.ItemAdded += null, library.Object, args);
+        Assert.Equal(3, generation.Current);
+    }
+
+    [Fact]
+    public void AccessFollowsThePolicyAndIsEmptyForAnUnknownUser()
+    {
+        var user = new User("Listener", "provider", "reset");
+        var policy = new UserPolicy { EnableAllFolders = true };
+        var users = new Mock<IUserManager>();
+        users.Setup(value => value.GetUserById(user.Id)).Returns(user);
+        users.Setup(value => value.GetUserDto(user, It.IsAny<string?>())).Returns(() => new UserDto { Policy = policy });
+        using var generation = new LibraryGeneration(Mock.Of<ILibraryManager>(), users.Object);
+        var before = generation.Access(user.Id);
+        Assert.Equal(before, generation.Access(user.Id));
+        policy = new UserPolicy { EnableAllFolders = false };
+        Assert.NotEqual(before, generation.Access(user.Id));
+        Assert.Equal(string.Empty, generation.Access(Guid.NewGuid()));
     }
 
     private static async Task<FeatureFixture> SyncedAsync(int count, params MusicTrack[] lovedElsewhere)
