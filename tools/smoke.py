@@ -70,11 +70,8 @@ def docker(*arguments: str, timeout: int = 90) -> str:
 
 
 def lower_keys(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key.lower(): lower_keys(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [lower_keys(item) for item in value]
-    return value
+    """The JSON value with every object key in lower case, at any depth; the JSON decoder walks the nesting."""
+    return json.loads(json.dumps(value), object_hook=lambda entries: {key.lower(): item for key, item in entries.items()})
 
 
 class Client:
@@ -87,7 +84,7 @@ class Client:
     def request(
         self, path: str, method: str = "GET", body: Any = None,
         expected: int | tuple[int, ...] = 200, headers: dict[str, str] | None = None,
-        raw: bool = False,
+        raw: bool = False, timeout: float = 20,
     ) -> Any:
         authorization = f'MediaBrowser Client="JellySin smoke", Device="Test", DeviceId="{self.device}", Version="1.0.0"'
         if self.token:
@@ -101,7 +98,7 @@ class Client:
         display_path = "/Auth/Keys/[redacted]" if path.startswith("/Auth/Keys/") else path.split("?")[0]
         request = urllib.request.Request(self.origin + self.base_path + path, data=data, headers=outgoing, method=method)
         try:
-            response = urllib.request.urlopen(request, timeout=20)
+            response = urllib.request.urlopen(request, timeout=timeout)
         except urllib.error.HTTPError as error:
             response = error
         except (OSError, http.client.HTTPException) as error:
@@ -296,14 +293,22 @@ def check_plugin(client: Client) -> None:
 
 
 def own_entries(answer: Any) -> list[str]:
-    """Names in an answer of Jellyfin that belong to this plugin, at any depth."""
-    if isinstance(answer, list):
-        return [name for value in answer for name in own_entries(value)]
-    if not isinstance(answer, dict):
-        return []
-    name = answer.get("name")
-    own = [name] if isinstance(name, str) and ("jellysin" in name.lower() or "last.fm" in name.lower()) else []
-    return own + [name for value in answer.values() for name in own_entries(value)]
+    """Names in an answer of Jellyfin that belong to this plugin, at any depth, in document order."""
+    own: list[str] = []
+    pending = [answer]
+    # An answer read within MAX_RESPONSE bytes holds fewer values than it has bytes.
+    for _ in range(MAX_RESPONSE):
+        if not pending:
+            return own
+        value = pending.pop()
+        if isinstance(value, dict):
+            name = value.get("name")
+            if isinstance(name, str) and ("jellysin" in name.lower() or "last.fm" in name.lower()):
+                own.append(name)
+            value = list(value.values())
+        if isinstance(value, list):
+            pending.extend(reversed(value))
+    raise SmokeFailure("The answer held more values than the smoke-test bound.")
 
 
 def check_library_options(options: dict[str, Any]) -> None:
