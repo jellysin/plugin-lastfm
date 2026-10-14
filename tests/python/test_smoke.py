@@ -79,6 +79,38 @@ def removed(outcomes):
         return remove_container("jellysin-smoke-fixture"), docker.call_count, sleep.call_count
 
 
+class AnswerTests(unittest.TestCase):
+    def test_keys_are_lowered_at_every_depth_and_values_kept(self):
+        answer = {"Items": [{"Name": "A", "UserData": {"IsFavorite": True}}, ["Nested", {"Key": None}]], "Total": 2}
+        self.assertEqual({"items": [{"name": "A", "userdata": {"isfavorite": True}}, ["Nested", {"key": None}]], "total": 2},
+                         smoke.lower_keys(answer))
+        self.assertEqual("Plain", smoke.lower_keys("Plain"))
+
+    def test_own_entries_are_found_at_any_depth_in_document_order(self):
+        answer = {"name": "Last.fm", "options": [{"name": "Other"}, {"name": "JellySin A", "inner": [{"name": "jellysin b"}]}],
+                  "after": {"name": "LAST.FM C"}}
+        self.assertEqual(["Last.fm", "JellySin A", "jellysin b", "LAST.FM C"], smoke.own_entries(answer))
+        self.assertEqual([], smoke.own_entries([{"name": 3}, "jellysin", None]))
+
+    def test_own_entries_stop_at_the_bound(self):
+        with patch.object(smoke, "MAX_RESPONSE", 3), self.assertRaises(SmokeFailure):
+            smoke.own_entries([[1], [2], [3]])
+
+    def test_a_request_waits_as_long_as_its_caller_asks(self):
+        seen = []
+
+        def opened(request, timeout):
+            seen.append(timeout)
+            raise OSError("planted")
+
+        client = smoke.Client("http://127.0.0.1:9")
+        with patch.object(smoke.urllib.request, "urlopen", opened):
+            for timeout in ((), (600,)):
+                with self.assertRaises(SmokeFailure):
+                    client.request("/System/Info", *(("GET", None, 200, None, False) + timeout))
+        self.assertEqual([20, 600], seen)
+
+
 class ServerChoiceTests(unittest.TestCase):
     def test_every_pinned_server_carries_a_release_and_a_digest(self):
         self.assertEqual(["12.1", "floor", "newest"], sorted(IMAGES))

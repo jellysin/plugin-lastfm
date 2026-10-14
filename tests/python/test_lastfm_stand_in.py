@@ -102,6 +102,13 @@ class StandInTests(unittest.TestCase):
         self.assertEqual(("JellySin Load 000449", "Artist 0004"), (last["track"][-1]["name"], last["track"][-1]["artist"]["name"]))
         self.assertEqual(first, lastfm_stand_in.answer("user.getLovedTracks", SESSION, values={"page": ["1"]}, loved=450)["lovedtracks"])
 
+    def test_a_lowered_loved_count_is_served_by_the_next_request(self):
+        (self.directory / "loved-count.txt").write_text("450\n", encoding="utf-8")
+        body = "method=user.getLovedTracks&user=listener&format=json"
+        self.assertEqual("450", self.post(body)["lovedtracks"]["@attr"]["total"])
+        (self.directory / "loved-count.txt").write_text("449\n", encoding="utf-8")
+        self.assertEqual("449", self.post(body)["lovedtracks"]["@attr"]["total"])
+
     def test_a_server_that_rejects_the_certificate_is_recorded(self):
         connection = self.tunnel(lastfm_stand_in.API_HOST)
         connection.connect()

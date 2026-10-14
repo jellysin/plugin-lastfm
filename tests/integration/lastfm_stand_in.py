@@ -10,7 +10,8 @@ writes out/calls.log (one line per answered method; a track method also names th
 track it carries, never a key, session or signature), out/tunnels.log (each tunnel request and whether
 it carried a request) and out/ready once it listens. An optional loved-count.txt in DIRECTORY makes
 user.getLovedTracks serve that many loved tracks named as tools/library_load.py names its generated library,
-200 to a page, for tools/favourites_load.py.
+200 to a page, for tools/favourites_load.py. It is read on every request, so a run can lower it while the
+stand-in serves.
 """
 
 from __future__ import annotations
@@ -105,6 +106,13 @@ def answer(method: str, session: str, carried: list[tuple[str, str]] | None = No
     return answers.get(method, {"error": 3, "message": "Invalid Method - No method with that name in this package"})
 
 
+def loved_count(path: Path | None) -> int:
+    """The loved count, read on every request so a run can drop a love while the stand-in serves."""
+    if path is None or not path.exists():
+        return 0
+    return min(MAX_LOVED, int(path.read_text(encoding="utf-8")))
+
+
 class Record:
     """Appends one line per event to a file in the output directory, so the run keeps it even if the stand-in dies."""
 
@@ -122,7 +130,7 @@ class StandIn(http.server.BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
     session = ""
-    loved = 0
+    loved_file: Path | None = None
     answered = False
 
     def log_message(self, _format: str, *args: Any) -> None:
@@ -140,7 +148,7 @@ class StandIn(http.server.BaseHTTPRequestHandler):
         self.answered = True
         carried = tracks_in(values) if method.startswith("track.") else []
         Record.write("calls.log", ("POST " if signed else "GET ") + method + "".join(f" | {artist} - {title}" for artist, title in carried))
-        body = json.dumps(answer(method, StandIn.session, carried, values, StandIn.loved)).encode()
+        body = json.dumps(answer(method, StandIn.session, carried, values, loved_count(StandIn.loved_file))).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -212,8 +220,7 @@ def bind(directory: Path, address: tuple[str, int]) -> http.server.ThreadingHTTP
     """The proxy, listening but not yet serving, with its records in DIRECTORY/out."""
     Record.directory = directory / "out"
     StandIn.session = (directory / "session.txt").read_text(encoding="utf-8").strip()
-    count = directory / "loved-count.txt"
-    StandIn.loved = min(MAX_LOVED, int(count.read_text(encoding="utf-8"))) if count.exists() else 0
+    StandIn.loved_file = directory / "loved-count.txt"
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(directory / "server.pem", directory / "server.key")

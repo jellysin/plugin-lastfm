@@ -11,6 +11,9 @@ credential is used. One ordinary user connects and the run records three favouri
 - one favourite: the last generated track is marked a favourite in Jellyfin and synchronized again until it is loved,
   then until the reconciliation completes. A run reconciles the next 200 track ids in id order, so the change waits
   for the run whose window holds it; secondsToChange records when the love reached the stand-in.
+- one removal: the stand-in stops serving the oldest loved track and the user synchronizes until that track is proposed
+  for removal from Jellyfin, then until the reconciliation completes; secondsToChange records when the proposal appeared.
+  The review then applies the proposal, and the run records how long that request took and the loved pages it read.
 
 Each phase records its wall time, its runs and how many loved-collection pages it read from the stand-in.
 """
@@ -19,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import secrets
 import sys
@@ -101,6 +105,29 @@ def timed(stand_in: StandInContainer, listener: Client, name: str, start: Any, d
     return result | ({"secondsToChange": reached} if done else {})
 
 
+def removal(stand_in: StandInContainer, listener: Client, count: int, limit: int) -> dict[str, Any]:
+    """Drops the oldest loved track at the stand-in, synchronizes until its removal is proposed, then times the review."""
+    title = f"JellySin Load {count - 2:06d}"
+
+    def proposal() -> dict[str, Any] | None:
+        return next((entry for entry in listener.request(PREFIX + "/Me/Favourites")["pending"] if entry["track"]["title"] == title), None)
+
+    def drop() -> dict[str, Any]:
+        written = stand_in.directory / "loved-count.tmp"
+        written.write_text(f"{count - 2}\n", encoding="utf-8")
+        os.replace(written, stand_in.directory / "loved-count.txt")
+        return listener.request(PREFIX + "/Me/Favourites/Sync", "POST")
+
+    run = timed(stand_in, listener, "one removal", drop, lambda: proposal() is not None, limit)
+    entry = proposal()
+    require(entry is not None and entry["removefrom"] == "jellyfin", f"The removal of {title} is no longer proposed after the run: {entry}")
+    reads, before, started = loved_reads(stand_in), run["libraryFavourites"], time.monotonic()
+    listener.request(PREFIX + "/Me/Favourites/Review", "POST", {"ReviewId": entry["id"], "Apply": True}, timeout=RUN_SECONDS)
+    seconds, after = round(time.monotonic() - started, 2), favourites(listener)
+    require(after == before - 1 and proposal() is None, f"The review left {after} of {before} favourites and the proposal {proposal()}.")
+    return run | {"reviewSeconds": seconds, "reviewLovedPageReads": loved_reads(stand_in) - reads, "libraryFavourites": after}
+
+
 def exercise(host: DockerHost, stand_in: StandInContainer, count: int) -> dict[str, Any]:
     fixtures(host.fixture_directory, count)
     host.start()
@@ -129,7 +156,8 @@ def exercise(host: DockerHost, stand_in: StandInContainer, count: int) -> dict[s
         return {"running": True}
 
     runs.append(timed(stand_in, listener, "one favourite", mark, lambda: love in stand_in.lines("calls.log"), limit))
-    for run in runs[1:]:
+    runs.append(removal(stand_in, listener, count, limit))
+    for run in runs[1:3]:
         require(run["pendingRemovals"] == 0, f"The {run['run']} run proposed removals from an unchanged collection.")
     return {"image": host.image, "server": host.version, "libraryTracks": count, "lovedTracks": count - 1,
             "lovedPageSize": 200, "scanSeconds": round(scan_seconds, 1), "containerCpus": 2, "containerMemoryMiB": 1536, "runs": runs}
@@ -155,6 +183,8 @@ def main() -> int:
             args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             for run in report["runs"]:
                 print(f"{run['run']}: {run['seconds']} s, {run['runs']} runs, {run['lovedPageReads']} loved pages read", flush=True)
+                if "reviewSeconds" in run:
+                    print(f"review: {run['reviewSeconds']} s, {run['reviewLovedPageReads']} loved pages read", flush=True)
             return 0
         finally:
             try:
