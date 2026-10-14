@@ -270,11 +270,15 @@ connection and a server stop do; a request that still waits for a stopped run
 answers with the stored state. One run per user exists at a time, and the
 periodic refresh in the background uses the same run.
 
-A run handles at most 200 tracks, and the periodic refresh starts one every five
-minutes, so a large collection takes several runs to reconcile. Each run reads page
-1 of the loved tracks. When page 1 is unchanged, the run reuses the collection read
-by an earlier run. It also reuses a loved track's library match until the
-library or the user's access changes. A new love or a removal on Last.fm changes
+A run handles at most 200 tracks in id order, and the periodic refresh starts one
+every five minutes, so a large collection takes several runs to reconcile. Once a
+first pass has completed, a run also handles up to 200 more tracks whose favourite
+or love changed since a run last saw them, so a change does not wait for the run
+whose 200 tracks hold it. A love the plugin sent takes none of those places until
+a run has seen Last.fm list it with its date; until then, removing it on Last.fm
+waits for the run whose 200 tracks hold it. Each run reads page 1 of the loved tracks. When page 1 is
+unchanged, the run reuses the collection read by an earlier run. It also reuses a
+loved track's library match until the library or the user's access changes. A new love or a removal on Last.fm changes
 page 1, so the next run reads the whole collection again. The server keeps this in
 memory only, for at most 24 hours, 8 users and 10,000 tracks per user, and a
 restart discards it. The [benchmarks](../benchmarks/README.md#favourite-synchronization)

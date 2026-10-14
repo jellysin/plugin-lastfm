@@ -11,7 +11,7 @@ track it carries, never a key, session or signature), out/tunnels.log (each tunn
 it carried a request) and out/ready once it listens. An optional loved-count.txt in DIRECTORY makes
 user.getLovedTracks serve that many loved tracks named as tools/library_load.py names its generated library,
 200 to a page, for tools/favourites_load.py. It is read on every request, so a run can lower it while the
-stand-in serves.
+stand-in serves. With it, a track.love lists that track newest first until a track.unlove, as Last.fm does.
 """
 
 from __future__ import annotations
@@ -55,14 +55,19 @@ def page(root: str, tracks: list[dict[str, Any]]) -> dict[str, Any]:
     return {root: {"@attr": {"page": "1", "totalPages": "1", "total": str(len(tracks))}, "track": tracks}}
 
 
-def loved_page(count: int, values: dict[str, list[str]]) -> dict[str, Any]:
-    """One page of count loved tracks, newest first, with fixed loved dates so every read sees the same pages."""
+def loved_page(count: int, values: dict[str, list[str]], loves: list[tuple[str, str, int]] | None = None) -> dict[str, Any]:
+    """One page of count loved tracks, newest first, with fixed loved dates so every read sees the same pages.
+
+    loves are the tracks the server loved, newest first; they precede the generated ones, as Last.fm lists a new love."""
+    loves = loves or []
+    total = len(loves) + count
     number = max(1, int((values.get("page") or ["1"])[0]))
-    pages = max(1, -(-count // LOVED_PAGE))
-    tracks = [{**track(f"JellySin Load {index:06d}", f"Artist {index // 100:04d}", played=NOW - 60 * index),
-               "album": {"#text": "Load Album"}}
-              for index in range((number - 1) * LOVED_PAGE, min(count, number * LOVED_PAGE))]
-    return {"lovedtracks": {"@attr": {"page": str(number), "totalPages": str(pages), "total": str(count)}, "track": tracks}}
+    pages = max(1, -(-total // LOVED_PAGE))
+    tracks = [track(loves[index][1], loves[index][0], played=loves[index][2]) if index < len(loves)
+              else {**track(f"JellySin Load {index - len(loves):06d}", f"Artist {(index - len(loves)) // 100:04d}",
+                            played=NOW - 60 * (index - len(loves))), "album": {"#text": "Load Album"}}
+              for index in range((number - 1) * LOVED_PAGE, min(total, number * LOVED_PAGE))]
+    return {"lovedtracks": {"@attr": {"page": str(number), "totalPages": str(pages), "total": str(total)}, "track": tracks}}
 
 
 def tracks_in(values: dict[str, list[str]]) -> list[tuple[str, str]]:
@@ -73,10 +78,11 @@ def tracks_in(values: dict[str, list[str]]) -> list[tuple[str, str]]:
 
 
 def answer(method: str, session: str, carried: list[tuple[str, str]] | None = None,
-           values: dict[str, list[str]] | None = None, loved: int = 0) -> dict[str, Any]:
+           values: dict[str, list[str]] | None = None, loved: int = 0,
+           loves: list[tuple[str, str, int]] | None = None) -> dict[str, Any]:
     """What the stand-in returns for a Last.fm method: the shapes Last.fm documents, with fixture names."""
     if method == "user.getLovedTracks" and loved:
-        return loved_page(loved, values or {})
+        return loved_page(loved, values or {}, loves)
     url = "https://www.last.fm/music/" + urllib.parse.quote(ARTIST)
     answers: dict[str, Any] = {
         "auth.getSession": {"session": {"name": LASTFM_USER, "key": session, "subscriber": 0}},
@@ -131,6 +137,9 @@ class StandIn(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     session = ""
     loved_file: Path | None = None
+    # The tracks the server loved, by artist and title, with their loved dates; listed only beside a loved count.
+    loves: dict[tuple[str, str], int] = {}
+    loves_lock = threading.Lock()
     answered = False
 
     def log_message(self, _format: str, *args: Any) -> None:
@@ -148,7 +157,14 @@ class StandIn(http.server.BaseHTTPRequestHandler):
         self.answered = True
         carried = tracks_in(values) if method.startswith("track.") else []
         Record.write("calls.log", ("POST " if signed else "GET ") + method + "".join(f" | {artist} - {title}" for artist, title in carried))
-        body = json.dumps(answer(method, StandIn.session, carried, values, loved_count(StandIn.loved_file))).encode()
+        loved = loved_count(StandIn.loved_file)
+        with StandIn.loves_lock:
+            if method == "track.love":
+                StandIn.loves.update({key: int(time.time()) for key in carried[:1]})
+            if method == "track.unlove" and carried:
+                StandIn.loves.pop(carried[0], None)
+            loves = sorted(((artist, title, uts) for (artist, title), uts in StandIn.loves.items()), key=lambda love: -love[2])
+        body = json.dumps(answer(method, StandIn.session, carried, values, loved, loves)).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -221,6 +237,7 @@ def bind(directory: Path, address: tuple[str, int]) -> http.server.ThreadingHTTP
     Record.directory = directory / "out"
     StandIn.session = (directory / "session.txt").read_text(encoding="utf-8").strip()
     StandIn.loved_file = directory / "loved-count.txt"
+    StandIn.loves = {}
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(directory / "server.pem", directory / "server.key")

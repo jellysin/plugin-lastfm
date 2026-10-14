@@ -109,6 +109,25 @@ class StandInTests(unittest.TestCase):
         (self.directory / "loved-count.txt").write_text("449\n", encoding="utf-8")
         self.assertEqual("449", self.post(body)["lovedtracks"]["@attr"]["total"])
 
+    def test_a_love_is_listed_newest_first_until_it_is_unloved(self):
+        (self.directory / "loved-count.txt").write_text("450\n", encoding="utf-8")
+        loved = "method=user.getLovedTracks&user=listener&format=json"
+        self.post("method=track.love&artist=Artist+9999&track=JellySin+Load+999999&format=json")
+        first = self.post(loved)["lovedtracks"]
+        last = self.post(loved + "&page=3")["lovedtracks"]
+        self.assertEqual({"page": "1", "totalPages": "3", "total": "451"}, first["@attr"])
+        self.assertEqual(("JellySin Load 999999", "Artist 9999"), (first["track"][0]["name"], first["track"][0]["artist"]["name"]))
+        self.assertIn("uts", first["track"][0]["date"])
+        self.assertEqual(("JellySin Load 000000", "JellySin Load 000449"), (first["track"][1]["name"], last["track"][-1]["name"]))
+        self.post("method=track.unlove&artist=Artist+9999&track=JellySin+Load+999999&format=json")
+        unloved = self.post(loved)["lovedtracks"]
+        self.assertEqual(("450", "JellySin Load 000000"), (unloved["@attr"]["total"], unloved["track"][0]["name"]))
+
+    def test_without_a_loved_count_a_love_changes_no_listing(self):
+        self.post("method=track.love&artist=Artist+9999&track=JellySin+Load+999999&format=json")
+        loved = self.post("method=user.getLovedTracks&user=listener&format=json")["lovedtracks"]["track"]
+        self.assertEqual([lastfm_stand_in.SIMILAR_LOCAL], [entry["name"] for entry in loved])
+
     def test_a_server_that_rejects_the_certificate_is_recorded(self):
         connection = self.tunnel(lastfm_stand_in.API_HOST)
         connection.connect()

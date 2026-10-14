@@ -114,9 +114,14 @@ public sealed class MusicLibrary(ILibraryManager library, IUserManager users, IU
         query.IsFavorite = true;
         var items = library.GetItemList(query);
         if (items.Count > 10000) throw new InvalidOperationException("Favourite sync supports up to 10,000 local favourites.");
-        var itemData = data.GetUserDataBatch(items, User(userId));
+        var user = User(userId);
+        var itemData = data.GetUserDataBatch(items, user);
         ct.ThrowIfCancellationRequested();
-        return items.OfType<Audio>().Select(item => Map(item, itemData.GetValueOrDefault(item.Id))).ToArray();
+        // Each favourite carries the revision a single read reports, so a favourite run can tell which ones changed since it observed them.
+        var coordinated = data as CoordinatedUserData;
+        return items.OfType<Audio>()
+            .Select(item => Map(item, itemData.GetValueOrDefault(item.Id)) with { FavouriteRevision = coordinated?.FavouriteRevision(user, item) ?? "" })
+            .ToArray();
     }
 
     public void SetFavourite(Guid userId, Guid itemId, bool favourite, CancellationToken ct)

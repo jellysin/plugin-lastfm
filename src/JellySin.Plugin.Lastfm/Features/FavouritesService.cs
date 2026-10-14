@@ -20,6 +20,7 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
 {
     private const string Key = "feature-favourites";
     private const string AdditionsKey = "feature-favourite-additions";
+    private const int RunTracks = 200;
 
     /// <summary>How long a request waits for the user's lock while a reconciliation holds it.</summary>
     public TimeSpan LockWait { get; init; } = TimeSpan.FromSeconds(10);
@@ -75,8 +76,10 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         var localItems = library.GetFavourites(userId, ct).ToDictionary(t => t.Id);
         var ids = localItems.Keys.Concat(remoteItems.Keys).Concat(state.Observed.Keys).Distinct().Take(20001).ToArray();
         if (ids.Length > 20000) throw new InvalidOperationException("Favourite reconciliation reached its 20,000-track limit.");
-        var batch = ids.Order().Where(id => state.AfterItem is null || id.CompareTo(state.AfterItem.Value) > 0).Take(201).ToArray();
-        foreach (var id in batch.Take(200))
+        var batch = ids.Order().Where(id => state.AfterItem is null || id.CompareTo(state.AfterItem.Value) > 0).Take(RunTracks + 1).ToArray();
+        // After the first full pass, a change outside this run's window is reconciled now rather than when the window reaches it.
+        var changed = state.LastSync is null ? Enumerable.Empty<Guid>() : Changed(state, localItems, remoteItems).Except(batch.Take(RunTracks)).Order().Take(RunTracks);
+        foreach (var id in changed.Concat(batch.Take(RunTracks)))
         {
             ct.ThrowIfCancellationRequested();
             LocalMusic local;
@@ -92,10 +95,10 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
             if (unresolved.Contains(MusicFeatureService.TrackKey(local.Track))) continue;
             await ReconcileAsync(userId, local, remoteItems.GetValueOrDefault(id), state, additions, ct).ConfigureAwait(false);
         }
-        var complete = batch.Length <= 200;
+        var complete = batch.Length <= RunTracks;
         state = state with
         {
-            AfterItem = complete ? null : batch[199],
+            AfterItem = complete ? null : batch[RunTracks - 1],
             LastSync = complete ? clock.GetUtcNow() : state.LastSync,
             Status = !complete ? "Processed 200 tracks. Synchronize again to continue; background refresh also resumes this work."
                 : unresolved.Count == 0 ? "Synchronized; removals require review."
@@ -185,6 +188,17 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
             }
         }
         state.Observed[local.Id] = new(local.Track, local.Favourite, remote, local.FavouriteRevision, remoteTrack?.PlayedAt);
+    }
+
+    /// <summary>Ids whose favourite or love differs from what the last run observed of them. A love this plugin sent has no
+    /// observed date: Last.fm listing it with one is no change, and a collection that does not show it yet proposes no removal.</summary>
+    private static IEnumerable<Guid> Changed(FavouriteState state, Dictionary<Guid, LocalMusic> local, Dictionary<Guid, MusicTrack> remote)
+    {
+        var added = local.Where(item => state.Observed.GetValueOrDefault(item.Key) is not { Local: true } seen || seen.LocalRevision != item.Value.FavouriteRevision);
+        var loved = remote.Where(track => state.Observed.GetValueOrDefault(track.Key) is not { Remote: true } seen || (seen.RemoteLovedAt is not null && seen.RemoteLovedAt != track.Value.PlayedAt));
+        var removed = state.Observed.Where(seen => (seen.Value.Local && !local.ContainsKey(seen.Key))
+            || (seen.Value.Remote && seen.Value.RemoteLovedAt is not null && !remote.ContainsKey(seen.Key)));
+        return added.Select(item => item.Key).Concat(loved.Select(track => track.Key)).Concat(removed.Select(seen => seen.Key)).Distinct();
     }
 
     private async Task StageAdditionAsync(Guid userId, LocalMusic local, string target, List<FavouriteAddition> additions, CancellationToken ct)
