@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using JellySin.Plugin.Lastfm.Features;
 using JellySin.Plugin.Lastfm.Tests.Core;
@@ -76,11 +77,18 @@ internal sealed class FeatureFixture : IDisposable
         }
         return method switch
         {
-            "user.getLovedTracks" => Page("lovedtracks", Loved, IncompleteLoved ? 51 : 1),
+            "user.getLovedTracks" => IncompleteLoved ? Page("lovedtracks", Loved, 51) : LovedPage(parameters),
             "user.getTopTracks" => Page("toptracks", Top),
             "user.getRecentTracks" => Page("recenttracks", Recent),
             _ => JsonDocument.Parse("{}"),
         };
+    }
+
+    /// <summary>The loved tracks 200 to a page, as Last.fm serves them to the plugin's requests.</summary>
+    private JsonDocument LovedPage(IReadOnlyDictionary<string, string> parameters)
+    {
+        var page = int.Parse(parameters["page"], CultureInfo.InvariantCulture);
+        return Page("lovedtracks", Loved.Skip((page - 1) * 200).Take(200).ToList(), Math.Max(1, (Loved.Count + 199) / 200), page, Loved.Count);
     }
 
     public static JsonDocument Page(string root, IReadOnlyList<MusicTrack> tracks, int totalPages = 1, int page = 1, int? total = null) =>
