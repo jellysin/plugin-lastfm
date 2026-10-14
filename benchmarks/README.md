@@ -76,7 +76,9 @@ python tools/favourites_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/
 The harness generates and scans the same library as the real library workload, in
 a container with the same limits. The Last.fm stand-in of the page check serves
 every generated track but the last as loved, 200 to a page, under a made-up
-application. One ordinary user connects, and the harness times four phases:
+application. It lists each love the plugin sends newest first, ahead of the
+generated tracks, until the plugin unloves it, as Last.fm does. One ordinary user
+connects, and the harness times four phases:
 
 - **Initial:** favourites are turned on, and every loved track becomes a favourite.
 - **Unchanged:** a synchronization with nothing changed on either side.
@@ -134,9 +136,46 @@ the library or the user's access changes. The initial phase writes favourites, a
 each write changes the library, so its runs still match again.
 
 In production, runs do not follow one another back to back. The periodic refresh
-starts one every five minutes, so at 10,000 loved tracks a change can wait about
-50 refreshes for the run whose 200 ids hold it. Reuse makes each run cheaper but
-does not change that wait.
+starts one every five minutes, so with reuse alone, at 10,000 loved tracks, a change
+can wait about 50 refreshes for the run whose 200 ids hold it.
+
+### Changed favourites first
+
+After the first full pass, a run reconciles up to 200 changed track ids before its
+window of 200: favourites changed in Jellyfin since the run last saw them, and loves
+Last.fm newly lists, lists with a new date or no longer lists. A change then reaches
+the next run, the next five-minute refresh in production, instead of waiting for its
+window. A love the plugin sent counts as a change only once a run has seen Last.fm
+list it with its date; removing such a love on Last.fm before that still waits for
+its window.
+
+Measured on 2026-10-14 on Jellyfin 12.2.0, one run each, on the local host (other
+work running, load average 22 to 37 at the start of each run). **Reuse** is `4ba1141`,
+which carries reuse but not this change; **Changed first** carries it. Both builds
+run against the stand-in that lists the plugin's loves.
+
+| Tracks | Phase | Reuse | Reuse runs | Changed first | Changed first runs |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1,000 | Initial | 38.7 s | 5 | 31.9 s | 5 |
+| | Unchanged | 3.9 s | 5 | 3.8 s | 5 |
+| | One favourite | 7.9 s | 6 | 7.0 s | 6 |
+| | Time to the love | 4.4 s | | 3.8 s | |
+| | One removal | 14.2 s | 5 | 4.3 s | 5 |
+| | Time to the proposal | 13.2 s | | 1.0 s | |
+| | Review | 0.25 s | | 0.06 s | |
+| 10,000 | Initial | 482.5 s | 50 | 513.5 s | 50 |
+| | Unchanged | 66.7 s | 50 | 79.2 s | 50 |
+| | One favourite | 81.2 s | 51 | 95.5 s | 51 |
+| | Time to the love | 22.6 s | | 5.5 s | |
+| | One removal | 108.7 s | 49 | 72.5 s | 50 |
+| | Time to the proposal | 58.4 s | | 1.7 s | |
+| | Review | 0.36 s | | 0.93 s | |
+
+Both builds read the same loved pages in every phase. The phase times are single
+runs on a busy host and vary by more than the differences between the builds: the
+reuse build's 10,000-track initial phase took 348.7 s in the first table and 482.5 s
+here. The times to the love and to the proposal are what this change moves; the
+phases end only when every window has run, so their length does not show it.
 
 ## Browser budgets
 
