@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using JellySin.Plugin.Lastfm.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
@@ -140,7 +141,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     {
         try
         {
-            if (_legacyPresent || Plugin.Instance?.ListeningEnabled == false || args.IsAutomated || args.Item is not Audio audio) return;
+            if (_legacyPresent || Plugin.Instance?.ListeningEnabled == false || args.IsAutomated || args.Item is not Audio audio || audio is AudioBook) return;
             var artist = audio.Artists.FirstOrDefault();
             if (string.IsNullOrWhiteSpace(artist) || string.IsNullOrWhiteSpace(audio.Name) || artist.Length > 1024 || audio.Name.Length > 1024) return;
             var sessionId = args.PlaySessionId ?? args.Session?.Id ?? args.DeviceId;
