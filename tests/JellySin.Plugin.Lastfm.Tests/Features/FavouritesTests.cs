@@ -76,6 +76,21 @@ public sealed class FavouritesTests
     }
 
     [Fact]
+    public async Task MbidMatchWinsOverNameCollisionInFavouriteReconciliation()
+    {
+        using var f = new FeatureFixture();
+        await f.InitializeAsync();
+        var mbid = Guid.NewGuid().ToString();
+        var first = f.AddLocal("Collision", mbid: mbid);
+        f.AddLocal("Collision", mbid: null);
+        f.Loved.Add(first.Track);
+        var result = await f.EnableAndSyncAsync(Ct);
+        Assert.Contains(f.Library.FavouriteWrites, write => write.Item == first.Id && write.Favourite);
+        Assert.Empty(result.Pending);
+        Assert.DoesNotContain("unresolved", result.Status!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task LocalRemoveReaddCannotReuseAnOldRemovalReview()
     {
         using var f = new FeatureFixture();

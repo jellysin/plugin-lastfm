@@ -246,6 +246,25 @@ public sealed class LovedReuseTests
         Assert.Equal(string.Empty, generation.Access(Guid.NewGuid()));
     }
 
+    [Fact]
+    public void TracksWithSameMusicBrainzIdReuseLibraryMatchWithoutCallingMatcherAgain()
+    {
+        var (reuse, _, _) = Reuse();
+        var user = Guid.NewGuid();
+        var mbid = Guid.NewGuid();
+        var expectedId = Guid.NewGuid();
+        var track1 = new MusicTrack("Artist A", "Title A", MusicBrainzId: mbid.ToString());
+        var track2 = new MusicTrack("Artist B", "Title B", MusicBrainzId: mbid.ToString().ToUpperInvariant());
+        var calls = 0;
+        Guid? Match(MusicTrack track) { calls++; return expectedId; }
+        var result1 = reuse.Match(user, [track1], Match);
+        Assert.Equal(expectedId, Assert.Single(result1));
+        Assert.Equal(1, calls);
+        var result2 = reuse.Match(user, [track2], Match);
+        Assert.Equal(expectedId, Assert.Single(result2));
+        Assert.Equal(1, calls);
+    }
+
     private static async Task<FeatureFixture> SyncedAsync(int count, params MusicTrack[] lovedElsewhere)
     {
         var f = new FeatureFixture();

@@ -253,4 +253,99 @@ public sealed class LibraryTests
         Assert.Null(result.ItemId);
         Assert.Equal("missing", result.Status);
     }
+
+    [Fact]
+    public void MbidMatchWinsOverANameCollision()
+    {
+        var user = new User("Listener", "provider", "reset");
+        var mbid = Guid.NewGuid();
+        var winning = new Audio { Id = Guid.NewGuid(), Name = "Collision", Artists = ["Artist"] };
+        winning.ProviderIds["MusicBrainzTrack"] = mbid.ToString();
+        var colliding = new Audio { Id = Guid.NewGuid(), Name = "Collision", Artists = ["Artist"] };
+        var manager = new Mock<ILibraryManager>();
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        manager.Setup(l => l.GetItemList(It.IsAny<InternalItemsQuery>()))
+            .Returns<InternalItemsQuery>(q => q.HasAnyProviderId is not null && q.HasAnyProviderId["MusicBrainzTrack"] == mbid.ToString()
+                ? [winning] : [winning, colliding]);
+        var library = new MusicLibrary(manager.Object, users.Object, Mock.Of<IUserDataManager>());
+        var result = library.Match(user.Id, new MusicTrack("Artist", "Collision", MusicBrainzId: mbid.ToString()), Ct);
+        Assert.Equal(winning.Id, result.ItemId);
+        Assert.Equal("matched", result.Status);
+    }
+
+    [Fact]
+    public void MbidAbsentMatchesByNameAsBefore()
+    {
+        var user = new User("Listener", "provider", "reset");
+        var item = new Audio { Id = Guid.NewGuid(), Name = "Song", Artists = ["Artist"], Album = "Album" };
+        var manager = new Mock<ILibraryManager>();
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        manager.Setup(l => l.GetItemList(It.IsAny<InternalItemsQuery>())).Returns([item]);
+        var library = new MusicLibrary(manager.Object, users.Object, Mock.Of<IUserDataManager>());
+        var result = library.Match(user.Id, new MusicTrack("Artist", "Song", "Album", MusicBrainzId: null), Ct);
+        Assert.Equal(item.Id, result.ItemId);
+        Assert.Equal("matched", result.Status);
+        manager.Verify(l => l.GetItemList(It.Is<InternalItemsQuery>(q => q.HasAnyProviderId != null)), Times.Never);
+    }
+
+    [Fact]
+    public void MbidPresentButUnknownFallsBackToNameMatch()
+    {
+        var user = new User("Listener", "provider", "reset");
+        var unknownMbid = Guid.NewGuid().ToString();
+        var item = new Audio { Id = Guid.NewGuid(), Name = "Song", Artists = ["Artist"], Album = "Album" };
+        var manager = new Mock<ILibraryManager>();
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        manager.Setup(l => l.GetItemList(It.IsAny<InternalItemsQuery>()))
+            .Returns<InternalItemsQuery>(q => q.HasAnyProviderId is not null ? [] : [item]);
+        var library = new MusicLibrary(manager.Object, users.Object, Mock.Of<IUserDataManager>());
+        var result = library.Match(user.Id, new MusicTrack("Artist", "Song", "Album", MusicBrainzId: unknownMbid), Ct);
+        Assert.Equal(item.Id, result.ItemId);
+        Assert.Equal("matched", result.Status);
+    }
+
+    [Fact]
+    public void MalformedMbidIsIgnoredAndMatchesByName()
+    {
+        var user = new User("Listener", "provider", "reset");
+        var item = new Audio { Id = Guid.NewGuid(), Name = "Song", Artists = ["Artist"] };
+        var manager = new Mock<ILibraryManager>();
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        manager.Setup(l => l.GetItemList(It.IsAny<InternalItemsQuery>())).Returns([item]);
+        var library = new MusicLibrary(manager.Object, users.Object, Mock.Of<IUserDataManager>());
+        var result = library.Match(user.Id, new MusicTrack("Artist", "Song", MusicBrainzId: "not-a-valid-guid"), Ct);
+        Assert.Equal(item.Id, result.ItemId);
+        Assert.Equal("matched", result.Status);
+        manager.Verify(l => l.GetItemList(It.Is<InternalItemsQuery>(q => q.HasAnyProviderId != null)), Times.Never);
+    }
+
+    [Theory]
+    [InlineData("D3B07384-D113-467F-94D0-830206121855")]
+    [InlineData("d3b07384d113467f94d0830206121855")]
+    [InlineData("{d3b07384-d113-467f-94d0-830206121855}")]
+    [InlineData("D3B07384D113467F94D0830206121855")]
+    public void CaseAndFormatNormalisationMatchesGuid(string mbidFormat)
+    {
+        var user = new User("Listener", "provider", "reset");
+        var canonical = Guid.Parse("d3b07384-d113-467f-94d0-830206121855").ToString();
+        var item = new Audio { Id = Guid.NewGuid(), Name = "Song", Artists = ["Artist"] };
+        item.ProviderIds["MusicBrainzTrack"] = canonical;
+        var manager = new Mock<ILibraryManager>();
+        var users = new Mock<IUserManager>();
+        users.Setup(u => u.GetUserById(user.Id)).Returns(user);
+        InternalItemsQuery? observed = null;
+        manager.Setup(l => l.GetItemList(It.IsAny<InternalItemsQuery>()))
+            .Callback<InternalItemsQuery>(q => observed = q)
+            .Returns<InternalItemsQuery>(q => q.HasAnyProviderId is not null && q.HasAnyProviderId["MusicBrainzTrack"] == canonical ? [item] : []);
+        var library = new MusicLibrary(manager.Object, users.Object, Mock.Of<IUserDataManager>());
+        var result = library.Match(user.Id, new MusicTrack("Artist", "Song", MusicBrainzId: mbidFormat), Ct);
+        Assert.Equal(item.Id, result.ItemId);
+        Assert.Equal("matched", result.Status);
+        Assert.NotNull(observed?.HasAnyProviderId);
+        Assert.Equal(canonical, observed.HasAnyProviderId["MusicBrainzTrack"]);
+    }
 }

@@ -59,9 +59,9 @@ internal sealed class FeatureFixture : IDisposable
         return await Favourites.SyncAsync(Core.UserId, ct).ConfigureAwait(false);
     }
 
-    public LocalMusic AddLocal(string title, bool favourite = false, int playCount = 0)
+    public LocalMusic AddLocal(string title, bool favourite = false, int playCount = 0, string? mbid = null, string artist = "Artist")
     {
-        var value = new LocalMusic(Guid.NewGuid(), new MusicTrack("Artist", title), favourite, playCount, null);
+        var value = new LocalMusic(Guid.NewGuid(), new MusicTrack(artist, title, MusicBrainzId: mbid), favourite, playCount, null);
         Library.Items[value.Id] = value;
         return value;
     }
@@ -133,6 +133,15 @@ internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter, ILibraryGe
         Validate(userId, ct);
         MatchCalls++;
         OnMatch?.Invoke(ct);
+        if (Guid.TryParse(track.MusicBrainzId, out var mbid))
+        {
+            var mbidMatches = Items.Values
+                .Where(v => Guid.TryParse(v.Track.MusicBrainzId, out var existing) && existing == mbid)
+                .ToArray();
+            if (mbidMatches.Length > 0)
+                return new(track, mbidMatches.Length == 1 ? mbidMatches[0].Id : null,
+                    mbidMatches.Length == 1 ? "matched" : "ambiguous");
+        }
         var matches = Items.Values.Where(v => v.Track.Artist == track.Artist && v.Track.Title == track.Title).ToArray();
         return new(track, matches.Length == 1 ? matches[0].Id : null, matches.Length == 0 ? "missing" : matches.Length == 1 ? "matched" : "ambiguous");
     }
