@@ -30,5 +30,5 @@ public sealed class ScrobbleDeliveryTask(PlaybackService playback, DeliveryServi
     }
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() =>
-        [new() { Type = TaskTriggerInfoType.IntervalTrigger, IntervalTicks = TimeSpan.FromMinutes(1).Ticks }];
+        TaskTriggers.AtStartupAndEvery(TimeSpan.FromMinutes(1));
 }

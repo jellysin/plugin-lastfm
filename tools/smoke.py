@@ -294,14 +294,15 @@ def check_plugin(client: Client) -> None:
 
 
 def check_scheduled_tasks(tasks: list[dict[str, Any]]) -> None:
-    """The plugin's background work runs as exactly these Jellyfin tasks, at these default intervals."""
+    """The plugin's background work runs as exactly these Jellyfin tasks: at startup, then at these default intervals."""
     minute = 600_000_000
     expected = {"LastfmFavouriteSync": 5 * minute, "LastfmPlaylistRefresh": 5 * minute, "LastfmScrobbleDelivery": minute}
     own = [task for task in tasks if task.get("category") == "Last.fm"]
     require(sorted(task["key"] for task in own) == sorted(expected), "Jellyfin does not list exactly the plugin's three scheduled tasks.")
     for task in own:
-        intervals = [trigger.get("intervalticks") for trigger in task.get("triggers") or []]
-        require(intervals == [expected[task["key"]]], "A plugin scheduled task lacks its default interval.")
+        triggers = [(trigger.get("type"), trigger.get("intervalticks") or None) for trigger in task.get("triggers") or []]
+        require(triggers == [("StartupTrigger", None), ("IntervalTrigger", expected[task["key"]])],
+                "A plugin scheduled task lacks its startup run or its default interval.")
 
 
 def own_entries(answer: Any) -> list[str]:

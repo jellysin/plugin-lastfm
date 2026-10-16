@@ -54,13 +54,13 @@ public sealed class ScheduledTaskTests
     }
 
     [Fact]
-    public void FavouriteSyncTask_DefaultTriggers_AreFiveMinuteInterval()
+    public void FavouriteSyncTask_DefaultTriggers_AreStartupAndFiveMinuteInterval()
     {
         using var f = new FeatureFixture();
         var task = new FavouriteSyncTask(f.Core.Accounts, f.Runs, NullLogger<FavouriteSyncTask>.Instance);
-        var trigger = Assert.Single(task.GetDefaultTriggers());
-        Assert.Equal(TaskTriggerInfoType.IntervalTrigger, trigger.Type);
-        Assert.Equal(TimeSpan.FromMinutes(5).Ticks, trigger.IntervalTicks);
+        var triggers = task.GetDefaultTriggers().ToList();
+        Assert.Equal([TaskTriggerInfoType.StartupTrigger, TaskTriggerInfoType.IntervalTrigger], triggers.Select(trigger => trigger.Type));
+        Assert.Equal(TimeSpan.FromMinutes(5).Ticks, triggers[1].IntervalTicks);
     }
 
     [Fact]
@@ -121,16 +121,16 @@ public sealed class ScheduledTaskTests
     }
 
     [Fact]
-    public void PlaylistRefreshTask_DefaultTriggers_AreFiveMinuteInterval()
+    public void PlaylistRefreshTask_DefaultTriggers_AreStartupAndFiveMinuteInterval()
     {
         using var f = new FeatureFixture();
         var discovery = new DiscoveryService(f.Api, f.Library, Mock.Of<IDiscoveryLibrary>(), f.Core.Accounts);
         var playlistService = new PlaylistService(f.Api, discovery, f.Library,
             Mock.Of<ILibraryManager>(), Mock.Of<IPlaylistManager>(), f.Core.Store, f.Locks, f.Core.Clock, f.Core.Accounts);
         var task = new PlaylistRefreshTask(f.Core.Accounts, playlistService, NullLogger<PlaylistRefreshTask>.Instance);
-        var trigger = Assert.Single(task.GetDefaultTriggers());
-        Assert.Equal(TaskTriggerInfoType.IntervalTrigger, trigger.Type);
-        Assert.Equal(TimeSpan.FromMinutes(5).Ticks, trigger.IntervalTicks);
+        var triggers = task.GetDefaultTriggers().ToList();
+        Assert.Equal([TaskTriggerInfoType.StartupTrigger, TaskTriggerInfoType.IntervalTrigger], triggers.Select(trigger => trigger.Type));
+        Assert.Equal(TimeSpan.FromMinutes(5).Ticks, triggers[1].IntervalTicks);
     }
 
     [Fact]
@@ -215,15 +215,15 @@ public sealed class ScheduledTaskTests
     }
 
     [Fact]
-    public void ScrobbleDeliveryTask_DefaultTriggers_AreFiveSecondInterval()
+    public void ScrobbleDeliveryTask_DefaultTriggers_AreStartupAndOneMinuteInterval()
     {
         using var fixture = new CoreFixture();
         var (_, _, _, outbox, playback, _) = CreateDeliveryServices(fixture);
         using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
         var task = new ScrobbleDeliveryTask(playback, delivery, NullLogger<ScrobbleDeliveryTask>.Instance);
-        var trigger = Assert.Single(task.GetDefaultTriggers());
-        Assert.Equal(TaskTriggerInfoType.IntervalTrigger, trigger.Type);
-        Assert.Equal(TimeSpan.FromMinutes(1).Ticks, trigger.IntervalTicks);
+        var triggers = task.GetDefaultTriggers().ToList();
+        Assert.Equal([TaskTriggerInfoType.StartupTrigger, TaskTriggerInfoType.IntervalTrigger], triggers.Select(trigger => trigger.Type));
+        Assert.Equal(TimeSpan.FromMinutes(1).Ticks, triggers[1].IntervalTicks);
     }
 
     [Fact]

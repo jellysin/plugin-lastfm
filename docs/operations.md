@@ -238,10 +238,12 @@ A run never overlaps another run of the same task.
 
 | Task | Default trigger | What it does |
 | :--- | :--- | :--- |
-| Reconcile Last.fm favourites | every 5 minutes | One favourite run for each connected account |
-| Refresh Last.fm playlists | every 5 minutes | Refreshes each account's Last.fm playlists that are due |
-| Retry Last.fm scrobble delivery | every minute | Sends plays waiting for a backoff and retries plays the server could not store |
+| Reconcile Last.fm favourites | at server start, then every 5 minutes | One favourite run for each connected account |
+| Refresh Last.fm playlists | at server start, then every 5 minutes | Refreshes each account's Last.fm playlists that are due |
+| Retry Last.fm scrobble delivery | at server start, then every minute | Sends plays waiting for a backoff and retries plays the server could not store |
 
+The start run finishes work a restart interrupted, such as a playlist write,
+without waiting for the first interval.
 Accounts that need reconnecting are skipped. Removing a task's triggers stops that
 work until it is started by hand; fresh plays are still sent when stored.
 
