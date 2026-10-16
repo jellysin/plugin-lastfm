@@ -46,6 +46,20 @@ public sealed class PublicSurfaceTests
         Assert.Equal("nosniff", controller.Response.Headers["X-Content-Type-Options"]);
     }
 
+    [Fact]
+    public void EveryEmbeddedScriptModuleIsServed()
+    {
+        // The dashboard imports every compiled module; one missing from the allow-list breaks the whole page.
+        const string prefix = "JellySin.Plugin.Lastfm.Web.";
+        var scripts = typeof(PublicController).Assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith(prefix, StringComparison.Ordinal) && name.EndsWith(".js", StringComparison.Ordinal))
+            .Select(name => name[prefix.Length..])
+            .ToArray();
+        Assert.Contains("app.js", scripts);
+        var (controller, _) = Create();
+        Assert.All(scripts, script => Assert.IsType<FileStreamResult>(controller.Asset(script)));
+    }
+
     [Theory]
     [InlineData("../app.js")]
     [InlineData("admin.html")]

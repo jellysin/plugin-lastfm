@@ -9,11 +9,18 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace JellySin.Plugin.Lastfm.Playback;
 
-public sealed record UserLibraryRules(IReadOnlyList<Guid> ExcludedLibraries);
+public sealed record UserLibraryRules(
+    IReadOnlyList<Guid>? ExcludedLibraries = null,
+    IReadOnlyList<string>? ExcludedDevices = null,
+    IReadOnlyList<string>? ExcludedMediaTypes = null);
 
 public sealed class LibraryRuleService : IDisposable
 {
     private sealed record LibraryPathPrefix(string Prefix, Guid LibraryId);
+
+    public const int MaxExcludedDevices = 64;
+    public const int MaxDeviceIdLength = 256;
+    public static IReadOnlyList<string> KnownMediaTypes { get; } = ["Music", "Audiobooks", "MusicVideos"];
 
     private const string StoreKey = "library-rules";
     private const int MaxCachedItems = 8192;
@@ -25,6 +32,8 @@ public sealed class LibraryRuleService : IDisposable
     private readonly ILogger<LibraryRuleService> _logger;
     private readonly Func<PluginConfiguration>? _configProvider;
     private readonly ConcurrentDictionary<Guid, HashSet<Guid>> _userExcluded = new();
+    private readonly ConcurrentDictionary<Guid, HashSet<string>> _userExcludedDevices = new();
+    private readonly ConcurrentDictionary<Guid, HashSet<string>> _userExcludedMediaTypes = new();
     private readonly ConcurrentDictionary<Guid, IReadOnlyList<Guid>> _itemLibraries = new();
     private readonly object _rebuildGate = new();
     private readonly object _rebuildSync = new();
@@ -71,9 +80,9 @@ public sealed class LibraryRuleService : IDisposable
         foreach (var userId in await _store.GetUsersAsync(cancellationToken).ConfigureAwait(false))
         {
             var rules = await _store.ReadAsync<UserLibraryRules>(userId, StoreKey, cancellationToken).ConfigureAwait(false);
-            if (rules?.ExcludedLibraries is { Count: > 0 } excluded)
+            if (rules is not null)
             {
-                _userExcluded[userId] = new HashSet<Guid>(excluded.Take(PluginConfiguration.MaxConfiguredLibraries));
+                PopulateCache(userId, rules);
             }
         }
     }
@@ -114,16 +123,101 @@ public sealed class LibraryRuleService : IDisposable
     {
         if (_userExcluded.TryGetValue(userId, out var cached)) return cached.ToArray();
         var stored = await _store.ReadAsync<UserLibraryRules>(userId, StoreKey, cancellationToken).ConfigureAwait(false);
-        var set = new HashSet<Guid>(stored?.ExcludedLibraries?.Take(PluginConfiguration.MaxConfiguredLibraries) ?? []);
-        _userExcluded[userId] = set;
-        return set.ToArray();
+        PopulateCache(userId, stored);
+        return _userExcluded.GetValueOrDefault(userId)?.ToArray() ?? [];
+    }
+
+    public async Task<IReadOnlyList<string>> GetUserExcludedDevicesAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        if (_userExcludedDevices.TryGetValue(userId, out var cached)) return cached.ToArray();
+        var stored = await _store.ReadAsync<UserLibraryRules>(userId, StoreKey, cancellationToken).ConfigureAwait(false);
+        PopulateCache(userId, stored);
+        return _userExcludedDevices.GetValueOrDefault(userId)?.ToArray() ?? [];
+    }
+
+    public async Task<IReadOnlyList<string>> GetUserExcludedMediaTypesAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        if (_userExcludedMediaTypes.TryGetValue(userId, out var cached)) return cached.ToArray();
+        var stored = await _store.ReadAsync<UserLibraryRules>(userId, StoreKey, cancellationToken).ConfigureAwait(false);
+        PopulateCache(userId, stored);
+        return _userExcludedMediaTypes.GetValueOrDefault(userId)?.ToArray() ?? [];
     }
 
     public async Task SetUserExcludedLibrariesAsync(Guid userId, IReadOnlyList<Guid> excludedLibraries, CancellationToken cancellationToken)
     {
         var bounded = excludedLibraries.Distinct().Take(PluginConfiguration.MaxConfiguredLibraries).ToArray();
-        await _store.WriteAsync(userId, StoreKey, new UserLibraryRules(bounded), cancellationToken).ConfigureAwait(false);
+        await _store.UpdateAsync<UserLibraryRules>(userId, StoreKey, current =>
+            new UserLibraryRules(
+                ExcludedLibraries: bounded,
+                ExcludedDevices: current?.ExcludedDevices,
+                ExcludedMediaTypes: current?.ExcludedMediaTypes),
+            cancellationToken).ConfigureAwait(false);
         _userExcluded[userId] = new HashSet<Guid>(bounded);
+    }
+
+    public async Task SetUserExcludedDevicesAsync(Guid userId, IReadOnlyList<string> excludedDevices, CancellationToken cancellationToken)
+    {
+        var bounded = excludedDevices
+            .Where(d => !string.IsNullOrEmpty(d) && d.Length <= MaxDeviceIdLength)
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxExcludedDevices)
+            .ToArray();
+        await _store.UpdateAsync<UserLibraryRules>(userId, StoreKey, current =>
+            new UserLibraryRules(
+                ExcludedLibraries: current?.ExcludedLibraries,
+                ExcludedDevices: bounded,
+                ExcludedMediaTypes: current?.ExcludedMediaTypes),
+            cancellationToken).ConfigureAwait(false);
+        _userExcludedDevices[userId] = new HashSet<string>(bounded, StringComparer.Ordinal);
+    }
+
+    public async Task SetUserExcludedMediaTypesAsync(Guid userId, IReadOnlyList<string> excludedMediaTypes, CancellationToken cancellationToken)
+    {
+        var bounded = excludedMediaTypes
+            .Where(KnownMediaTypes.Contains)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        await _store.UpdateAsync<UserLibraryRules>(userId, StoreKey, current =>
+            new UserLibraryRules(
+                ExcludedLibraries: current?.ExcludedLibraries,
+                ExcludedDevices: current?.ExcludedDevices,
+                ExcludedMediaTypes: bounded),
+            cancellationToken).ConfigureAwait(false);
+        _userExcludedMediaTypes[userId] = new HashSet<string>(bounded, StringComparer.Ordinal);
+    }
+
+    private void PopulateCache(Guid userId, UserLibraryRules? rules)
+    {
+        if (rules?.ExcludedLibraries is { Count: > 0 } excluded)
+        {
+            _userExcluded[userId] = new HashSet<Guid>(excluded.Take(PluginConfiguration.MaxConfiguredLibraries));
+        }
+        else
+        {
+            _userExcluded.TryRemove(userId, out _);
+        }
+
+        if (rules?.ExcludedDevices is { Count: > 0 } excludedDevices)
+        {
+            _userExcludedDevices[userId] = new HashSet<string>(
+                excludedDevices.Where(d => !string.IsNullOrEmpty(d) && d.Length <= MaxDeviceIdLength).Take(MaxExcludedDevices),
+                StringComparer.Ordinal);
+        }
+        else
+        {
+            _userExcludedDevices.TryRemove(userId, out _);
+        }
+
+        if (rules?.ExcludedMediaTypes is { Count: > 0 } excludedTypes)
+        {
+            _userExcludedMediaTypes[userId] = new HashSet<string>(
+                excludedTypes.Where(KnownMediaTypes.Contains),
+                StringComparer.Ordinal);
+        }
+        else
+        {
+            _userExcludedMediaTypes.TryRemove(userId, out _);
+        }
     }
 
     public IReadOnlyList<Guid>? ResolveItemLibraries(BaseItem item)
@@ -152,20 +246,38 @@ public sealed class LibraryRuleService : IDisposable
         return null;
     }
 
-    public bool IsMediaTypeAllowed(BaseItem item)
+    public static string? MediaTypeOf(BaseItem item) => item switch
     {
-        var config = GetConfiguration();
-        return item switch
-        {
-            AudioBook => config.ScrobbleAudiobooks,
-            Audio => config.ScrobbleMusic,
-            MusicVideo => config.ScrobbleMusicVideos,
-            _ => false
-        };
-    }
+        AudioBook => "Audiobooks",
+        Audio => "Music",
+        MusicVideo => "MusicVideos",
+        _ => null
+    };
 
-    public bool IsScrobblingAllowed(Guid userId, BaseItem item)
+    public static bool IsAdminAllowed(PluginConfiguration config, string mediaType) => mediaType switch
     {
+        "Audiobooks" => config.ScrobbleAudiobooks,
+        "Music" => config.ScrobbleMusic,
+        "MusicVideos" => config.ScrobbleMusicVideos,
+        _ => false
+    };
+
+    public bool IsMediaTypeAllowed(BaseItem item) => MediaTypeOf(item) is { } mediaType && IsAdminAllowed(GetConfiguration(), mediaType);
+
+    public bool IsScrobblingAllowed(Guid userId, BaseItem item, string? deviceId = null)
+    {
+        if (deviceId is not null)
+        {
+            var userExcludedDevices = _userExcludedDevices.GetValueOrDefault(userId);
+            if (userExcludedDevices is not null && userExcludedDevices.Contains(deviceId)) return false;
+        }
+
+        if (MediaTypeOf(item) is { } mediaType)
+        {
+            var userExcludedTypes = _userExcludedMediaTypes.GetValueOrDefault(userId);
+            if (userExcludedTypes is not null && userExcludedTypes.Contains(mediaType)) return false;
+        }
+
         var config = GetConfiguration();
         var mode = config.LibraryMode;
         var adminLibs = config.LibraryIds;

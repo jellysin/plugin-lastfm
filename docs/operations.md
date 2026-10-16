@@ -195,6 +195,19 @@ its artist and title and no album, because Jellyfin keeps no album for it. Other
 videos never count. A configuration saved before these switches existed scrobbles
 music only (`ConfigurationTests.SettingsSavedBeforeMediaTypesExistedScrobbleMusicOnly`).
 
+Each user can narrow these rules for their own account on the dashboard, under
+"Library scrobbling", "Devices that scrobble" and "Media types that scrobble". A
+user can exclude more libraries, devices or media types, but never turn on what an
+administrator turned off. A type the administrator turned off is shown disabled and
+keeps the user's own choice for when it is turned on again
+(`dashboard.spec.mjs`, "saving media types keeps the user exclusion").
+
+The device list holds only devices the user signed in on, newest first, at most 64
+(`DeviceAndMediaTypeRuleTests.UserDevicesController_ListsOnlyDevicesTheCallerSignedInOn`);
+devices of other users are never listed, even for users allowed on all devices. The
+exclusions are stored with the library exclusions in the user's plugin state and
+checked from memory while playback is captured.
+
 A play that is running while its user connects again, also to the same Last.fm
 account, is not submitted: connecting starts a new capture, and the tracker drops a
 play begun under the previous one and ignores its remaining progress. The next

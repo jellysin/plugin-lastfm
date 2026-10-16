@@ -157,7 +157,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
             {
                 var binding = accounts.GetCaptureBinding(user.Id);
                 if (binding is null) continue;
-                if (!libraryRules.IsScrobblingAllowed(user.Id, item)) continue;
+                if (!libraryRules.IsScrobblingAllowed(user.Id, item, args.DeviceId)) continue;
                 var snapshot = new PlaybackSnapshot(sessionId, user.Id, track, signal, args.PlaybackPositionTicks ?? 0, args.IsPaused, false, timestamp, utc, binding.AccountGeneration, binding.CaptureGeneration, Plugin.Instance?.ListeningGeneration ?? 0);
                 if (!_snapshots.Writer.TryWrite(snapshot)) Interlocked.Increment(ref _dropped);
             }
