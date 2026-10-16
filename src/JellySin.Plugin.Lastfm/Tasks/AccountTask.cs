@@ -43,15 +43,11 @@ public abstract class AccountTask(AccountService accounts, ILogger logger) : ISc
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers() =>
         [new() { Type = TaskTriggerInfoType.IntervalTrigger, IntervalTicks = TimeSpan.FromMinutes(5).Ticks }];
 
+    // No subclass owns anything to release, so the base disposes its gate directly.
     public void Dispose()
     {
-        Dispose(true);
+        _gate.Dispose();
         GC.SuppressFinalize(this);
-    }
-
-    protected virtual void Dispose(bool disposing)
-    {
-        if (disposing) _gate.Dispose();
     }
 
     protected abstract Task RunAsync(Guid userId, CancellationToken cancellationToken);
