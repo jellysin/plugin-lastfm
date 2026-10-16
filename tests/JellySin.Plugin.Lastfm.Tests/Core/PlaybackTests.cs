@@ -1,10 +1,11 @@
 using JellySin.Plugin.Lastfm.Playback;
+using Microsoft.Extensions.Time.Testing;
 
 namespace JellySin.Plugin.Lastfm.Tests.Core;
 
 public sealed class PlaybackTests
 {
-    private readonly TestClock _clock = new();
+    private readonly FakeTimeProvider _clock = TestTime.Clock();
     private readonly Guid _user = Guid.NewGuid();
     private readonly MusicTrack _track = new(Guid.NewGuid(), "Artist", "Track", "Album", null, 100);
 

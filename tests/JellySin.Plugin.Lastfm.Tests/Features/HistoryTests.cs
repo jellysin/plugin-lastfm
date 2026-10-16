@@ -83,7 +83,7 @@ public sealed class HistoryTests
         var preview = await f.History.PreviewHistoryImportAsync(f.Core.UserId, Ct);
         Assert.Empty(preview.Entries);
         Assert.Equal("ambiguous", Assert.Single(preview.Unmatched).Status);
-        f.Core.Clock.Advance(1801);
+        f.Core.Clock.Advance(TimeSpan.FromSeconds(1801));
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.History.ApplyHistoryImportAsync(f.Core.UserId, preview.Id, Ct));
         Assert.Empty(f.Library.HistoryWrites);
     }
@@ -109,7 +109,7 @@ public sealed class HistoryTests
         await f.InitializeAsync();
         f.Core.Client.Handler = (method, args, _) => FeatureFixture.Page("recenttracks", [], 2, int.Parse(args["page"], CultureInfo.InvariantCulture));
         var first = await f.History.GetHistoryAsync(f.Core.UserId, 1, Ct);
-        f.Core.Clock.Advance(3600);
+        f.Core.Clock.Advance(TimeSpan.FromSeconds(3600));
         var next = await f.History.GetHistoryAsync(f.Core.UserId, 2, Ct, first.Until);
         Assert.Equal(first.Until, next.Until);
         Assert.Equal(f.Core.Client.Calls[0].Values["to"], f.Core.Client.Calls[1].Values["to"]);
@@ -159,7 +159,7 @@ public sealed class HistoryTests
         Assert.Equal(2, checkpoint.NextPage);
         Assert.Single(checkpoint.Entries);
         Assert.Null(await f.History.GetHistoryImportPreviewAsync(Guid.NewGuid(), Ct));
-        f.Core.Clock.Advance(1801);
+        f.Core.Clock.Advance(TimeSpan.FromSeconds(1801));
         Assert.Null(await f.History.GetHistoryImportPreviewAsync(f.Core.UserId, Ct));
     }
 }

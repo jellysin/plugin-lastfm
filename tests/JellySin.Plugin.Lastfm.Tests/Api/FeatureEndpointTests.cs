@@ -67,7 +67,8 @@ public sealed class FeatureEndpointTests
         await fixture.InitializeAsync();
         var local = fixture.AddLocal("Loved on Last.fm");
         fixture.Loved.Add(local.Track);
-        using var runs = new FavouriteRuns(fixture.Favourites, fixture.Core.Clock, NullLogger<FavouriteRuns>.Instance)
+        // The request wait is real time: the test holds a run past it while the run itself keeps going.
+        using var runs = new FavouriteRuns(fixture.Favourites, TimeProvider.System, NullLogger<FavouriteRuns>.Instance)
         {
             RequestWait = TimeSpan.FromMilliseconds(50),
         };

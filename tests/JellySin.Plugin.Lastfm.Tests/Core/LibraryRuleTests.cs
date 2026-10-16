@@ -12,6 +12,7 @@ using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Core;
@@ -433,7 +434,7 @@ public sealed class LibraryRuleTests
         PlaybackPositionTicks = 0
     };
 
-    private static void AdvanceAndReportProgress(Mock<ISessionManager> sessions, PlaybackProgressEventArgs args, TestClock clock, int seconds)
+    private static void AdvanceAndReportProgress(Mock<ISessionManager> sessions, PlaybackProgressEventArgs args, FakeTimeProvider clock, int seconds)
     {
         for (var elapsed = 0; elapsed < seconds; elapsed += 30)
         {

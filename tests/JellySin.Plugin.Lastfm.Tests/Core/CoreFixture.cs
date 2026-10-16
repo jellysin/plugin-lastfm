@@ -5,6 +5,7 @@ using JellySin.Plugin.Lastfm.Playback;
 using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Transport;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Time.Testing;
 
 namespace JellySin.Plugin.Lastfm.Tests.Core;
 
@@ -12,7 +13,7 @@ public sealed class CoreFixture : IDisposable
 {
     public string DirectoryPath { get; } = Path.Combine(Path.GetTempPath(), "jellysin-tests", Guid.NewGuid().ToString("N"));
     public FileStateStore Store { get; }
-    public TestClock Clock { get; } = new();
+    public FakeTimeProvider Clock { get; } = TestTime.Clock();
     public StubClient Client { get; } = new();
     public IDataProtectionProvider Protection { get; } = new EphemeralDataProtectionProvider();
     public AccountService Accounts { get; }
@@ -64,16 +65,6 @@ public sealed class CoreFixture : IDisposable
         Store.Dispose();
         Directory.Delete(DirectoryPath, true);
     }
-}
-
-public sealed class TestClock : TimeProvider
-{
-    private DateTimeOffset _utc = new(2026, 9, 8, 0, 0, 0, TimeSpan.Zero);
-    private long _timestamp;
-    public override DateTimeOffset GetUtcNow() => _utc;
-    public override long GetTimestamp() => _timestamp;
-    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-    public void Advance(double seconds) { _utc = _utc.AddSeconds(seconds); _timestamp += TimeSpan.FromSeconds(seconds).Ticks; }
 }
 
 public sealed class StubClient : ILastfmClient

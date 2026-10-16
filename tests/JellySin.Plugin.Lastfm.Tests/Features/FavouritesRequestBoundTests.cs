@@ -43,7 +43,8 @@ public sealed class FavouritesRequestBoundTests
         await f.InitializeAsync();
         var local = f.AddLocal("Loved on Last.fm");
         f.Loved.Add(local.Track);
-        using var runs = new FavouriteRuns(f.Favourites, f.Core.Clock, NullLogger<FavouriteRuns>.Instance)
+        // The request wait is real time: the test holds a run past it while the run itself keeps going.
+        using var runs = new FavouriteRuns(f.Favourites, TimeProvider.System, NullLogger<FavouriteRuns>.Instance)
         {
             RequestWait = TimeSpan.FromMilliseconds(50),
         };
@@ -143,7 +144,8 @@ public sealed class FavouritesRequestBoundTests
         var local = f.AddLocal("Loved on Last.fm");
         f.Loved.Add(local.Track);
         var logger = new FakeLogger<FavouriteRuns>();
-        using var runs = new FavouriteRuns(f.Favourites, f.Core.Clock, logger)
+        // The request wait is real time: the test holds a run past it while the run itself keeps going.
+        using var runs = new FavouriteRuns(f.Favourites, TimeProvider.System, logger)
         {
             RequestWait = TimeSpan.FromMilliseconds(50),
         };

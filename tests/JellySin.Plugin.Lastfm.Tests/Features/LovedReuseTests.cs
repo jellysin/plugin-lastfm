@@ -5,6 +5,7 @@ using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Users;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Features;
@@ -284,9 +285,9 @@ public sealed class LovedReuseTests
 
     private static int LovedPageCalls(FeatureFixture f) => f.Core.Client.Calls.Count(call => call.Method == "user.getLovedTracks");
 
-    private static (LovedReuse Reuse, TestClock Clock, FakeMusicLibrary Library) Reuse()
+    private static (LovedReuse Reuse, FakeTimeProvider Clock, FakeMusicLibrary Library) Reuse()
     {
-        var clock = new TestClock();
+        var clock = TestTime.Clock();
         var library = new FakeMusicLibrary();
         return (new(library, clock), clock, library);
     }
