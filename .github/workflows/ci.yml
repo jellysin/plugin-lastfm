@@ -91,7 +91,7 @@ jobs:
         run: |
           dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build -- --self-test
           dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
-      - uses: jellysin/release-helper/actions/check@1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
+      - uses: jellysin/release-helper/actions/check@043c6288642b0734ba53e46603a02cfdb3ca0014 # v1.2.2
       - name: Validate workflows and scan tracked history for secrets
         env:
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -135,7 +135,7 @@ jobs:
       - name: Enforce real-library search and concurrent playback budgets on Jellyfin 12.1
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server '12.1'
       - name: Validate installable package and release metadata
-        uses: jellysin/release-helper/actions/package@1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
+        uses: jellysin/release-helper/actions/package@043c6288642b0734ba53e46603a02cfdb3ca0014 # v1.2.2
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
           nuget-lock-path: src/JellySin.Plugin.Lastfm/packages.lock.json
