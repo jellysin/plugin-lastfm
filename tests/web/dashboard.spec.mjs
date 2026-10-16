@@ -411,12 +411,12 @@ test('native admin settings save the library rule only when the libraries could 
   const books = '22222222-2222-2222-2222-222222222222';
   await openSettings(page, { config: { LibraryMode: 2, LibraryIds: [books] }, libraries: [{ Id: music, Name: 'Music' }, { Id: books, Name: 'Audiobooks' }] });
   await expect(page.locator('#jellysin-library-mode')).toHaveValue('BlockList');
-  await expect(page.getByLabel('Audiobooks')).toBeChecked();
-  await page.getByLabel('Music').check();
+  await expect(page.getByLabel('Audiobooks', { exact: true })).toBeChecked();
+  await page.getByLabel('Music', { exact: true }).check();
   await page.locator('#jellysin-library-mode').selectOption('AllowList');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', LibraryMode: 1, LibraryIds: [music, books] });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 1, LibraryIds: [music, books] });
 });
 
 test('native admin settings keep the library rule when the libraries could not be listed', async ({ page }) => {
@@ -425,7 +425,27 @@ test('native admin settings keep the library rule when the libraries could not b
   await expect(page.locator('#jellysin-libraries-list')).toHaveText('Could not load libraries.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', LibraryMode: 2, LibraryIds: [books] });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 2, LibraryIds: [books] });
+});
+
+test('native admin settings save the media types to scrobble', async ({ page }) => {
+  await openSettings(page, { config: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false } });
+  await expect(page.getByLabel('Music tracks')).toBeChecked();
+  await expect(page.getByLabel('Audiobook chapters')).not.toBeChecked();
+  await expect(page.getByLabel('Music videos')).not.toBeChecked();
+  await page.getByLabel('Music tracks').uncheck();
+  await page.getByLabel('Audiobook chapters').check();
+  await page.getByLabel('Music videos').check();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: false, ScrobbleAudiobooks: true, ScrobbleMusicVideos: true });
+});
+
+test('native admin settings show the media type defaults for a configuration saved before they existed', async ({ page }) => {
+  await openSettings(page);
+  await expect(page.getByLabel('Music tracks')).toBeChecked();
+  await expect(page.getByLabel('Audiobook chapters')).not.toBeChecked();
+  await expect(page.getByLabel('Music videos')).not.toBeChecked();
 });
 
 const calls = (page, path) => page.evaluate(wanted => globalThis.fixture.calls.filter(call => call.path === wanted), path);
@@ -433,11 +453,11 @@ const calls = (page, path) => page.evaluate(wanted => globalThis.fixture.calls.f
 test('native admin settings preserve host configuration and clear application secrets', async ({ page }) => {
   await openSettings(page);
   await expect(page.locator('#jellysin-enabled')).toBeChecked();
-  await expect(page.locator('#jellysin-settings input')).toHaveCount(1);
+  await expect(page.locator('#jellysin-settings input')).toHaveCount(4);
   await page.locator('#jellysin-enabled').uncheck();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, HostSetting: 'preserved' });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false });
   // The application fields are for the rare server with its own application: closed until asked for.
   await expect(page.locator('#jellysin-advanced')).not.toHaveAttribute('open');
   await expect(page.getByLabel('Application API key', { exact: true })).toBeHidden();

@@ -18,6 +18,13 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     public LibraryFilterMode LibraryMode { get; set; } = LibraryFilterMode.All;
 
+    public bool ScrobbleMusic { get; set; } = true;
+
+    // Off by default: a chapter is not a track, and the artist Jellyfin records for it is the narrator or author.
+    public bool ScrobbleAudiobooks { get; set; }
+
+    public bool ScrobbleMusicVideos { get; set; }
+
     public Guid[] LibraryIds
     {
         get => _libraryIds;

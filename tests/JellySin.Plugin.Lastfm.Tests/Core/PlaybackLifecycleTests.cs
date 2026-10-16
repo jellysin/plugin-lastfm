@@ -140,7 +140,7 @@ public sealed class PlaybackLifecycleTests
     }
 
     [Fact]
-    public async Task AudiobookChapterIsNeverCaptured()
+    public async Task AudiobookChapterIsNotCapturedByDefault()
     {
         using var fixture = new CoreFixture();
         await fixture.ConnectAsync();

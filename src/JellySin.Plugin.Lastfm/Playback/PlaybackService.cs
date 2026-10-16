@@ -138,24 +138,26 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     {
         try
         {
-            if (_legacyPresent || Plugin.Instance?.ListeningEnabled == false || args.IsAutomated || args.Item is not Audio audio || audio is AudioBook) return;
-            var artist = audio.Artists.FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(artist) || string.IsNullOrWhiteSpace(audio.Name) || artist.Length > 1024 || audio.Name.Length > 1024) return;
+            if (_legacyPresent || Plugin.Instance?.ListeningEnabled == false || args.IsAutomated) return;
+            if (args.Item is not (Audio or MusicVideo) || args.Item is not IHasArtist performed || !libraryRules.IsMediaTypeAllowed(args.Item)) return;
+            var item = args.Item;
+            var artist = performed.Artists.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(artist) || string.IsNullOrWhiteSpace(item.Name) || artist.Length > 1024 || item.Name.Length > 1024) return;
             var sessionId = args.PlaySessionId ?? args.Session?.Id ?? args.DeviceId;
             if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > 256) return;
-            audio.ProviderIds.TryGetValue("MusicBrainzTrack", out var mbid);
-            var duration = (audio.RunTimeTicks ?? 0) / (double)TimeSpan.TicksPerSecond;
+            item.ProviderIds.TryGetValue("MusicBrainzTrack", out var mbid);
+            var duration = (item.RunTimeTicks ?? 0) / (double)TimeSpan.TicksPerSecond;
             if (duration is <= 30 or > int.MaxValue) return;
-            var track = new MusicTrack(audio.Id, artist, audio.Name, audio.Album?.Length <= 4096 ? audio.Album : null,
+            var track = new MusicTrack(item.Id, artist, item.Name, item.Album?.Length <= 4096 ? item.Album : null,
                 Guid.TryParse(mbid, out var identifier) ? identifier.ToString() : null, duration,
-                audio.AlbumArtists.FirstOrDefault() is { Length: <= 1024 } albumArtist ? albumArtist : null);
+                (item as IHasAlbumArtist)?.AlbumArtists.FirstOrDefault() is { Length: <= 1024 } albumArtist ? albumArtist : null);
             var timestamp = clock.GetTimestamp();
             var utc = clock.GetUtcNow();
             foreach (var user in args.Users.Take(32))
             {
                 var binding = accounts.GetCaptureBinding(user.Id);
                 if (binding is null) continue;
-                if (!libraryRules.IsScrobblingAllowed(user.Id, audio)) continue;
+                if (!libraryRules.IsScrobblingAllowed(user.Id, item)) continue;
                 var snapshot = new PlaybackSnapshot(sessionId, user.Id, track, signal, args.PlaybackPositionTicks ?? 0, args.IsPaused, false, timestamp, utc, binding.AccountGeneration, binding.CaptureGeneration, Plugin.Instance?.ListeningGeneration ?? 0);
                 if (!_snapshots.Writer.TryWrite(snapshot)) Interlocked.Increment(ref _dropped);
             }

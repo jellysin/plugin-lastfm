@@ -22,7 +22,7 @@ public sealed class ConfigurationTests
 
     [Fact]
     public void SettingsHoldTheConfiguredProperties() =>
-        Assert.Equal(["Enabled", "LibraryIds", "LibraryMode"], typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly).Select(property => property.Name).Order());
+        Assert.Equal(["Enabled", "LibraryIds", "LibraryMode", "ScrobbleAudiobooks", "ScrobbleMusic", "ScrobbleMusicVideos"], typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly).Select(property => property.Name).Order());
 
     [Fact]
     public void SettingsWithLibraryRulesRoundtripsXml()
@@ -42,5 +42,30 @@ public sealed class ConfigurationTests
         Assert.True(loaded.Enabled);
         Assert.Equal(LibraryFilterMode.AllowList, loaded.LibraryMode);
         Assert.Equal([libId], loaded.LibraryIds);
+    }
+
+    [Fact]
+    public void MediaTypeSwitchesRoundtripXml()
+    {
+        var config = new PluginConfiguration { ScrobbleMusic = false, ScrobbleAudiobooks = true, ScrobbleMusicVideos = true };
+        using var writer = new StringWriter();
+        var serializer = new XmlSerializer(typeof(PluginConfiguration));
+        serializer.Serialize(writer, config);
+        using var reader = new StringReader(writer.ToString());
+        var loaded = Assert.IsType<PluginConfiguration>(serializer.Deserialize(reader));
+        Assert.False(loaded.ScrobbleMusic);
+        Assert.True(loaded.ScrobbleAudiobooks);
+        Assert.True(loaded.ScrobbleMusicVideos);
+    }
+
+    [Fact]
+    public void SettingsSavedBeforeMediaTypesExistedScrobbleMusicOnly()
+    {
+        const string Saved = "<?xml version=\"1.0\"?><PluginConfiguration><Enabled>true</Enabled><LibraryMode>All</LibraryMode></PluginConfiguration>";
+        using var reader = new StringReader(Saved);
+        var loaded = Assert.IsType<PluginConfiguration>(new XmlSerializer(typeof(PluginConfiguration)).Deserialize(reader));
+        Assert.True(loaded.ScrobbleMusic);
+        Assert.False(loaded.ScrobbleAudiobooks);
+        Assert.False(loaded.ScrobbleMusicVideos);
     }
 }
