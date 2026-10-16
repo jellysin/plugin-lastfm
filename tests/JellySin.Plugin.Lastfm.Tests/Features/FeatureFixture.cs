@@ -119,7 +119,31 @@ internal sealed class FakeMusicLibrary : IMusicLibrary, IMusicWriter, ILibraryGe
 {
     public Guid UserId { get; set; }
     /// <summary>Stands in for Jellyfin's item events: every added, removed or renamed item moves it, favourite flags do not.</summary>
-    public long Current => unchecked(Items.Count + Items.Sum(entry => (long)HashCode.Combine(entry.Key, entry.Value.Track)));
+    public long Current
+    {
+        get
+        {
+            var current = unchecked(Items.Count + Items.Sum(entry => (long)HashCode.Combine(entry.Key, entry.Value.Track)));
+            seen[current] = Items.ToDictionary(entry => entry.Key, entry => entry.Value.Track);
+            return current;
+        }
+    }
+
+    /// <summary>When set, the changes are reported as no longer all known, as after a scan of more than 4096 tracks.</summary>
+    public bool ChangesForgotten { get; set; }
+
+    private readonly Dictionary<long, Dictionary<Guid, MusicTrack>> seen = [];
+
+    /// <summary>Stands in for the kept change log: the difference between the items read with that generation and now.</summary>
+    public LibraryChanges? ChangesSince(long generation)
+    {
+        if (ChangesForgotten || !seen.TryGetValue(generation, out var before)) return null;
+        var changes = new LibraryChanges();
+        foreach (var (id, track) in before.Where(entry => !Items.ContainsKey(entry.Key))) changes.Note(id, track.Title, track.MusicBrainzId, false);
+        foreach (var (id, item) in Items.Where(entry => !before.TryGetValue(entry.Key, out var old) || old != entry.Value.Track))
+            changes.Note(id, item.Track.Title, item.Track.MusicBrainzId, true);
+        return changes;
+    }
     /// <summary>Stands in for the user's policy fingerprint.</summary>
     public string Policy { get; set; } = "all-libraries";
     public string Access(Guid userId) => Policy;

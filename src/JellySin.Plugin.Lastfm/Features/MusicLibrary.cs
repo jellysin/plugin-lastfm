@@ -176,7 +176,8 @@ public sealed class MusicLibrary(ILibraryManager library, IUserManager users, IU
             item.ProviderIds.GetValueOrDefault("MusicBrainzTrack")),
         state?.IsFavorite ?? false, state?.PlayCount ?? 0, state?.LastPlayedDate);
 
-    private static string Normalize(string? value) => (value ?? string.Empty).Trim().Normalize(NormalizationForm.FormKC).ToUpperInvariant();
+    /// <summary>The form names are compared in: trimmed, compatibility-composed and upper case.</summary>
+    public static string Normalize(string? value) => (value ?? string.Empty).Trim().Normalize(NormalizationForm.FormKC).ToUpperInvariant();
     private static bool CompatibleId(string? requested, string? actual) => !Guid.TryParse(requested, out var expected)
         || !Guid.TryParse(actual, out var existing) || expected == existing;
     private static MusicSeed ToSeed(BaseItem item) => new(item.Id, item.Name, (item as Audio)?.Artists.FirstOrDefault(), item is Audio ? "track" : "artist");

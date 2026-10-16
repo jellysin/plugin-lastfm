@@ -49,6 +49,12 @@ public sealed class FavouriteRuns(FavouritesService favourites, TimeProvider clo
     public async Task RunToEndAsync(Guid userId, CancellationToken ct) =>
         await StartOrJoin(userId).Completion.WaitAsync(ct).ConfigureAwait(false);
 
+    /// <summary>Starts the user's run unless one runs already, without waiting; false when too many runs wait or the server stops.</summary>
+    public bool TryStart(Guid userId)
+    {
+        lock (gate) return !disposed && TryStartOrJoin(userId) is not null;
+    }
+
     public void Dispose()
     {
         lock (gate)
@@ -85,14 +91,20 @@ public sealed class FavouriteRuns(FavouritesService favourites, TimeProvider clo
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            if (runs.TryGetValue(userId, out var existing)) return existing;
-            if (runs.Count >= MaximumRuns) throw new InvalidOperationException("Too many favourite synchronizations are waiting.");
-            var run = new Run(stopping.Token);
-            runs.Add(userId, run);
-            // The reconciliation matches the library synchronously; it must not run on the caller's thread.
-            _ = Task.Run(() => ExecuteAsync(userId, run), CancellationToken.None);
-            return run;
+            return TryStartOrJoin(userId) ?? throw new InvalidOperationException("Too many favourite synchronizations are waiting.");
         }
+    }
+
+    // Called under the gate.
+    private Run? TryStartOrJoin(Guid userId)
+    {
+        if (runs.TryGetValue(userId, out var existing)) return existing;
+        if (runs.Count >= MaximumRuns) return null;
+        var run = new Run(stopping.Token);
+        runs.Add(userId, run);
+        // The reconciliation matches the library synchronously; it must not run on the caller's thread.
+        _ = Task.Run(() => ExecuteAsync(userId, run), CancellationToken.None);
+        return run;
     }
 
     private async Task ExecuteAsync(Guid userId, Run run)
