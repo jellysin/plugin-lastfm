@@ -28,6 +28,11 @@ public sealed class BuiltAssemblyTests
             "MediaBrowser.Common.Plugins.IPlugin", "MediaBrowser.Common.Plugins.IPluginAssembly", "MediaBrowser.Model.Plugins.IHasWebPages",
         ],
         ["PluginServiceRegistrator"] = ["MediaBrowser.Controller.Plugins.IPluginServiceRegistrator"],
+        // Abstract: the server's task scan skips it and finds only the two tasks built on it.
+        ["Tasks.AccountTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
+        ["Tasks.FavouriteSyncTask"] =["MediaBrowser.Model.Tasks.IScheduledTask"],
+        ["Tasks.PlaylistRefreshTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
+        ["Tasks.ScrobbleDeliveryTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
     };
 
     // The services the plugin adds to the server, each with the number of its registrations.
@@ -54,6 +59,7 @@ public sealed class BuiltAssemblyTests
         "JellySin.Plugin.Lastfm.Features.MusicLibrary x1",
         "JellySin.Plugin.Lastfm.Features.MusicViewCache x1",
         "JellySin.Plugin.Lastfm.Features.PlaylistService x1",
+        "JellySin.Plugin.Lastfm.Playback.DeliveryService x1",
         "JellySin.Plugin.Lastfm.Playback.LibraryRuleService x1",
         "JellySin.Plugin.Lastfm.Playback.PlaybackService x1",
         "JellySin.Plugin.Lastfm.Playback.PlaybackTracker x1",

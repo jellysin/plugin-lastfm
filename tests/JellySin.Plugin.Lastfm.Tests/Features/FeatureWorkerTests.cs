@@ -45,10 +45,11 @@ public sealed class FeatureWorkerTests
         services.AddSingleton(playlists.Object);
         services.AddSingleton(Mock.Of<IUserDataManager>());
         using var provider = services.BuildServiceProvider();
-        var worker = Assert.Single(provider.GetServices<IHostedService>());
-        await worker.StartAsync(ct);
+        var favouriteTask = new JellySin.Plugin.Lastfm.Tasks.FavouriteSyncTask(f.Core.Accounts, provider.GetRequiredService<FavouriteRuns>(), Microsoft.Extensions.Logging.Abstractions.NullLogger<JellySin.Plugin.Lastfm.Tasks.FavouriteSyncTask>.Instance);
+        var playlistTask = new JellySin.Plugin.Lastfm.Tasks.PlaylistRefreshTask(f.Core.Accounts, provider.GetRequiredService<PlaylistService>(), Microsoft.Extensions.Logging.Abstractions.NullLogger<JellySin.Plugin.Lastfm.Tasks.PlaylistRefreshTask>.Instance);
+        await favouriteTask.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
+        await playlistTask.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
         await updated.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
-        await worker.StopAsync(ct);
         playlists.Verify(p => p.UpdatePlaylist(It.IsAny<MediaBrowser.Model.Playlists.PlaylistUpdateRequest>()), Times.Once);
     }
 

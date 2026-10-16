@@ -46,22 +46,20 @@ public sealed class FeatureWorkerLogTests
         var ct = TestContext.Current.CancellationToken;
         using var f = new FeatureFixture();
         await f.InitializeAsync();
-        var local = f.AddLocal("Recovery fails");
-        var playlist = new Playlist { Id = Guid.NewGuid(), OwnerUserId = f.Core.UserId, Path = "" };
-        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-playlist-operation",
-            new PlaylistOperation(new(Guid.NewGuid(), "Recovery", PlaylistSource.Top), [local.Id], playlist.Id, Guid.NewGuid()), ct);
-        var library = new Mock<ILibraryManager>();
-        library.Setup(l => l.GetItemById<Playlist>(playlist.Id, f.Core.UserId)).Returns(playlist);
-        var playlists = new Mock<IPlaylistManager>();
-        playlists.Setup(p => p.UpdatePlaylist(It.IsAny<MediaBrowser.Model.Playlists.PlaylistUpdateRequest>()))
-            .ThrowsAsync(new InvalidOperationException("Playlist store unavailable."));
+        EventHandler<UserDataSaveEventArgs>? handler = null;
+        var data = new Mock<IUserDataManager>();
+        data.SetupAdd(d => d.UserDataSaved += It.IsAny<EventHandler<UserDataSaveEventArgs>>())
+            .Callback<EventHandler<UserDataSaveEventArgs>>(value => handler += value);
         var log = new WorkerLog();
-        using var provider = Build(f, f.Core.Accounts, library.Object, playlists.Object, Mock.Of<IUserDataManager>(), log);
+        using var provider = Build(f, f.Core.Accounts, Mock.Of<ILibraryManager>(), Mock.Of<IPlaylistManager>(), data.Object, log);
         var worker = Assert.Single(provider.GetServices<IHostedService>());
         await worker.StartAsync(ct);
+        await WaitForAsync(() => handler is not null, ct);
+        f.Runs.Dispose();
+        handler!.Invoke(null, new UserDataSaveEventArgs { UserId = f.Core.UserId, SaveReason = UserDataSaveReason.UpdateUserData });
         var line = await WarningAsync(log, "A feature operation", ct);
         await worker.StopAsync(ct);
-        Assert.Contains($"user {Logged.User(f.Core.UserId)} failed with InvalidOperationException", line, StringComparison.Ordinal);
+        Assert.Contains($"user {Logged.User(f.Core.UserId)} failed with ObjectDisposedException", line, StringComparison.Ordinal);
         AssertNoRawId(log, f.Core.UserId);
     }
 
@@ -76,6 +74,7 @@ public sealed class FeatureWorkerLogTests
         services.AddSingleton<ILastfmClient>(f.Core.Client);
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton(f.Favourites);
+        services.AddSingleton(f.Runs);
         services.AddSingleton<IMusicLibrary>(f.Library);
         services.AddSingleton<IMusicWriter>(f.Library);
         services.AddSingleton<IDiscoveryLibrary>(Mock.Of<IDiscoveryLibrary>());

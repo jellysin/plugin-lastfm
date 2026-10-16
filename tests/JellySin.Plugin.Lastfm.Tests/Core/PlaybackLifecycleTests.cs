@@ -133,7 +133,7 @@ public sealed class PlaybackLifecycleTests
         sessions.VerifyRemove(value => value.PlaybackProgress -= It.IsAny<EventHandler<PlaybackProgressEventArgs>>(), Times.Once);
         Assert.Equal(0, playback.GetStatus().DroppedSnapshots);
         Assert.Equal(0, playback.GetStatus().FailedWrites);
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, NullLogger<DeliveryService>.Instance);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
         Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
         Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
@@ -180,7 +180,7 @@ public sealed class PlaybackLifecycleTests
         await playback.StopAsync(TestContext.Current.CancellationToken);
         Assert.True(playback.GetStatus().LegacyPluginDetected);
         Assert.False(playback.TryTakeNowPlaying(out _));
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, NullLogger<DeliveryService>.Instance);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain(fixture.Client.Calls, call => call.Method.StartsWith("track.", StringComparison.Ordinal));
     }
