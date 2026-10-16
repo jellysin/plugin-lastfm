@@ -105,11 +105,25 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
             if (set.Generation != current || set.Access != access || now - set.Created >= MaxAge) set.Reset(current, access, now);
             for (var index = 0; index < tracks.Count; index++)
             {
-                var key = MatchKey.Of(tracks[index]);
-                if (!set.Items.TryGetValue(key, out var id))
+                var track = tracks[index];
+                Guid? id;
+                var hasMbid = Guid.TryParse(track.MusicBrainzId, out var mbid);
+                if (hasMbid && set.Mbids.TryGetValue(mbid, out var mbidId))
                 {
-                    id = match(tracks[index]);
-                    if (set.Items.Count < MaxTracks) set.Items[key] = id;
+                    id = mbidId;
+                }
+                else
+                {
+                    var key = MatchKey.Of(track);
+                    if (!set.Items.TryGetValue(key, out id))
+                    {
+                        id = match(track);
+                        if (set.Items.Count < MaxTracks) set.Items[key] = id;
+                    }
+                    if (hasMbid && id is { } matchedId && set.Mbids.Count < MaxTracks)
+                    {
+                        set.Mbids.TryAdd(mbid, matchedId);
+                    }
                 }
                 result[index] = id;
             }
@@ -131,7 +145,8 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
 
     private readonly record struct MatchKey(string Artist, string Title, string? Album, string? MusicBrainzId)
     {
-        public static MatchKey Of(MusicTrack track) => new(track.Artist, track.Title, track.Album, track.MusicBrainzId);
+        public static MatchKey Of(MusicTrack track) => new(track.Artist, track.Title, track.Album,
+            Guid.TryParse(track.MusicBrainzId, out var mbid) ? mbid.ToString() : track.MusicBrainzId);
     }
 
     private sealed class MatchSet(long generation, string access, DateTimeOffset created)
@@ -140,6 +155,7 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
         public string Access { get; private set; } = access;
         public DateTimeOffset Created { get; private set; } = created;
         public Dictionary<MatchKey, Guid?> Items { get; } = [];
+        public Dictionary<Guid, Guid> Mbids { get; } = [];
 
         public void Reset(long nextGeneration, string nextAccess, DateTimeOffset now)
         {
@@ -147,6 +163,7 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
             Access = nextAccess;
             Created = now;
             Items.Clear();
+            Mbids.Clear();
         }
     }
 }
