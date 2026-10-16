@@ -36,6 +36,11 @@
         <div class="actions"><button id="connect-lastfm" type="button" class="primary">Connect Last.fm</button><button id="disconnect-lastfm" type="button" data-needs-connection hidden>Disconnect</button></div>
         <div id="disconnect-confirmation" class="notice" hidden><p>Disconnect Last.fm and clear your plugin history, pending submissions and preferences? Your Last.fm account and Jellyfin library will remain.</p><button id="confirm-disconnect" type="button">Disconnect and clear plugin data</button><button id="cancel-disconnect" type="button">Cancel</button></div>
         <label class="check" data-needs-connection hidden><input id="scrobbling" type="checkbox"> Scrobble my listening</label>
+        <div id="library-exclusions" data-needs-connection hidden>
+          <h3>Library scrobbling</h3>
+          <p id="library-exclusions-summary" class="muted">Loading libraries…</p>
+          <div id="library-exclusions-list"></div>
+        </div>
         <details data-needs-connection hidden><summary>Delivery status</summary><p id="delivery-status">Refresh to inspect pending submissions.</p><button id="delivery-refresh" type="button">Refresh status</button><button id="delivery-retry" type="button">Retry retained submissions</button></details>
       </section>
       <section id="overview" class="card" aria-labelledby="overview-heading" data-needs-connection hidden>

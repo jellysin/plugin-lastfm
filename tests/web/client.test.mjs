@@ -213,3 +213,38 @@ test('a conflict is explained as a missing connection only when the answer carri
     await assert.rejects(client.api('Me/Overview'), error => error.message === expected, body.slice(0, 60));
   }
 });
+
+test('user library rules can be read and updated', async context => {
+  const client = new Client(bootstrap);
+  client.acceptSession(session);
+  const libId = '11111111-2222-3333-4444-555555555555';
+  let putBody;
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (url === '/jellyfin/JellySin/Lastfm/Me/Libraries' && options.method === 'GET') {
+      return Response.json({
+        Mode: 'All',
+        Libraries: [{ Id: libId, Name: 'Music', IsAdminAllowed: true, IsUserExcluded: false, IsScrobbled: true }],
+      });
+    }
+    if (url === '/jellyfin/JellySin/Lastfm/Me/Libraries' && options.method === 'PUT') {
+      putBody = JSON.parse(options.body);
+      return Response.json({
+        Mode: 'All',
+        Libraries: [{ Id: libId, Name: 'Music', IsAdminAllowed: true, IsUserExcluded: true, IsScrobbled: false }],
+      });
+    }
+    return new Response(null, { status: 404 });
+  });
+
+  const getResult = await client.api('Me/Libraries');
+  assert.equal(getResult.mode, 'All');
+  assert.equal(getResult.libraries.length, 1);
+  assert.equal(getResult.libraries[0].name, 'Music');
+  assert.equal(getResult.libraries[0].isScrobbled, true);
+
+  const putResult = await client.api('Me/Libraries', 'PUT', { excludedLibraries: [libId] });
+  assert.deepEqual(putBody, { excludedLibraries: [libId] });
+  assert.equal(putResult.libraries[0].isUserExcluded, true);
+  assert.equal(putResult.libraries[0].isScrobbled, false);
+});
+

@@ -3,6 +3,8 @@ import { bind, element, link, message, run } from './view.js';
 
 interface Connection { connected: boolean; username?: string; needsReconnect: boolean; scrobblingEnabled: boolean; approvalPending?: boolean }
 interface Me { userName: string; isAdministrator: boolean; connection: Connection }
+interface LibraryItem { id: string; name: string; isAdminAllowed: boolean; isUserExcluded: boolean; isScrobbled: boolean }
+interface UserLibrariesResponse { mode: string; libraries: LibraryItem[] }
 
 const unconfirmed = 'Last.fm did not confirm the connection. Start again.';
 let administrator = false;
@@ -73,6 +75,7 @@ function show(client: Client, me: Me): void {
   profile.replaceChildren();
   if (me.connection.username) link(profile, 'Your Last.fm profile ↗', `https://www.last.fm/user/${encodeURIComponent(me.connection.username)}`, true);
   if (me.isAdministrator) element<HTMLAnchorElement>('server-settings-link').href = `${client.root}/web/index.html#/configurationpage?name=jellysin-lastfm`;
+  if (me.connection.connected) void refreshLibraries(client);
 }
 
 export function setupAccount(client: Client, refresh: () => Promise<void>): void {
@@ -111,3 +114,61 @@ export function setupAccount(client: Client, refresh: () => Promise<void>): void
     });
   });
 }
+
+export async function refreshLibraries(client: Client): Promise<void> {
+  const container = document.getElementById('library-exclusions');
+  if (!container || container.hidden) return;
+  try {
+    const data = await client.api<UserLibrariesResponse>('Me/Libraries');
+    renderLibraries(client, data);
+  } catch {
+    const summary = document.getElementById('library-exclusions-summary');
+    if (summary) summary.textContent = 'Could not load library settings.';
+  }
+}
+
+function renderLibraries(client: Client, data: UserLibrariesResponse): void {
+  const summary = element('library-exclusions-summary');
+  const list = element('library-exclusions-list');
+  list.replaceChildren();
+  if (!data.libraries || data.libraries.length === 0) {
+    summary.textContent = 'No music libraries found on this server.';
+    return;
+  }
+  summary.textContent = data.mode === 'AllowList'
+    ? 'The server allows scrobbling only from selected libraries. You may exclude additional libraries.'
+    : data.mode === 'BlockList'
+    ? 'The server blocks scrobbling from certain libraries. You may exclude additional libraries.'
+    : 'Select which libraries scrobble to your Last.fm account:';
+
+  for (const lib of data.libraries) {
+    const label = document.createElement('label');
+    label.className = 'check';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = lib.isScrobbled;
+    input.disabled = !lib.isAdminAllowed;
+    input.dataset.libraryId = lib.id;
+    input.addEventListener('change', () => void onLibraryToggle(client, list));
+    label.appendChild(input);
+    const span = document.createElement('span');
+    span.textContent = lib.isAdminAllowed ? ` ${lib.name}` : ` ${lib.name} (excluded by administrator)`;
+    label.appendChild(span);
+    list.appendChild(label);
+  }
+}
+
+async function onLibraryToggle(client: Client, list: HTMLElement): Promise<void> {
+  const inputs = list.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+  const excluded: string[] = [];
+  for (const input of inputs) {
+    if (!input.checked && input.dataset.libraryId) {
+      excluded.push(input.dataset.libraryId);
+    }
+  }
+  void run(null, async () => {
+    await client.api('Me/Libraries', 'PUT', { excludedLibraries: excluded });
+    message('Library scrobbling rules updated.');
+  });
+}
+

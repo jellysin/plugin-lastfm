@@ -289,7 +289,7 @@ public sealed class DeliveryLogTests
         plugins.SetupGet(value => value.Plugins).Returns([]);
         var tracker = new PlaybackTracker(fixture.Clock);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
-        var playback = new PlaybackService(sessions.Object, plugins.Object, tracker, outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+        var playback = new PlaybackService(sessions.Object, plugins.Object, tracker, outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         var logger = new LogLines<DeliveryService>();
         return (sessions, plugins, tracker, outbox, playback, logger);
     }

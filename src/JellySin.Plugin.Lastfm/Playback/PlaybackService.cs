@@ -13,7 +13,7 @@ namespace JellySin.Plugin.Lastfm.Playback;
 public sealed record PlaybackRuntimeStatus(bool LegacyPluginDetected, long DroppedSnapshots, long FailedWrites);
 
 public sealed class PlaybackService(ISessionManager sessions, IPluginManager plugins, PlaybackTracker tracker,
-    ScrobbleOutbox outbox, AccountService accounts, TimeProvider clock, ILogger<PlaybackService> logger) : BackgroundService
+    ScrobbleOutbox outbox, AccountService accounts, LibraryRuleService libraryRules, TimeProvider clock, ILogger<PlaybackService> logger) : BackgroundService
 {
     // A loaded plugin is listed under the Id its assembly declares; the legacy Last.fm plugin declares de7fe7f0-...
     // while its catalog entry, and so a manifest Jellyfin has not rewritten yet, names 5e7fe7f0-....
@@ -45,6 +45,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         await accounts.InitializeCapturesAsync(cancellationToken).ConfigureAwait(false);
+        await libraryRules.InitializeAsync(cancellationToken).ConfigureAwait(false);
         _legacyPresent = plugins.Plugins.Any(plugin => LegacyPluginIds.Contains(plugin.Id) && (plugin.Instance is not null || plugin.IsEnabledAndSupported));
         if (_legacyPresent) logger.LogWarning("JellySin listening is paused because the legacy Last.fm plugin is installed. Remove it and restart Jellyfin.");
         sessions.PlaybackStart += OnStart;
@@ -158,6 +159,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
             {
                 var binding = accounts.GetCaptureBinding(user.Id);
                 if (binding is null) continue;
+                if (!libraryRules.IsScrobblingAllowed(user.Id, audio)) continue;
                 var snapshot = new PlaybackSnapshot(sessionId, user.Id, track, signal, args.PlaybackPositionTicks ?? 0, args.IsPaused, false, timestamp, utc, binding.AccountGeneration, binding.CaptureGeneration, Plugin.Instance?.ListeningGeneration ?? 0);
                 if (!_snapshots.Writer.TryWrite(snapshot)) Interlocked.Increment(ref _dropped);
             }

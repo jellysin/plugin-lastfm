@@ -8,7 +8,19 @@
     <h2>Server settings</h2>
     <form id="jellysin-settings">
       <div class="checkboxContainer"><label><input id="jellysin-enabled" is="emby-checkbox" type="checkbox"><span>Enable JellySin Last.fm</span></label></div>
-      <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
+      <div class="selectContainer" style="margin-top:1rem;">
+        <label for="jellysin-library-mode">Library scrobble filter</label>
+        <select id="jellysin-library-mode" is="emby-select">
+          <option value="All">All libraries (default)</option>
+          <option value="AllowList">Allow-list (scrobble only selected libraries)</option>
+          <option value="BlockList">Block-list (scrobble all except selected libraries)</option>
+        </select>
+      </div>
+      <div id="jellysin-libraries-group" style="margin-top:1rem;" hidden>
+        <p>Configured libraries:</p>
+        <div id="jellysin-libraries-list"></div>
+      </div>
+      <button is="emby-button" type="submit" class="raised button-submit block" style="margin-top:1rem;"><span>Save</span></button>
       <p id="jellysin-settings-status" role="status" aria-live="polite"></p>
     </form>
     <details id="jellysin-advanced">
@@ -81,11 +93,52 @@
       showConnection(connection, available, note);
     }
 
+    function updateLibraryGroupVisibility() {
+      const mode = byId('jellysin-library-mode').value;
+      byId('jellysin-libraries-group').hidden = mode === 'All';
+    }
+
+    async function loadLibraries(selectedIds) {
+      const list = byId('jellysin-libraries-list');
+      list.innerHTML = '';
+      try {
+        const libs = await ApiClient.ajax({ type: 'GET', url: api('Admin/Libraries'), dataType: 'json' });
+        const selected = new Set((selectedIds || []).map(function (v) { return String(v).toLowerCase(); }));
+        for (let i = 0; i < libs.length; i++) {
+          const lib = libs[i];
+          const id = read(lib, 'Id');
+          const name = read(lib, 'Name');
+          const div = document.createElement('div');
+          div.className = 'checkboxContainer';
+          const label = document.createElement('label');
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.value = id;
+          input.checked = selected.has(String(id).toLowerCase());
+          input.setAttribute('is', 'emby-checkbox');
+          const span = document.createElement('span');
+          span.textContent = ' ' + name;
+          label.appendChild(input);
+          label.appendChild(span);
+          div.appendChild(label);
+          list.appendChild(div);
+        }
+      } catch {
+        list.textContent = 'Could not load libraries.';
+      }
+    }
+
     byId('jellysin-admin').addEventListener('pageshow', async function () {
       byId('jellysin-dashboard-link').href = api('');
+      byId('jellysin-library-mode').addEventListener('change', updateLibraryGroupVisibility);
       try {
         const config = await ApiClient.getPluginConfiguration('2034650d-a290-4a16-b195-89fb44cfb932');
         byId('jellysin-enabled').checked = config.Enabled;
+        const mode = config.LibraryMode === 1 || String(config.LibraryMode).toLowerCase() === 'allowlist' ? 'AllowList'
+          : config.LibraryMode === 2 || String(config.LibraryMode).toLowerCase() === 'blocklist' ? 'BlockList' : 'All';
+        byId('jellysin-library-mode').value = mode;
+        updateLibraryGroupVisibility();
+        await loadLibraries(config.LibraryIds);
       } catch { byId('jellysin-settings-status').textContent = 'Settings could not be loaded.'; }
       try { await loadConnection(await loadApplication()); }
       catch { byId('jellysin-connection-status').textContent = 'The Last.fm connection could not be loaded.'; }
@@ -164,6 +217,12 @@
         const id = '2034650d-a290-4a16-b195-89fb44cfb932';
         const config = await ApiClient.getPluginConfiguration(id);
         config.Enabled = document.getElementById('jellysin-enabled').checked;
+        const mode = byId('jellysin-library-mode').value;
+        config.LibraryMode = mode === 'AllowList' ? 1 : mode === 'BlockList' ? 2 : 0;
+        const checked = [];
+        const inputs = byId('jellysin-libraries-list').querySelectorAll('input[type="checkbox"]:checked');
+        for (let i = 0; i < inputs.length; i++) checked.push(inputs[i].value);
+        config.LibraryIds = checked;
         await ApiClient.updatePluginConfiguration(id, config);
         document.getElementById('jellysin-settings-status').textContent = 'Settings saved.';
       } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be saved.'; }

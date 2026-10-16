@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Web;
 using JellySin.Plugin.Lastfm.Configuration;
+using JellySin.Plugin.Lastfm.Playback;
 using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Transport;
 using Microsoft.AspNetCore.DataProtection;
@@ -16,6 +17,7 @@ public sealed class CoreFixture : IDisposable
     public IDataProtectionProvider Protection { get; } = new EphemeralDataProtectionProvider();
     public AccountService Accounts { get; }
     public ApplicationCredentialService Credentials { get; }
+    public LibraryRuleService LibraryRules { get; }
     public Guid UserId { get; } = Guid.NewGuid();
     public static Uri Callback { get; } = new("https://jellyfin.example/JellySin/Lastfm/Callback");
 
@@ -24,6 +26,7 @@ public sealed class CoreFixture : IDisposable
         Store = new FileStateStore(DirectoryPath);
         Credentials = new ApplicationCredentialService(Store, Protection);
         Accounts = new AccountService(Store, Client, Credentials, Protection, Clock);
+        LibraryRules = new LibraryRuleService(Store);
     }
 
     public async Task ConnectAsync(Guid? user = null)
@@ -56,6 +59,7 @@ public sealed class CoreFixture : IDisposable
 
     public void Dispose()
     {
+        LibraryRules.Dispose();
         Accounts.Dispose();
         Store.Dispose();
         Directory.Delete(DirectoryPath, true);
