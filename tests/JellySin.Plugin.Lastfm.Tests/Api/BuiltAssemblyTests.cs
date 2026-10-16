@@ -30,7 +30,7 @@ public sealed class BuiltAssemblyTests
         ["PluginServiceRegistrator"] = ["MediaBrowser.Controller.Plugins.IPluginServiceRegistrator"],
         // Abstract: the server's task scan skips it and finds only the two tasks built on it.
         ["Tasks.AccountTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
-        ["Tasks.FavouriteSyncTask"] =["MediaBrowser.Model.Tasks.IScheduledTask"],
+        ["Tasks.FavouriteSyncTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
         ["Tasks.PlaylistRefreshTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
         ["Tasks.ScrobbleDeliveryTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
     };
