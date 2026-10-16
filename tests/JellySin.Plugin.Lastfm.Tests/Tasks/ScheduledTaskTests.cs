@@ -16,6 +16,7 @@ using MediaBrowser.Model.Playlists;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Tasks;
@@ -336,7 +337,7 @@ public sealed class ScheduledTaskTests
             task.ExecuteAsync(Mock.Of<IProgress<double>>(), cts.Token));
     }
 
-    private static (Mock<ISessionManager> Sessions, Mock<IPluginManager> Plugins, PlaybackTracker Tracker, ScrobbleOutbox Outbox, PlaybackService Playback, LogLines<DeliveryService> Logger)
+    private static (Mock<ISessionManager> Sessions, Mock<IPluginManager> Plugins, PlaybackTracker Tracker, ScrobbleOutbox Outbox, PlaybackService Playback, FakeLogger<DeliveryService> Logger)
         CreateDeliveryServices(CoreFixture fixture)
     {
         var sessions = new Mock<ISessionManager>();
@@ -345,7 +346,7 @@ public sealed class ScheduledTaskTests
         var tracker = new PlaybackTracker(fixture.Clock);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
         var playback = new PlaybackService(sessions.Object, plugins.Object, tracker, outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
-        var logger = new LogLines<DeliveryService>();
+        var logger = new FakeLogger<DeliveryService>();
         return (sessions, plugins, tracker, outbox, playback, logger);
     }
 

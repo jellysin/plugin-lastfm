@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Net.Http.Headers;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
@@ -192,7 +193,7 @@ public sealed class ConnectionCallbackTests
         var server = new ServerAddress(published, warnings);
         var http = Request("POST", "https", "", "jellyfin.example");
         http.Items[typeof(CallerFilter)] = CallerSecurityTests.Identity(fixture.UserId);
-        var account = new AccountController(fixture.Accounts, server, new LogLines<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = http } };
+        var account = new AccountController(fixture.Accounts, server, new FakeLogger<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = http } };
         await Assert.ThrowsAsync<ArgumentException>(() => account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<ArgumentException>(() => account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
         Assert.False(account.Response.Headers.ContainsKey("Set-Cookie"));
@@ -201,7 +202,7 @@ public sealed class ConnectionCallbackTests
         Assert.Contains("published-server-url", line, StringComparison.Ordinal);
         Assert.DoesNotContain("media.example", line, StringComparison.Ordinal);
         // The anonymous return answers as for any attempt that never began.
-        var returned = new CallbackController(fixture.Accounts, server, new ReturnLogLimiter(fixture.Clock), new LogLines<CallbackController>()) { ControllerContext = new ControllerContext { HttpContext = Request("GET", "https", "", "jellyfin.example") } };
+        var returned = new CallbackController(fixture.Accounts, server, new ReturnLogLimiter(fixture.Clock), new FakeLogger<CallbackController>()) { ControllerContext = new ControllerContext { HttpContext = Request("GET", "https", "", "jellyfin.example") } };
         Assert.Equal("/JellySin/Lastfm/?connection=failed",
             Assert.IsType<LocalRedirectResult>(await returned.Approve("0123456789abcdef0123456789abcdef", Token, TestContext.Current.CancellationToken)).Url);
     }
@@ -222,8 +223,8 @@ public sealed class ConnectionCallbackTests
         using var fixture = new CoreFixture();
         await fixture.ConfigureApplicationAsync();
         var name = Logged.User(fixture.UserId);
-        var steps = new LogLines<AccountController>();
-        var returns = new LogLines<CallbackController>();
+        var steps = new FakeLogger<AccountController>();
+        var returns = new FakeLogger<CallbackController>();
         var account = Account(fixture, "http", "", published: "https://media.example", host: "jellyfin-internal:8096", log: steps);
         account.Request.Headers.Origin = "https://media.example";
         var start = await account.Begin(new ConnectionBegin(true), TestContext.Current.CancellationToken);
@@ -253,7 +254,7 @@ public sealed class ConnectionCallbackTests
     {
         using var fixture = new CoreFixture();
         if (fault != "no application") await fixture.ConfigureApplicationAsync();
-        var steps = new LogLines<AccountController>();
+        var steps = new FakeLogger<AccountController>();
         var account = Account(fixture, "http", "", host: fault == "no address" ? "" : "192.168.1.20:8096", log: steps);
         using var cancelled = new CancellationTokenSource();
         if (fault == "cancelled") await cancelled.CancelAsync();
@@ -269,7 +270,7 @@ public sealed class ConnectionCallbackTests
     public void AClickThePageRefusesLeavesExactlyOneLineWithTheReason(string reason, string phrase)
     {
         using var fixture = new CoreFixture();
-        var steps = new LogLines<AccountController>();
+        var steps = new FakeLogger<AccountController>();
         var account = Account(fixture, "http", "", published: "https://media.example", host: "192.168.1.20:8096", log: steps);
         account.Request.Headers.Origin = "http://192.168.1.20:8096";
         Assert.IsType<NoContentResult>(account.Refusal(new ConnectionRefusal(reason)));
@@ -287,8 +288,8 @@ public sealed class ConnectionCallbackTests
         await fixture.ConfigureApplicationAsync();
         const string scheme = "gopher\nLast.fm sign-in finished for user 000000000000: connected";
         var name = Logged.User(fixture.UserId);
-        var steps = new LogLines<AccountController>();
-        var returns = new LogLines<CallbackController>();
+        var steps = new FakeLogger<AccountController>();
+        var returns = new FakeLogger<CallbackController>();
         var account = Account(fixture, scheme, "", published: "https://media.example", log: steps);
         await account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
         Assert.IsType<NoContentResult>(account.Refusal(new ConnectionRefusal("return-address")));
@@ -314,7 +315,7 @@ public sealed class ConnectionCallbackTests
     public void AReasonTheServerDoesNotKnowIsRefusedAndLeavesNoLine(string reason)
     {
         using var fixture = new CoreFixture();
-        var steps = new LogLines<AccountController>();
+        var steps = new FakeLogger<AccountController>();
         Assert.IsType<BadRequestResult>(Account(fixture, "https", "", log: steps).Refusal(new ConnectionRefusal(reason)));
         Assert.Empty(steps.Lines);
     }
@@ -324,7 +325,7 @@ public sealed class ConnectionCallbackTests
     {
         using var fixture = new CoreFixture();
         await fixture.ConfigureApplicationAsync();
-        var returns = new LogLines<CallbackController>();
+        var returns = new FakeLogger<CallbackController>();
         var limiter = new ReturnLogLimiter(fixture.Clock);
         var attempt = Guid.NewGuid().ToString("N");
         await Callback(fixture, "http", "", null, log: returns, limiter: limiter).Approve(attempt, Token, TestContext.Current.CancellationToken);
@@ -379,21 +380,21 @@ public sealed class ConnectionCallbackTests
     }
 
     private static AccountController Account(CoreFixture fixture, string scheme, string prefix, Guid? user = null, string? published = null, string host = "jellyfin.example",
-        LogLines<AccountController>? log = null)
+        FakeLogger<AccountController>? log = null)
     {
         var http = Request("POST", scheme, prefix, host);
         http.Items[typeof(CallerFilter)] = CallerSecurityTests.Identity(user ?? fixture.UserId);
-        return new AccountController(fixture.Accounts, new ServerAddress(published), log ?? new LogLines<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = http } };
+        return new AccountController(fixture.Accounts, new ServerAddress(published), log ?? new FakeLogger<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
     private static CallbackController Callback(CoreFixture fixture, string scheme, string prefix, SetCookieHeaderValue? cookie, string? published = null, string host = "jellyfin.example",
-        LogLines<CallbackController>? log = null, ReturnLogLimiter? limiter = null)
+        FakeLogger<CallbackController>? log = null, ReturnLogLimiter? limiter = null)
     {
         var http = Request("GET", scheme, prefix, host);
         // What Last.fm appends to the return address; the controller receives the same values as arguments.
         http.Request.QueryString = new QueryString("?attempt=attempt-in-the-address&token=token-in-the-address");
         if (cookie is not null) http.Request.Headers.Cookie = $"{cookie.Name.Value}={cookie.Value.Value}";
-        return new CallbackController(fixture.Accounts, new ServerAddress(published), limiter ?? new ReturnLogLimiter(fixture.Clock), log ?? new LogLines<CallbackController>())
+        return new CallbackController(fixture.Accounts, new ServerAddress(published), limiter ?? new ReturnLogLimiter(fixture.Clock), log ?? new FakeLogger<CallbackController>())
         { ControllerContext = new ControllerContext { HttpContext = http } };
     }
 
