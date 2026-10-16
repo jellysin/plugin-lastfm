@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using JellySin.Plugin.Lastfm.Features;
 using JellySin.Plugin.Lastfm.Tests.Core;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace JellySin.Plugin.Lastfm.Tests.Features;
 
@@ -19,7 +20,7 @@ internal sealed class FeatureFixture : IDisposable
     public List<MusicTrack> Top { get; } = [];
     public List<MusicTrack> Recent { get; } = [];
     public bool IncompleteLoved { get; set; }
-    public LogLines<FavouritesService> FavouriteLog { get; } = new();
+    public FakeLogger<FavouritesService> FavouriteLog { get; } = new();
 
     public FeatureFixture()
     {

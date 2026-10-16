@@ -8,6 +8,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Core;
@@ -281,7 +282,7 @@ public sealed class DeliveryLogTests
         AssertNoSecretsOrMarkers(logger.Lines, fixture);
     }
 
-    private static (Mock<ISessionManager> Sessions, Mock<IPluginManager> Plugins, PlaybackTracker Tracker, ScrobbleOutbox Outbox, PlaybackService Playback, LogLines<DeliveryService> Logger)
+    private static (Mock<ISessionManager> Sessions, Mock<IPluginManager> Plugins, PlaybackTracker Tracker, ScrobbleOutbox Outbox, PlaybackService Playback, FakeLogger<DeliveryService> Logger)
         CreateServices(CoreFixture fixture)
     {
         var sessions = new Mock<ISessionManager>();
@@ -290,7 +291,7 @@ public sealed class DeliveryLogTests
         var tracker = new PlaybackTracker(fixture.Clock);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
         var playback = new PlaybackService(sessions.Object, plugins.Object, tracker, outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
-        var logger = new LogLines<DeliveryService>();
+        var logger = new FakeLogger<DeliveryService>();
         return (sessions, plugins, tracker, outbox, playback, logger);
     }
 
@@ -342,7 +343,7 @@ public sealed class DeliveryLogTests
         Assert.Equal(expected, scrobble.GetValueOrDefault("albumArtist[0]"));
     }
 
-    private static async Task<LogLines<DeliveryService>> DeliverPlayingNowAsync(CoreFixture fixture, Func<JsonDocument> answer, int secondsBeforeDelivery = 0)
+    private static async Task<FakeLogger<DeliveryService>> DeliverPlayingNowAsync(CoreFixture fixture, Func<JsonDocument> answer, int secondsBeforeDelivery = 0)
     {
         await ConnectWithMarkerAsync(fixture);
         var (sessions, _, _, outbox, playback, logger) = CreateServices(fixture);

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
@@ -150,7 +151,7 @@ public sealed class CallerSecurityTests
         var result = await RunFilter(identity, "POST", null, null);
         var otherUser = Guid.NewGuid();
         result.Context.HttpContext.Request.QueryString = new QueryString("?userId=" + otherUser);
-        var controller = new AccountController(fixture.Accounts, new ServerAddress(null), new LogLines<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
+        var controller = new AccountController(fixture.Accounts, new ServerAddress(null), new FakeLogger<AccountController>()) { ControllerContext = new ControllerContext { HttpContext = result.Context.HttpContext } };
         await fixture.ConfigureApplicationAsync();
         var start = await controller.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken);
         Assert.NotNull(await fixture.Store.ReadAsync<JellySin.Plugin.Lastfm.Configuration.AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
@@ -231,7 +232,7 @@ public sealed class CallerSecurityTests
         User = new User("listener", "authentication", "password") { Id = userId ?? Guid.NewGuid() }
     };
 
-    private static async Task<(ActionExecutingContext Context, bool Called, LogLines<CallerFilter> Log)> RunFilter(
+    private static async Task<(ActionExecutingContext Context, bool Called, FakeLogger<CallerFilter> Log)> RunFilter(
         AuthorizationInfo identity, string method, string? origin, string? fetchSite, string? published = null, string scheme = "https", string host = "jellyfin.example")
     {
         var http = new DefaultHttpContext();
@@ -242,7 +243,7 @@ public sealed class CallerSecurityTests
         if (origin is not null) http.Request.Headers.Origin = origin;
         if (fetchSite is not null) http.Request.Headers["Sec-Fetch-Site"] = fetchSite;
         var action = new ActionContext(http, new RouteData(), new ActionDescriptor { AttributeRouteInfo = new AttributeRouteInfo { Template = "JellySin/Lastfm/Me/Connection/Begin" } });
-        var log = new LogLines<CallerFilter>();
+        var log = new FakeLogger<CallerFilter>();
         var context = new ActionExecutingContext(action, [], new Dictionary<string, object?>(), new object());
         var authorization = new Mock<IAuthorizationContext>();
         authorization.Setup(value => value.GetAuthorizationInfo(http)).ReturnsAsync(identity);

@@ -4,6 +4,7 @@ using JellySin.Plugin.Lastfm.Tests.Core;
 using JellySin.Plugin.Lastfm.Transport;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace JellySin.Plugin.Lastfm.Tests.Features;
 
@@ -95,7 +96,7 @@ public sealed class FavouritesRequestBoundTests
         using var f = new FeatureFixture();
         f.Library.UserId = f.Core.UserId;
         f.Core.Client.Handler = f.Respond;
-        var logger = new LogLines<FavouriteRuns>();
+        var logger = new FakeLogger<FavouriteRuns>();
         using var runs = new FavouriteRuns(f.Favourites, f.Core.Clock, logger);
 
         await Assert.ThrowsAsync<NotConnectedException>(() => runs.SetEnabledAsync(f.Core.UserId, true, Ct));
@@ -141,7 +142,7 @@ public sealed class FavouritesRequestBoundTests
         await f.InitializeAsync();
         var local = f.AddLocal("Loved on Last.fm");
         f.Loved.Add(local.Track);
-        var logger = new LogLines<FavouriteRuns>();
+        var logger = new FakeLogger<FavouriteRuns>();
         using var runs = new FavouriteRuns(f.Favourites, f.Core.Clock, logger)
         {
             RequestWait = TimeSpan.FromMilliseconds(50),
