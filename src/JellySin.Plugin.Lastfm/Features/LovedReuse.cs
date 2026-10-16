@@ -1,7 +1,10 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
+using Microsoft.Extensions.Logging;
 
 namespace JellySin.Plugin.Lastfm.Features;
 
@@ -13,30 +16,63 @@ public interface ILibraryGeneration
 
     /// <summary>A fingerprint of the user's policy, which decides the libraries, ratings and tags a match can see.</summary>
     string Access(Guid userId);
+
+    /// <summary>The tracks changed after <paramref name="generation"/>, or null when they are no longer all known.</summary>
+    LibraryChanges? ChangesSince(long generation);
 }
 
 /// <summary>
-/// Counts Jellyfin's item events. Jellyfin 12.0 announces no policy change, so access is compared by fingerprint instead.
+/// What changed in the library: the names and MusicBrainz ids of added or updated tracks, which can create a match or
+/// make one ambiguous, and the ids of updated or removed tracks, which can end one.
+/// </summary>
+public sealed class LibraryChanges
+{
+    public HashSet<string> Titles { get; } = [];
+    public HashSet<Guid> Mbids { get; } = [];
+    public HashSet<Guid> Items { get; } = [];
+
+    public void Note(Guid itemId, string? title, string? mbid, bool present)
+    {
+        Items.Add(itemId);
+        if (!present) return;
+        Titles.Add(MusicLibrary.Normalize(title));
+        if (Guid.TryParse(mbid, out var id)) Mbids.Add(id);
+    }
+
+    /// <summary>Whether a kept result for <paramref name="track"/>, pending when <paramref name="item"/> is null, may no longer hold.</summary>
+    public bool Touches(MusicTrack track, Guid? item) => item is null || Items.Contains(item.Value)
+        || Titles.Contains(MusicLibrary.Normalize(track.Title))
+        || (Guid.TryParse(track.MusicBrainzId, out var mbid) && Mbids.Contains(mbid));
+}
+
+/// <summary>
+/// Counts Jellyfin's item events and keeps the last 4096 track changes, so a scan forgets only the matches it touched.
+/// Jellyfin 12.0 announces no policy change, so access is compared by fingerprint instead.
 /// </summary>
 public sealed class LibraryGeneration : ILibraryGeneration, IDisposable
 {
+    public const int MaxChanges = 4096;
     private readonly ILibraryManager library;
     private readonly IUserManager users;
+    private readonly object gate = new();
+    private readonly Queue<Change> changes = new();
     private long current;
+    // The changes up to this generation are no longer kept.
+    private long forgotten;
 
     public LibraryGeneration(ILibraryManager library, IUserManager users)
     {
         this.library = library;
         this.users = users;
-        library.ItemAdded += OnItemChanged;
-        library.ItemUpdated += OnItemChanged;
-        library.ItemRemoved += OnItemChanged;
+        library.ItemAdded += OnItemAdded;
+        library.ItemUpdated += OnItemUpdated;
+        library.ItemRemoved += OnItemRemoved;
     }
 
     public long Current => Interlocked.Read(ref current);
 
-    // Item callbacks only count; they never wait.
-    public void Advance() => Interlocked.Increment(ref current);
+    /// <summary>Moves the generation for a change that is not known, so every kept match is matched again.</summary>
+    public void Advance() => Record(null);
 
     public string Access(Guid userId)
     {
@@ -45,21 +81,71 @@ public sealed class LibraryGeneration : ILibraryGeneration, IDisposable
         return Convert.ToHexString(SHA256.HashData(policy));
     }
 
-    public void Dispose()
+    public LibraryChanges? ChangesSince(long generation)
     {
-        library.ItemAdded -= OnItemChanged;
-        library.ItemUpdated -= OnItemChanged;
-        library.ItemRemoved -= OnItemChanged;
+        lock (gate)
+        {
+            if (generation < forgotten) return null;
+            var result = new LibraryChanges();
+            foreach (var change in changes.Where(change => change.Generation > generation))
+            {
+                if (change.Item is not { } item) return null;
+                result.Note(item, change.Title, change.Mbid, change.Present);
+            }
+            return result;
+        }
     }
 
-    private void OnItemChanged(object? sender, ItemChangeEventArgs args) => Advance();
+    public void Dispose()
+    {
+        library.ItemAdded -= OnItemAdded;
+        library.ItemUpdated -= OnItemUpdated;
+        library.ItemRemoved -= OnItemRemoved;
+    }
+
+    // Item callbacks only record in memory; they never wait.
+    private void OnItemAdded(object? sender, ItemChangeEventArgs args) => OnItemChanged(args.Item, true);
+
+    private void OnItemUpdated(object? sender, ItemChangeEventArgs args) => OnItemChanged(args.Item, true);
+
+    private void OnItemRemoved(object? sender, ItemChangeEventArgs args) => OnItemChanged(args.Item, false);
+
+    private void OnItemChanged(BaseItem? item, bool present)
+    {
+        switch (item)
+        {
+            case Audio audio:
+                Record(new(0, audio.Id, audio.Name, audio.ProviderIds.GetValueOrDefault("MusicBrainzTrack"), present));
+                break;
+            // A removed folder may take tracks with it; matching everything again does not rely on their own events.
+            case Folder when !present:
+            case null:
+                Record(null);
+                break;
+            default:
+                Interlocked.Increment(ref current);
+                break;
+        }
+    }
+
+    private void Record(Change? change)
+    {
+        lock (gate)
+        {
+            var generation = Interlocked.Increment(ref current);
+            changes.Enqueue((change ?? new(0, null, null, null, false)) with { Generation = generation });
+            if (changes.Count > MaxChanges) forgotten = changes.Dequeue().Generation;
+        }
+    }
+
+    private sealed record Change(long Generation, Guid? Item, string? Title, string? Mbid, bool Present);
 }
 
 /// <summary>
 /// What a favourite run established, kept for the next run while neither side changed: the complete loved collection
 /// and the library match of each loved track. Bounded in users, tracks and age; held in memory only.
 /// </summary>
-public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock)
+public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock, ILogger<LovedReuse>? logger = null)
 {
     public static readonly TimeSpan MaxAge = TimeSpan.FromHours(24);
     public const int MaxUsers = 8;
@@ -102,7 +188,8 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
         var result = new Guid?[tracks.Count];
         lock (set)
         {
-            if (set.Generation != current || set.Access != access || now - set.Created >= MaxAge) set.Reset(current, access, now);
+            if (set.Access != access || now - set.Created >= MaxAge) set.Reset(current, access, now);
+            else if (set.Generation != current) Refresh(set, current, access, now);
             for (var index = 0; index < tracks.Count; index++)
             {
                 var track = tracks[index];
@@ -132,6 +219,22 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
         return result;
     }
 
+    /// <summary>
+    /// After library changes, forgets the pending tracks and the matches the changes touch; the other matches still hold.
+    /// When the changes are no longer all known, it forgets every match.
+    /// </summary>
+    private void Refresh(MatchSet set, long current, string access, DateTimeOffset now)
+    {
+        if (generation.ChangesSince(set.Generation) is { } changes)
+        {
+            set.Forget(changes, current);
+            return;
+        }
+        logger?.LogInformation("The library changed more than {Changes} times or lost a folder; all {Tracks} kept favourite matches are matched again.",
+            LibraryGeneration.MaxChanges, set.Items.Count);
+        set.Reset(current, access, now);
+    }
+
     private static void Trim<T>(ConcurrentDictionary<Guid, T> entries, Func<T, DateTimeOffset> age)
     {
         while (entries.Count > MaxUsers)
@@ -147,6 +250,8 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
     {
         public static MatchKey Of(MusicTrack track) => new(track.Artist, track.Title, track.Album,
             Guid.TryParse(track.MusicBrainzId, out var mbid) ? mbid.ToString() : track.MusicBrainzId);
+
+        public MusicTrack Track => new(Artist, Title, Album, MusicBrainzId);
     }
 
     private sealed class MatchSet(long generation, string access, DateTimeOffset created)
@@ -156,6 +261,15 @@ public sealed class LovedReuse(ILibraryGeneration generation, TimeProvider clock
         public DateTimeOffset Created { get; private set; } = created;
         public Dictionary<MatchKey, Guid?> Items { get; } = [];
         public Dictionary<Guid, Guid> Mbids { get; } = [];
+
+        /// <summary>Keeps the age of the set, so every kept match is still matched again once a day.</summary>
+        public void Forget(LibraryChanges changes, long nextGeneration)
+        {
+            Generation = nextGeneration;
+            foreach (var entry in Items.Where(entry => changes.Touches(entry.Key.Track, entry.Value)).ToArray()) Items.Remove(entry.Key);
+            foreach (var entry in Mbids.Where(entry => changes.Mbids.Contains(entry.Key) || changes.Items.Contains(entry.Value)).ToArray())
+                Mbids.Remove(entry.Key);
+        }
 
         public void Reset(long nextGeneration, string nextAccess, DateTimeOffset now)
         {

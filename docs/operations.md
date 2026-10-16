@@ -270,6 +270,11 @@ the runs come about 6 and 2 minutes apart.
 Accounts that need reconnecting are skipped. Removing a task's triggers stops that
 work until it is started by hand; fresh plays are still sent when stored.
 
+After every library scan the plugin also starts the favourite run of each connected
+account, without making the scan wait for it, so a loved track the scan added to the
+library becomes a favourite without waiting for the next interval. That run follows
+the same rules as a scheduled one.
+
 ### What the server log says about delivery
 
 The plugin writes one line for each submitted batch of plays and each playing-now
@@ -321,7 +326,11 @@ whose 200 tracks hold it. A love the plugin sent takes none of those places unti
 a run has seen Last.fm list it with its date; until then, removing it on Last.fm
 waits for the run whose 200 tracks hold it. Each run reads page 1 of the loved tracks. When page 1 is
 unchanged, the run reuses the collection read by an earlier run. It also reuses a
-loved track's library match until the library or the user's access changes. A new love or a removal on Last.fm changes
+loved track's library match until the user's access changes. When the library changes, a run matches again
+only the loved tracks still unmatched and those a changed track can affect: a track with the same title or MusicBrainz
+track id was added or updated, or the matched track itself was updated or removed. When more than 4,096 track changes
+came since the last run, or a folder was removed, the run matches every loved track again and writes an information
+line that begins `The library changed more than`. A new love or a removal on Last.fm changes
 page 1, so the next run reads the whole collection again. The server keeps this in
 memory only, for at most 24 hours, 8 users and 10,000 tracks per user, and a
 restart discards it. The [benchmarks](../benchmarks/README.md#favourite-synchronization)

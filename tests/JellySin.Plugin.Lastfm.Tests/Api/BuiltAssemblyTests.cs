@@ -31,6 +31,7 @@ public sealed class BuiltAssemblyTests
         // Abstract: the server's task scan skips it and finds only the two tasks built on it.
         ["Tasks.AccountTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
         ["Tasks.FavouriteSyncTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
+        ["Tasks.LibraryScanRematchTask"] = ["MediaBrowser.Controller.Library.ILibraryPostScanTask"],
         ["Tasks.PlaylistRefreshTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
         ["Tasks.ScrobbleDeliveryTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
     };
