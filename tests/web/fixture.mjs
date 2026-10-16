@@ -14,7 +14,14 @@ const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url
 
 export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0 } = {}) {
   const state = { requests: [], lastfm: [], approvalPending: false, lastfmAnswer: 'token', prefix, administrator, connected: true, favourites: false, favouritesRunning: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
-    historyTracks: [track], delivery: { Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0, Rejected: 0, PendingPersistence: 0 } };
+    historyTracks: [track], delivery: { Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0, Rejected: 0, PendingPersistence: 0 },
+    devices: [
+      { Id: 'dev-1', Name: 'Living Room TV', CustomName: null, AppName: 'Android TV', DateLastActivity: '2026-10-15T12:00:00Z' },
+      { Id: 'dev-2', Name: 'Phone', CustomName: 'My Phone', AppName: 'Mobile', DateLastActivity: '2026-10-16T12:00:00Z' },
+    ],
+    excludedDevices: [], deviceFail: false,
+    adminMediaTypes: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true },
+    excludedMediaTypes: [], mediaTypesFail: false };
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -91,7 +98,30 @@ function respond(path, method, body, url, state) {
   if (endpoint === 'Me/Discovery') return json({ Local: [{ Track: track, ItemId: item, Status: 'Matched' }], External: [{ ...track, Title: '<img src=x onerror=alert(1)>', Url: 'javascript:alert(1)' }], Artists: [{ Name: 'Portishead', Kind: 'artist', Url: 'https://www.last.fm/music/Portishead' }], Albums: [{ Name: 'Dummy', Artist: 'Portishead', Kind: 'album', Url: 'https://www.last.fm/music/Portishead/Dummy' }] });
   if (endpoint.startsWith('Me/Favourites')) return favourites(endpoint, method, body, state);
   if (endpoint.startsWith('Me/Playlists')) return playlists(endpoint, method, body, state);
+  if (endpoint === 'Me/Devices') return devicesResponse(method, body, state);
+  if (endpoint === 'Me/MediaTypes') return mediaTypesResponse(method, body, state);
   return { status: 404, body: 'No fixture response' };
+}
+
+function devicesResponse(method, body, state) {
+  if (state.deviceFail) return { status: 503, body: 'Could not load devices' };
+  if (method === 'PUT') state.excludedDevices = body?.excludedDevices ?? [];
+  return json(state.devices.map(d => ({
+    Id: d.Id,
+    Name: d.CustomName ?? d.Name,
+    AppName: d.AppName,
+    IsExcluded: state.excludedDevices.includes(d.Id),
+  })));
+}
+
+function mediaTypesResponse(method, body, state) {
+  if (state.mediaTypesFail) return { status: 503, body: 'Could not load media types' };
+  if (method === 'PUT') state.excludedMediaTypes = body?.excludedMediaTypes ?? [];
+  return json([
+    { Type: 'Music', IsAdminAllowed: Boolean(state.adminMediaTypes.ScrobbleMusic), IsUserExcluded: state.excludedMediaTypes.includes('Music'), IsScrobbled: Boolean(state.adminMediaTypes.ScrobbleMusic) && !state.excludedMediaTypes.includes('Music') },
+    { Type: 'Audiobooks', IsAdminAllowed: Boolean(state.adminMediaTypes.ScrobbleAudiobooks), IsUserExcluded: state.excludedMediaTypes.includes('Audiobooks'), IsScrobbled: Boolean(state.adminMediaTypes.ScrobbleAudiobooks) && !state.excludedMediaTypes.includes('Audiobooks') },
+    { Type: 'MusicVideos', IsAdminAllowed: Boolean(state.adminMediaTypes.ScrobbleMusicVideos), IsUserExcluded: state.excludedMediaTypes.includes('MusicVideos'), IsScrobbled: Boolean(state.adminMediaTypes.ScrobbleMusicVideos) && !state.excludedMediaTypes.includes('MusicVideos') },
+  ]);
 }
 
 function history(endpoint, method, url, state) {

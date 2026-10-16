@@ -248,3 +248,72 @@ test('user library rules can be read and updated', async context => {
   assert.equal(putResult.libraries[0].isScrobbled, false);
 });
 
+test('user device rules can be read and updated', async context => {
+  const client = new Client(bootstrap);
+  client.acceptSession(session);
+  const devId = 'device-123';
+  let putBody;
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (url === '/jellyfin/JellySin/Lastfm/Me/Devices' && options.method === 'GET') {
+      return Response.json([
+        { Id: devId, Name: 'Living Room TV', AppName: 'Android TV', IsExcluded: false },
+      ]);
+    }
+    if (url === '/jellyfin/JellySin/Lastfm/Me/Devices' && options.method === 'PUT') {
+      putBody = JSON.parse(options.body);
+      return Response.json([
+        { Id: devId, Name: 'Living Room TV', AppName: 'Android TV', IsExcluded: true },
+      ]);
+    }
+    return new Response(null, { status: 404 });
+  });
+
+  const getResult = await client.api('Me/Devices');
+  assert.equal(getResult.length, 1);
+  assert.equal(getResult[0].id, devId);
+  assert.equal(getResult[0].name, 'Living Room TV');
+  assert.equal(getResult[0].isExcluded, false);
+
+  const putResult = await client.api('Me/Devices', 'PUT', { excludedDevices: [devId] });
+  assert.deepEqual(putBody, { excludedDevices: [devId] });
+  assert.equal(putResult[0].isExcluded, true);
+});
+
+test('user media type rules can be read and updated', async context => {
+  const client = new Client(bootstrap);
+  client.acceptSession(session);
+  let putBody;
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (url === '/jellyfin/JellySin/Lastfm/Me/MediaTypes' && options.method === 'GET') {
+      return Response.json([
+        { Type: 'Music', IsAdminAllowed: true, IsUserExcluded: false, IsScrobbled: true },
+        { Type: 'Audiobooks', IsAdminAllowed: false, IsUserExcluded: false, IsScrobbled: false },
+        { Type: 'MusicVideos', IsAdminAllowed: true, IsUserExcluded: false, IsScrobbled: true },
+      ]);
+    }
+    if (url === '/jellyfin/JellySin/Lastfm/Me/MediaTypes' && options.method === 'PUT') {
+      putBody = JSON.parse(options.body);
+      return Response.json([
+        { Type: 'Music', IsAdminAllowed: true, IsUserExcluded: false, IsScrobbled: true },
+        { Type: 'Audiobooks', IsAdminAllowed: false, IsUserExcluded: false, IsScrobbled: false },
+        { Type: 'MusicVideos', IsAdminAllowed: true, IsUserExcluded: true, IsScrobbled: false },
+      ]);
+    }
+    return new Response(null, { status: 404 });
+  });
+
+  const getResult = await client.api('Me/MediaTypes');
+  assert.equal(getResult.length, 3);
+  assert.equal(getResult[0].type, 'Music');
+  assert.equal(getResult[0].isScrobbled, true);
+  assert.equal(getResult[1].type, 'Audiobooks');
+  assert.equal(getResult[1].isAdminAllowed, false);
+  assert.equal(getResult[1].isScrobbled, false);
+
+  const putResult = await client.api('Me/MediaTypes', 'PUT', { excludedMediaTypes: ['MusicVideos'] });
+  assert.deepEqual(putBody, { excludedMediaTypes: ['MusicVideos'] });
+  assert.equal(putResult[2].type, 'MusicVideos');
+  assert.equal(putResult[2].isUserExcluded, true);
+  assert.equal(putResult[2].isScrobbled, false);
+});
+

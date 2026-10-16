@@ -118,7 +118,7 @@ test('favourite synchronization reports running server state', async ({ page }) 
 const sections = ['overview', 'history', 'favourites', 'discovery', 'playlists'];
 const needsConnection = [
   ...sections.map(id => `#${id}`), ...sections.map(id => `nav.section-nav a[href="#${id}"]`),
-  '#disconnect-lastfm', 'label:has(#scrobbling)', '#library-exclusions', 'details:has(#delivery-status)',
+  '#disconnect-lastfm', 'label:has(#scrobbling)', '#library-exclusions', '#device-exclusions', '#media-type-exclusions', 'details:has(#delivery-status)',
 ];
 
 async function expectOffered(page, offered) {
@@ -606,3 +606,64 @@ for (const width of [320, 1280]) {
     await page.screenshot({ path: testInfo.outputPath(`dashboard-${width}.png`), fullPage: true });
   });
 }
+
+test('toggling a device scrobble checkbox updates the excluded devices list', async ({ page }) => {
+  const state = await installServer(page);
+  await passwordLogin(page);
+  await expect(page.locator('#device-exclusions-list label')).toHaveCount(2);
+  await expect(page.locator('#device-exclusions-list')).toContainText('Living Room TV (Android TV)');
+  await expect(page.locator('#device-exclusions-list')).toContainText('My Phone (Mobile)');
+
+  const livingRoomCheckbox = page.locator('input[data-device-id="dev-1"]');
+  await expect(livingRoomCheckbox).toBeChecked();
+  await livingRoomCheckbox.uncheck();
+
+  await expect(page.locator('#status')).toHaveText('Device scrobbling rules updated.');
+  expect(state.excludedDevices).toEqual(['dev-1']);
+});
+
+test('admin-blocked media type is rendered disabled and unchecked with admin text', async ({ page }) => {
+  const state = await installServer(page);
+  state.adminMediaTypes = { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true };
+  await passwordLogin(page);
+
+  await expect(page.locator('#media-type-exclusions-list label')).toHaveCount(3);
+  const audiobooksCheckbox = page.locator('input[data-media-type="Audiobooks"]');
+  await expect(audiobooksCheckbox).toBeDisabled();
+  await expect(audiobooksCheckbox).not.toBeChecked();
+  await expect(page.locator('#media-type-exclusions-list')).toContainText('Turned off by the administrator');
+
+  const musicCheckbox = page.locator('input[data-media-type="Music"]');
+  await expect(musicCheckbox).toBeEnabled();
+  await expect(musicCheckbox).toBeChecked();
+});
+
+test('device load failure displays safe load failure text', async ({ page }) => {
+  const state = await installServer(page);
+  state.deviceFail = true;
+  await passwordLogin(page);
+
+  await expect(page.locator('#device-exclusions-summary')).toHaveText('Could not load devices.');
+});
+
+test('saving media types keeps the user exclusion of a type the administrator turned off', async ({ page }) => {
+  const state = await installServer(page);
+  state.adminMediaTypes = { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true };
+  state.excludedMediaTypes = ['Audiobooks'];
+  await passwordLogin(page);
+
+  await page.locator('input[data-media-type="MusicVideos"]').uncheck();
+  await expect(page.locator('#status')).toHaveText('Media type scrobbling rules updated.');
+  expect(state.excludedMediaTypes).toEqual(['Audiobooks', 'MusicVideos']);
+});
+
+test('saving media types does not exclude a type the administrator turned off that the user kept', async ({ page }) => {
+  const state = await installServer(page);
+  state.adminMediaTypes = { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true };
+  state.excludedMediaTypes = [];
+  await passwordLogin(page);
+
+  await page.locator('input[data-media-type="MusicVideos"]').uncheck();
+  await expect(page.locator('#status')).toHaveText('Media type scrobbling rules updated.');
+  expect(state.excludedMediaTypes).toEqual(['MusicVideos']);
+});

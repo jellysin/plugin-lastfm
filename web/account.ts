@@ -1,5 +1,6 @@
 import { Client } from './client.js';
 import { bind, element, link, message, run } from './view.js';
+import { refreshDevices, refreshMediaTypes } from './rules.js';
 
 interface Connection { connected: boolean; username?: string; needsReconnect: boolean; scrobblingEnabled: boolean; approvalPending?: boolean }
 interface Me { userName: string; isAdministrator: boolean; connection: Connection }
@@ -75,7 +76,11 @@ function show(client: Client, me: Me): void {
   profile.replaceChildren();
   if (me.connection.username) link(profile, 'Your Last.fm profile ↗', `https://www.last.fm/user/${encodeURIComponent(me.connection.username)}`, true);
   if (me.isAdministrator) element<HTMLAnchorElement>('server-settings-link').href = `${client.root}/web/index.html#/configurationpage?name=jellysin-lastfm`;
-  if (me.connection.connected) void refreshLibraries(client);
+  if (me.connection.connected) {
+    void refreshLibraries(client);
+    void refreshDevices(client);
+    void refreshMediaTypes(client);
+  }
 }
 
 export function setupAccount(client: Client, refresh: () => Promise<void>): void {
