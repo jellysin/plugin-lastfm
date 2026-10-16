@@ -6,6 +6,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Every compile writes its diagnostics as SARIF 2.1 into the ignored build folder, one file per project. -->
+    <SarifDirectory>$(MSBuildThisFileDirectory)build/sarif/</SarifDirectory>
+    <ErrorLog>$(SarifDirectory)$(MSBuildProjectName).sarif,version=2.1</ErrorLog>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
@@ -15,4 +18,8 @@
     <Authors>JellySin contributors</Authors>
     <PackageLicenseExpression>EUPL-1.2</PackageLicenseExpression>
   </PropertyGroup>
+  <!-- The compiler does not create the SARIF folder itself. -->
+  <Target Name="CreateSarifDirectory" BeforeTargets="CoreCompile">
+    <MakeDir Directories="$(SarifDirectory)" />
+  </Target>
 </Project>

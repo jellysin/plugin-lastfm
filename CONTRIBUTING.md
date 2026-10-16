@@ -65,6 +65,8 @@ repeatable workload and measurements; see benchmarks/README.md.
 The C# source policy enforces 120 function lines, 60 AST statements and cognitive
 complexity 30 using Roslyn and the official Sonar S3776 analyzer; its self-test
 checks the gate itself. CI retains the production callback benchmark's JSON output.
+Every compile also writes its compiler and analyzer diagnostics as SARIF 2.1 to
+`build/sarif/<project>.sarif`, so a failed build can be read without the console log.
 The coverage gate selects one newest Cobertura run and deduplicates physical source
 lines across nested/generated classes. It measures the production assembly only,
 requires 70% overall and 85% combined API/configuration/transport line coverage,
