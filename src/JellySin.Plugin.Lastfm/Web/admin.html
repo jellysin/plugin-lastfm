@@ -98,9 +98,14 @@
       byId('jellysin-libraries-group').hidden = mode === 'All';
     }
 
+    // Set only once the libraries are listed: a save after a failed listing must not replace the stored rule with an empty one.
+    let librariesListed = false;
+
     async function loadLibraries(selectedIds) {
       const list = byId('jellysin-libraries-list');
       list.innerHTML = '';
+      librariesListed = false;
+      byId('jellysin-library-mode').disabled = true;
       try {
         const libs = await ApiClient.ajax({ type: 'GET', url: api('Admin/Libraries'), dataType: 'json' });
         const selected = new Set((selectedIds || []).map(function (v) { return String(v).toLowerCase(); }));
@@ -123,6 +128,8 @@
           div.appendChild(label);
           list.appendChild(div);
         }
+        librariesListed = true;
+        byId('jellysin-library-mode').disabled = false;
       } catch {
         list.textContent = 'Could not load libraries.';
       }
@@ -217,12 +224,14 @@
         const id = '2034650d-a290-4a16-b195-89fb44cfb932';
         const config = await ApiClient.getPluginConfiguration(id);
         config.Enabled = document.getElementById('jellysin-enabled').checked;
-        const mode = byId('jellysin-library-mode').value;
-        config.LibraryMode = mode === 'AllowList' ? 1 : mode === 'BlockList' ? 2 : 0;
-        const checked = [];
-        const inputs = byId('jellysin-libraries-list').querySelectorAll('input[type="checkbox"]:checked');
-        for (let i = 0; i < inputs.length; i++) checked.push(inputs[i].value);
-        config.LibraryIds = checked;
+        if (librariesListed) {
+          const mode = byId('jellysin-library-mode').value;
+          config.LibraryMode = mode === 'AllowList' ? 1 : mode === 'BlockList' ? 2 : 0;
+          const checked = [];
+          const inputs = byId('jellysin-libraries-list').querySelectorAll('input[type="checkbox"]:checked');
+          for (let i = 0; i < inputs.length; i++) checked.push(inputs[i].value);
+          config.LibraryIds = checked;
+        }
         await ApiClient.updatePluginConfiguration(id, config);
         document.getElementById('jellysin-settings-status').textContent = 'Settings saved.';
       } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be saved.'; }
