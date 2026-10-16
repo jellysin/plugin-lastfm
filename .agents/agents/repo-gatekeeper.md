@@ -1,6 +1,7 @@
 ---
 name: repo-gatekeeper
 description: "Autonomous subagent for dependency verification, SCA security scans, isolated-worktree race tests, and Ed25519 Exit-0 receipt signing."
+model: flash
 mainAgent: true
 subagent: true
 commandExecutionPolicy: auto

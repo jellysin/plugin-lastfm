@@ -7,6 +7,9 @@ on:
   workflow_call:
 permissions:
   contents: read
+env:
+  # Engine the local Praetor hooks install and run (.config/lefthook/engine.sh).
+  PRAETOR_REF: "8c99fd771eaaa889c81a8e0eb4965b5e26e18784"
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
