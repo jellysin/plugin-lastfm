@@ -51,7 +51,9 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton(provider => new LibraryRuleService(provider.GetRequiredService<IStateStore>(), provider.GetService<ILibraryManager>(), provider.GetService<ILogger<LibraryRuleService>>()));
         serviceCollection.AddSingleton<PlaybackService>();
         serviceCollection.AddHostedService(provider => provider.GetRequiredService<PlaybackService>());
-        serviceCollection.AddHostedService<DeliveryService>();
+        // Jellyfin finds the scheduled tasks in this assembly itself and builds them from these services.
+        serviceCollection.AddSingleton<DeliveryService>();
+        serviceCollection.AddHostedService(provider => provider.GetRequiredService<DeliveryService>());
         serviceCollection.AddLastfmFeatures();
     }
 }

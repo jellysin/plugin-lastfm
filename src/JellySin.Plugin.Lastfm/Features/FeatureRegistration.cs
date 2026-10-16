@@ -32,7 +32,7 @@ public static class FeatureRegistration
     }
 }
 
-internal sealed class FeatureWorker(AccountService accounts, FavouriteRuns runs, PlaylistService playlists,
+internal sealed class FeatureWorker(AccountService accounts, FavouriteRuns runs,
     IUserDataManager userData, TimeProvider clock, ILogger<FeatureWorker> logger) : BackgroundService
 {
     private readonly System.Threading.Channels.Channel<Guid> changes = System.Threading.Channels.Channel.CreateBounded<Guid>(256);
@@ -42,7 +42,7 @@ internal sealed class FeatureWorker(AccountService accounts, FavouriteRuns runs,
         userData.UserDataSaved += OnUserDataSaved;
         try
         {
-            await Task.WhenAll(RefreshAllAsync(stoppingToken), ProcessChangesAsync(stoppingToken)).ConfigureAwait(false);
+            await ProcessChangesAsync(stoppingToken).ConfigureAwait(false);
         }
         finally { userData.UserDataSaved -= OnUserDataSaved; changes.Writer.TryComplete(); }
     }
@@ -58,23 +58,6 @@ internal sealed class FeatureWorker(AccountService accounts, FavouriteRuns runs,
         if (Plugin.Instance?.Configuration.Enabled != false && args.SaveReason == UserDataSaveReason.UpdateUserData) changes.Writer.TryWrite(args.UserId);
     }
 
-    private async Task RefreshAllAsync(CancellationToken ct)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5), clock);
-        do
-        {
-            try
-            {
-                if (Plugin.Instance?.Configuration.Enabled == false) continue;
-                var ids = await accounts.GetAccountsAsync(ct).ConfigureAwait(false);
-                foreach (var id in ids.Take(8192)) await RefreshAsync(id, true, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
-            catch (Exception ex) { logger.LogWarning("Feature scheduling failed with {ErrorType}.", ex.GetType().Name); }
-        }
-        while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false));
-    }
-
     private async Task ProcessChangesAsync(CancellationToken ct)
     {
         await foreach (var id in changes.Reader.ReadAllAsync(ct).ConfigureAwait(false))
@@ -82,18 +65,17 @@ internal sealed class FeatureWorker(AccountService accounts, FavouriteRuns runs,
             await Task.Delay(TimeSpan.FromSeconds(2), clock, ct).ConfigureAwait(false);
             var pending = new HashSet<Guid> { id };
             for (var count = 0; count < 256 && changes.Reader.TryRead(out var other); count++) pending.Add(other);
-            foreach (var user in pending) await RefreshAsync(user, false, ct).ConfigureAwait(false);
+            foreach (var user in pending) await RefreshAsync(user, ct).ConfigureAwait(false);
         }
     }
 
-    private async Task RefreshAsync(Guid id, bool includePlaylists, CancellationToken ct)
+    private async Task RefreshAsync(Guid id, CancellationToken ct)
     {
         try
         {
             var account = await accounts.GetAsync(id, ct).ConfigureAwait(false);
             if (account is null || account.NeedsReconnect) return;
             await RunFeatureAsync(id, token => runs.RunToEndAsync(id, token), ct).ConfigureAwait(false);
-            if (includePlaylists) await RunFeatureAsync(id, token => playlists.RefreshDueAsync(id, token), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex) { logger.LogWarning("Feature refresh for user {User} failed with {ErrorType}.", LogName.Of(id), ex.GetType().Name); }

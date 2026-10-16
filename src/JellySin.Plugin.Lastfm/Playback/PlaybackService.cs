@@ -21,6 +21,8 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
         [new("de7fe7f0-b048-439e-a431-b1a7e99c930d"), new("5e7fe7f0-b048-429e-a431-b1a7e69c930d")];
     private readonly Channel<PlaybackSnapshot?> _snapshots = Channel.CreateBounded<PlaybackSnapshot?>(new BoundedChannelOptions(4096) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     private readonly Channel<EligibleListen> _nowPlaying = Channel.CreateBounded<EligibleListen>(new BoundedChannelOptions(64) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+    // Users with something new to send. A full queue drops the request; the delivery task's next run sends it.
+    private readonly Channel<Guid> _deliveryWork = Channel.CreateBounded<Guid>(new BoundedChannelOptions(256) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
     private long _dropped;
     private long _failedWrites;
     private bool _legacyPresent;
@@ -29,6 +31,13 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     public PlaybackRuntimeStatus GetStatus() => new(_legacyPresent, Interlocked.Read(ref _dropped), Interlocked.Read(ref _failedWrites));
 
     public int PendingPersistence(Guid userId) => tracker.PendingCount(userId);
+
+    public ChannelReader<Guid> DeliveryWork => _deliveryWork.Reader;
+
+    public void RequestDelivery(Guid userId) => _deliveryWork.Writer.TryWrite(userId);
+
+    /// <summary>Asks the observation loop to retry listens it could not store; the retry runs on that loop, never beside it.</summary>
+    public void RequestPersistenceRetry() => _snapshots.Writer.TryWrite(null);
 
     public bool TryTakeNowPlaying(out EligibleListen? listen)
     {
@@ -67,8 +76,6 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timerCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        var retryTimer = QueueRetryTicksAsync(timerCancellation.Token);
         try
         {
             await foreach (var snapshot in _snapshots.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
@@ -81,7 +88,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
                         || snapshot.PluginGeneration != (Plugin.Instance?.ListeningGeneration ?? 0)) continue;
                     var update = tracker.Observe(snapshot);
                     if (update.Scrobble is not null) await PersistAsync(update.Scrobble, stoppingToken).ConfigureAwait(false);
-                    if (update.NowPlaying is not null) _nowPlaying.Writer.TryWrite(update.NowPlaying);
+                    if (update.NowPlaying is not null && _nowPlaying.Writer.TryWrite(update.NowPlaying)) RequestDelivery(update.NowPlaying.UserId);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception exception)
@@ -93,18 +100,6 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
             await RetryPersistenceAsync(stoppingToken, int.MaxValue).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-        finally { await timerCancellation.CancelAsync().ConfigureAwait(false); await retryTimer.ConfigureAwait(false); }
-    }
-
-    private async Task QueueRetryTicksAsync(CancellationToken cancellationToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2), clock);
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
-                if (!_snapshots.Writer.TryWrite(null) && _snapshots.Reader.Completion.IsCompleted) break;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
     private async Task PersistAsync(EligibleListen listen, CancellationToken cancellationToken)
@@ -113,6 +108,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
         { tracker.Acknowledge(listen.OccurrenceId); return; }
         await outbox.EnqueueAsync(listen, cancellationToken).ConfigureAwait(false);
         tracker.Acknowledge(listen.OccurrenceId);
+        RequestDelivery(listen.UserId);
     }
 
     private async Task RetryPersistenceAsync(CancellationToken cancellationToken, int limit = 8)

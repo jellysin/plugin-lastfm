@@ -36,7 +36,7 @@ public sealed class DeliveryLogTests
             "track.scrobble" => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}"),
             _ => JsonDocument.Parse("{}")
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         var expectedUser = Logged.User(fixture.UserId);
@@ -60,7 +60,7 @@ public sealed class DeliveryLogTests
             "track.scrobble" => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":[{\"ignoredMessage\":{\"code\":\"0\"}},{\"ignoredMessage\":{\"code\":\"2\"}}]}}"),
             _ => JsonDocument.Parse("{}")
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         var expectedUser = Logged.User(fixture.UserId);
@@ -83,7 +83,7 @@ public sealed class DeliveryLogTests
             "track.scrobble" => throw new LastfmException(29),
             _ => JsonDocument.Parse("{}")
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         var expectedUser = Logged.User(fixture.UserId);
@@ -109,7 +109,7 @@ public sealed class DeliveryLogTests
             "track.updateNowPlaying" => JsonDocument.Parse("{\"nowplaying\":{\"ignoredMessage\":{\"code\":\"0\"}}}"),
             _ => JsonDocument.Parse("{}")
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         var expectedUser = Logged.User(fixture.UserId);
@@ -132,7 +132,7 @@ public sealed class DeliveryLogTests
             "track.updateNowPlaying" => JsonDocument.Parse("{\"nowplaying\":{\"ignoredMessage\":{\"code\":\"1\"}}}"),
             _ => JsonDocument.Parse("{}")
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         var expectedUser = Logged.User(fixture.UserId);
@@ -155,7 +155,7 @@ public sealed class DeliveryLogTests
             "track.updateNowPlaying" => JsonDocument.Parse("{}"),
             _ => JsonDocument.Parse("{}")
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         var expectedUser = Logged.User(fixture.UserId);
@@ -178,7 +178,7 @@ public sealed class DeliveryLogTests
             "track.updateNowPlaying" => throw new LastfmException(6),
             _ => JsonDocument.Parse("{}")
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         var expectedUser = Logged.User(fixture.UserId);
@@ -205,7 +205,7 @@ public sealed class DeliveryLogTests
             }
             return JsonDocument.Parse("{}");
         };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(logger.Lines);
@@ -274,7 +274,7 @@ public sealed class DeliveryLogTests
         using var fixture = new CoreFixture();
         await ConnectWithMarkerAsync(fixture);
         var (_, _, _, outbox, playback, logger) = CreateServices(fixture);
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(logger.Lines);
@@ -331,7 +331,7 @@ public sealed class DeliveryLogTests
             await playback.StartAsync(Ct);
             play(sessions);
             await playback.StopAsync(Ct);
-            using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+            using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
             await delivery.RunOnceAsync(Ct);
             AssertNoSecretsOrMarkers(logger.Lines, fixture);
         }
@@ -351,7 +351,7 @@ public sealed class DeliveryLogTests
         await playback.StopAsync(Ct);
         fixture.Clock.Advance(secondsBeforeDelivery);
         fixture.Client.Handler = (method, _, _) => method == "track.updateNowPlaying" ? answer() : JsonDocument.Parse("{}");
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, logger);
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
         await delivery.RunOnceAsync(Ct);
         return logger;
     }

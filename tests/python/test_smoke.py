@@ -436,5 +436,40 @@ class LibraryOptionsTests(unittest.TestCase):
                 smoke.check_library_options(options)
 
 
+def scheduled_tasks(minutes=(("LastfmFavouriteSync", 5), ("LastfmPlaylistRefresh", 5), ("LastfmScrobbleDelivery", 1))):
+    """The tasks Jellyfin lists, in the letter case the smoke client reads: one of the server's own beside the plugin's."""
+    own = [{"key": key, "category": "Last.fm", "triggers": [{"type": "StartupTrigger", "intervalticks": None},
+                                                             {"type": "IntervalTrigger", "intervalticks": count * 600_000_000}]} for key, count in minutes]
+    return [{"key": "RefreshLibrary", "category": "Library", "triggers": []}, *own]
+
+
+class ScheduledTaskTests(unittest.TestCase):
+    def test_accepts_the_three_tasks_at_their_default_intervals(self):
+        smoke.check_scheduled_tasks(scheduled_tasks())
+
+    def test_refuses_a_missing_extra_or_repeated_task(self):
+        for minutes in ((("LastfmFavouriteSync", 5), ("LastfmPlaylistRefresh", 5)),
+                        (("LastfmFavouriteSync", 5), ("LastfmPlaylistRefresh", 5), ("LastfmScrobbleDelivery", 1), ("LastfmScrobbleDelivery", 1)),
+                        ()):
+            with self.subTest(count=len(minutes)), self.assertRaisesRegex(SmokeFailure, "exactly the plugin's three scheduled tasks"):
+                smoke.check_scheduled_tasks(scheduled_tasks(minutes))
+
+    def test_refuses_a_task_at_another_interval_or_without_a_trigger(self):
+        tasks = scheduled_tasks((("LastfmFavouriteSync", 5), ("LastfmPlaylistRefresh", 5), ("LastfmScrobbleDelivery", 5)))
+        with self.assertRaisesRegex(SmokeFailure, "lacks its startup run or its default interval"):
+            smoke.check_scheduled_tasks(tasks)
+        tasks = scheduled_tasks()
+        tasks[1]["triggers"] = None
+        with self.assertRaisesRegex(SmokeFailure, "lacks its startup run or its default interval"):
+            smoke.check_scheduled_tasks(tasks)
+
+    def test_refuses_a_task_that_does_not_run_at_startup(self):
+        # Jellyfin's interval trigger alone first runs a task an hour after the server starts.
+        tasks = scheduled_tasks()
+        tasks[2]["triggers"] = tasks[2]["triggers"][1:]
+        with self.assertRaisesRegex(SmokeFailure, "lacks its startup run"):
+            smoke.check_scheduled_tasks(tasks)
+
+
 if __name__ == "__main__":
     unittest.main()

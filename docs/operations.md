@@ -194,8 +194,9 @@ track counts as usual. This follows from the code and matches the 2026-10-12
 observation on 12.2.0 in [validation](validation.md#observed-on-2026-10-12-with-jellyfin-1220).
 
 The outbox survives restarts, submits at most 50 scrobbles per request, and keeps
-bounded acknowledgement records. Failed now-playing updates are discarded because
-they describe a transient state. Temporary delivery failures receive bounded
+bounded acknowledgement records. A play is sent as soon as it is stored, and a
+now-playing update as soon as playback reports it; neither waits for a timer.
+Failed now-playing updates are discarded because they describe a transient state. Temporary delivery failures receive bounded
 backoff; invalid sessions require reconnecting and blocked errors are visible in
 the account dashboard.
 
@@ -205,7 +206,9 @@ their order:
 
 - Code 4 (timestamp too new) usually means the server's clock is ahead of
   Last.fm's. The held play is sent again by itself after a delay that grows from
-  about 15 seconds to at most an hour, together with the plays behind it.
+  about 15 seconds to at most an hour, together with the plays behind it. The
+  **Retry Last.fm scrobble delivery** scheduled task sends it on its first run
+  after that delay.
 - Code 5 (daily scrobble limit exceeded) holds until the user chooses **Retry**
   on the Delivery page, once the limit has reset.
 
@@ -226,6 +229,25 @@ persistence through continued disk failure.
 Last.fm has no scrobble idempotency key. If it accepts a batch and the response is
 lost, retrying can duplicate a listen. Local occurrence identifiers and receipts
 reduce duplicates but cannot provide an exactly-once guarantee across the network.
+
+### Scheduled tasks
+
+The plugin adds three tasks under **Dashboard > Scheduled Tasks**, category
+**Last.fm**. Each can be started by hand, given other triggers, or stopped there.
+A run never overlaps another run of the same task.
+
+| Task | Default trigger | What it does |
+| :--- | :--- | :--- |
+| Reconcile Last.fm favourites | at server start, then every 5 minutes | One favourite run for each connected account |
+| Refresh Last.fm playlists | at server start, then every 5 minutes | Refreshes each account's Last.fm playlists that are due |
+| Retry Last.fm scrobble delivery | at server start, then every minute | Sends plays waiting for a backoff and retries plays the server could not store |
+
+The start run finishes work a restart interrupted, such as a playlist write,
+without waiting for the first interval. Jellyfin starts the next run no sooner
+than one minute after the previous run plus the interval, so on an idle server
+the runs come about 6 and 2 minutes apart.
+Accounts that need reconnecting are skipped. Removing a task's triggers stops that
+work until it is started by hand; fresh plays are still sent when stored.
 
 ### What the server log says about delivery
 
@@ -268,10 +290,10 @@ server and the page says so; **Refresh review** shows its result. Closing the
 page does not stop the run. Switching the feature off, a change of the Last.fm
 connection and a server stop do; a request that still waits for a stopped run
 answers with the stored state. One run per user exists at a time, and the
-periodic refresh in the background uses the same run.
+**Reconcile Last.fm favourites** scheduled task uses the same run.
 
-A run handles at most 200 tracks in id order, and the periodic refresh starts one
-every five minutes, so a large collection takes several runs to reconcile. Once a
+A run handles at most 200 tracks in id order, and the scheduled task starts one
+every five minutes by default, so a large collection takes several runs to reconcile. Once a
 first pass has completed, a run also handles up to 200 more tracks whose favourite
 or love changed since a run last saw them, so a change does not wait for the run
 whose 200 tracks hold it. A love the plugin sent takes none of those places until
