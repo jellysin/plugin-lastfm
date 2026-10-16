@@ -187,6 +187,14 @@ Only observed listening counts. Pauses and seeks do not create listening time.
 Tracks must exceed 30 seconds and satisfy the documented half-track or four-minute
 threshold. Original UTC start times are retained when delivery is delayed.
 
+The plugin settings page chooses which media types count, under "Media types to
+scrobble". Music tracks count by default. Audiobook chapters and music videos count
+only when an administrator switches them on: a chapter is not a track, and the
+artist Jellyfin records for it is the narrator or author. A music video is sent with
+its artist and title and no album, because Jellyfin keeps no album for it. Other
+videos never count. A configuration saved before these switches existed scrobbles
+music only (`ConfigurationTests.SettingsSavedBeforeMediaTypesExistedScrobbleMusicOnly`).
+
 A play that is running while its user connects again, also to the same Last.fm
 account, is not submitted: connecting starts a new capture, and the tracker drops a
 play begun under the previous one and ignores its remaining progress. The next

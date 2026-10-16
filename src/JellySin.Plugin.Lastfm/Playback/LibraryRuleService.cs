@@ -152,12 +152,24 @@ public sealed class LibraryRuleService : IDisposable
         return null;
     }
 
-    public bool IsScrobblingAllowed(Guid userId, Audio audio)
+    public bool IsMediaTypeAllowed(BaseItem item)
+    {
+        var config = GetConfiguration();
+        return item switch
+        {
+            AudioBook => config.ScrobbleAudiobooks,
+            Audio => config.ScrobbleMusic,
+            MusicVideo => config.ScrobbleMusicVideos,
+            _ => false
+        };
+    }
+
+    public bool IsScrobblingAllowed(Guid userId, BaseItem item)
     {
         var config = GetConfiguration();
         var mode = config.LibraryMode;
         var adminLibs = config.LibraryIds;
-        var itemLibs = ResolveItemLibraries(audio);
+        var itemLibs = ResolveItemLibraries(item);
 
         if (itemLibs is null || itemLibs.Count == 0)
             return mode != LibraryFilterMode.AllowList;

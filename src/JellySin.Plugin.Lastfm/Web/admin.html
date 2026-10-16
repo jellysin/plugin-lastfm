@@ -8,6 +8,12 @@
     <h2>Server settings</h2>
     <form id="jellysin-settings">
       <div class="checkboxContainer"><label><input id="jellysin-enabled" is="emby-checkbox" type="checkbox"><span>Enable JellySin Last.fm</span></label></div>
+      <fieldset id="jellysin-media-types" style="margin-top:1rem;">
+        <legend>Media types to scrobble</legend>
+        <div class="checkboxContainer"><label><input id="jellysin-media-music" is="emby-checkbox" type="checkbox"><span>Music tracks</span></label></div>
+        <div class="checkboxContainer"><label><input id="jellysin-media-audiobooks" is="emby-checkbox" type="checkbox"><span>Audiobook chapters</span></label></div>
+        <div class="checkboxContainer"><label><input id="jellysin-media-music-videos" is="emby-checkbox" type="checkbox"><span>Music videos</span></label></div>
+      </fieldset>
       <div class="selectContainer" style="margin-top:1rem;">
         <label for="jellysin-library-mode">Library scrobble filter</label>
         <select id="jellysin-library-mode" is="emby-select">
@@ -141,6 +147,9 @@
       try {
         const config = await ApiClient.getPluginConfiguration('2034650d-a290-4a16-b195-89fb44cfb932');
         byId('jellysin-enabled').checked = config.Enabled;
+        byId('jellysin-media-music').checked = config.ScrobbleMusic !== false;
+        byId('jellysin-media-audiobooks').checked = config.ScrobbleAudiobooks === true;
+        byId('jellysin-media-music-videos').checked = config.ScrobbleMusicVideos === true;
         const mode = config.LibraryMode === 1 || String(config.LibraryMode).toLowerCase() === 'allowlist' ? 'AllowList'
           : config.LibraryMode === 2 || String(config.LibraryMode).toLowerCase() === 'blocklist' ? 'BlockList' : 'All';
         byId('jellysin-library-mode').value = mode;
@@ -224,6 +233,9 @@
         const id = '2034650d-a290-4a16-b195-89fb44cfb932';
         const config = await ApiClient.getPluginConfiguration(id);
         config.Enabled = document.getElementById('jellysin-enabled').checked;
+        config.ScrobbleMusic = byId('jellysin-media-music').checked;
+        config.ScrobbleAudiobooks = byId('jellysin-media-audiobooks').checked;
+        config.ScrobbleMusicVideos = byId('jellysin-media-music-videos').checked;
         if (librariesListed) {
           const mode = byId('jellysin-library-mode').value;
           config.LibraryMode = mode === 'AllowList' ? 1 : mode === 'BlockList' ? 2 : 0;
