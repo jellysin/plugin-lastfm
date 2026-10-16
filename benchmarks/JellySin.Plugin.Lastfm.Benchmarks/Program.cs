@@ -48,7 +48,8 @@ try
         var allocations = new List<double>(20 * workers);
         for (var round = 0; round < 21; round++)
         {
-            using var playback = new PlaybackService(sessions, plugins, new PlaybackTracker(TimeProvider.System), outbox, accounts, TimeProvider.System, NullLogger<PlaybackService>.Instance);
+            using var libraryRules = new LibraryRuleService(store);
+            using var playback = new PlaybackService(sessions, plugins, new PlaybackTracker(TimeProvider.System), outbox, accounts, libraryRules, TimeProvider.System, NullLogger<PlaybackService>.Instance);
             await playback.StartAsync(CancellationToken.None);
             if (music.Any(item => accounts.GetCaptureBinding(item.Users.First().Id) is null))
                 throw new InvalidOperationException("Benchmark accounts must be actively linked; measuring rejection is invalid.");

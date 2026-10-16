@@ -118,7 +118,7 @@ public sealed class FeatureEndpointTests
         var listen = new EligibleListen(Guid.NewGuid(), fixture.Core.UserId,
             new JellySin.Plugin.Lastfm.Playback.MusicTrack(Guid.NewGuid(), "Artist", "Track", null, null, 120), fixture.Core.Clock.GetUtcNow());
         await fixture.Core.Store.WriteAsync(fixture.Core.UserId, "outbox", new OutboxState([new PendingScrobble(listen, BlockedCode: 29)], []), TestContext.Current.CancellationToken);
-        using var playback = new PlaybackService(Mock.Of<ISessionManager>(), Mock.Of<IPluginManager>(), new PlaybackTracker(fixture.Core.Clock), outbox, fixture.Core.Accounts, fixture.Core.Clock, NullLogger<PlaybackService>.Instance);
+        using var playback = new PlaybackService(Mock.Of<ISessionManager>(), Mock.Of<IPluginManager>(), new PlaybackTracker(fixture.Core.Clock), outbox, fixture.Core.Accounts, fixture.Core.LibraryRules, fixture.Core.Clock, NullLogger<PlaybackService>.Instance);
         var controller = Attach(new DeliveryController(outbox, playback), fixture.Core.UserId);
         controller.Request.QueryString = new QueryString("?userId=" + Guid.NewGuid());
         var before = JsonSerializer.SerializeToElement(await controller.Status(TestContext.Current.CancellationToken));

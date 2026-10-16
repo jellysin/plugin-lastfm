@@ -21,6 +21,26 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
-    public void SettingsHoldNothingButTheMainSwitch() =>
-        Assert.Equal(["Enabled"], typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly).Select(property => property.Name));
+    public void SettingsHoldTheConfiguredProperties() =>
+        Assert.Equal(["Enabled", "LibraryIds", "LibraryMode"], typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly).Select(property => property.Name).Order());
+
+    [Fact]
+    public void SettingsWithLibraryRulesRoundtripsXml()
+    {
+        var libId = Guid.NewGuid();
+        var config = new PluginConfiguration
+        {
+            Enabled = true,
+            LibraryMode = LibraryFilterMode.AllowList,
+            LibraryIds = [libId]
+        };
+        using var writer = new StringWriter();
+        var serializer = new XmlSerializer(typeof(PluginConfiguration));
+        serializer.Serialize(writer, config);
+        using var reader = new StringReader(writer.ToString());
+        var loaded = Assert.IsType<PluginConfiguration>(serializer.Deserialize(reader));
+        Assert.True(loaded.Enabled);
+        Assert.Equal(LibraryFilterMode.AllowList, loaded.LibraryMode);
+        Assert.Equal([libId], loaded.LibraryIds);
+    }
 }

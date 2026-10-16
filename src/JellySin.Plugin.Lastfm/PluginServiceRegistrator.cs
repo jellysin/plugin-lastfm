@@ -48,6 +48,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService(provider => provider.GetRequiredService<LastfmClient>());
         serviceCollection.AddSingleton<PlaybackTracker>();
         serviceCollection.AddSingleton<ScrobbleOutbox>();
+        serviceCollection.AddSingleton(provider => new LibraryRuleService(provider.GetRequiredService<IStateStore>(), provider.GetService<ILibraryManager>(), provider.GetService<ILogger<LibraryRuleService>>()));
         serviceCollection.AddSingleton<PlaybackService>();
         serviceCollection.AddHostedService(provider => provider.GetRequiredService<PlaybackService>());
         serviceCollection.AddHostedService<DeliveryService>();

@@ -54,6 +54,7 @@ public sealed class BuiltAssemblyTests
         "JellySin.Plugin.Lastfm.Features.MusicLibrary x1",
         "JellySin.Plugin.Lastfm.Features.MusicViewCache x1",
         "JellySin.Plugin.Lastfm.Features.PlaylistService x1",
+        "JellySin.Plugin.Lastfm.Playback.LibraryRuleService x1",
         "JellySin.Plugin.Lastfm.Playback.PlaybackService x1",
         "JellySin.Plugin.Lastfm.Playback.PlaybackTracker x1",
         "JellySin.Plugin.Lastfm.Playback.ScrobbleOutbox x1",

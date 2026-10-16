@@ -118,7 +118,7 @@ test('favourite synchronization reports running server state', async ({ page }) 
 const sections = ['overview', 'history', 'favourites', 'discovery', 'playlists'];
 const needsConnection = [
   ...sections.map(id => `#${id}`), ...sections.map(id => `nav.section-nav a[href="#${id}"]`),
-  '#disconnect-lastfm', 'label:has(#scrobbling)', 'details:has(#delivery-status)',
+  '#disconnect-lastfm', 'label:has(#scrobbling)', '#library-exclusions', 'details:has(#delivery-status)',
 ];
 
 async function expectOffered(page, offered) {
@@ -366,7 +366,7 @@ test('an interrupted playlist can be reviewed and cancelled without deleting the
 async function openSettings(page, options = {}) {
   const setup = { source: 'Project', connection: {}, server: '', hash: '#/configurationpage?name=jellysin-lastfm', authorizationUrl: 'https://www.last.fm/api/auth/?api_key=fixture&cb=http%3A%2F%2F127.0.0.1%3A4177%2Fjellyfin%2FJellySin%2FLastfm%2FCallback%3Fattempt%3D1', ...options };
   await page.addInitScript(input => {
-    const config = { Enabled: true, HostSetting: 'preserved' };
+    const config = { Enabled: true, HostSetting: 'preserved', ...input.config };
     // The calls outlive a visit to Last.fm in the same tab, so that a test can read what the page sent before it left.
     const state = { calls: JSON.parse(sessionStorage.getItem('fixture-calls') ?? '[]'), application: { Configured: input.source === 'Project' || input.source === 'Override', Source: input.source },
       connection: { Connected: false, Username: null, NeedsReconnect: false, ScrobblingEnabled: true, ApprovalPending: false, ...input.connection } };
@@ -374,6 +374,7 @@ async function openSettings(page, options = {}) {
     const answer = (path, type, data) => {
       if (path === 'Admin/Application' && type === 'GET') return state.application;
       if (path === 'Admin/Application') { state.application = { Configured: true, Source: type === 'PUT' ? 'Override' : 'Project' }; return undefined; }
+      if (path === 'Admin/Libraries' && input.libraries) return input.libraries;
       if (path === 'Me') return { UserName: 'administrator', IsAdministrator: true, Connection: state.connection };
       if (path === 'Me/Connection/Begin' && input.beginStatus) throw new Response(null, { status: input.beginStatus });
       if (path === 'Me/Connection/Begin' && data?.ReturnToSettings === true) return { AuthorizationUrl: input.authorizationUrl, ExpiresAt: '2026-09-08T15:10:00Z' };
@@ -404,6 +405,28 @@ async function openSettings(page, options = {}) {
   await page.goto('http://127.0.0.1:4177/native' + setup.hash);
   await page.locator('#jellysin-admin').dispatchEvent('pageshow');
 }
+
+test('native admin settings save the library rule only when the libraries could be listed', async ({ page }) => {
+  const music = '11111111-1111-1111-1111-111111111111';
+  const books = '22222222-2222-2222-2222-222222222222';
+  await openSettings(page, { config: { LibraryMode: 2, LibraryIds: [books] }, libraries: [{ Id: music, Name: 'Music' }, { Id: books, Name: 'Audiobooks' }] });
+  await expect(page.locator('#jellysin-library-mode')).toHaveValue('BlockList');
+  await expect(page.getByLabel('Audiobooks')).toBeChecked();
+  await page.getByLabel('Music').check();
+  await page.locator('#jellysin-library-mode').selectOption('AllowList');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', LibraryMode: 1, LibraryIds: [music, books] });
+});
+
+test('native admin settings keep the library rule when the libraries could not be listed', async ({ page }) => {
+  const books = '22222222-2222-2222-2222-222222222222';
+  await openSettings(page, { config: { LibraryMode: 2, LibraryIds: [books] } });
+  await expect(page.locator('#jellysin-libraries-list')).toHaveText('Could not load libraries.');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', LibraryMode: 2, LibraryIds: [books] });
+});
 
 const calls = (page, path) => page.evaluate(wanted => globalThis.fixture.calls.filter(call => call.path === wanted), path);
 

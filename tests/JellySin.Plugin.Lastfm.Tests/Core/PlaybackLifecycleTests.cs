@@ -33,7 +33,7 @@ public sealed class PlaybackLifecycleTests
         plugins.SetupGet(value => value.Plugins).Returns([]);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
         using var playback = new PlaybackService(new Mock<ISessionManager>().Object, plugins.Object, tracker, outbox,
-            fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+            fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
         await playback.StopAsync(TestContext.Current.CancellationToken);
         Assert.Equal(0, tracker.PendingCount(fixture.UserId));
@@ -55,7 +55,7 @@ public sealed class PlaybackLifecycleTests
         plugins.SetupGet(value => value.Plugins).Returns([]);
         var tracker = new PlaybackTracker(fixture.Clock);
         var outbox = new ScrobbleOutbox(store.Object, fixture.Accounts, fixture.Client, fixture.Clock);
-        using var playback = new PlaybackService(sessions.Object, plugins.Object, tracker, outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+        using var playback = new PlaybackService(sessions.Object, plugins.Object, tracker, outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
         var args = Arguments(fixture);
         sessions.Raise(value => value.PlaybackStart += null, args);
@@ -88,7 +88,7 @@ public sealed class PlaybackLifecycleTests
         var plugins = new Mock<IPluginManager>();
         plugins.SetupGet(value => value.Plugins).Returns([]);
         var outbox = new ScrobbleOutbox(store.Object, fixture.Accounts, fixture.Client, fixture.Clock);
-        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
         var args = Arguments(fixture);
         sessions.Raise(value => value.PlaybackStart += null, args);
@@ -116,7 +116,7 @@ public sealed class PlaybackLifecycleTests
         var plugins = new Mock<IPluginManager>();
         plugins.SetupGet(value => value.Plugins).Returns([]);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
-        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
         var args = Arguments(fixture);
         sessions.Raise(value => value.PlaybackStart += null, args);
@@ -148,7 +148,7 @@ public sealed class PlaybackLifecycleTests
         var plugins = new Mock<IPluginManager>();
         plugins.SetupGet(value => value.Plugins).Returns([]);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
-        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
         var args = Arguments(fixture);
         args.Item = new AudioBook { Id = Guid.NewGuid(), Name = "Chapter 1", Artists = ["Narrator"], RunTimeTicks = TimeSpan.FromSeconds(600).Ticks };
@@ -174,7 +174,7 @@ public sealed class PlaybackLifecycleTests
         plugins.SetupGet(value => value.Plugins).Returns([new LocalPlugin("legacy", true, new PluginManifest
         { Id = Guid.Parse(legacyId), Name = "Last.fm", Version = "10.11.10.0", Status = MediaBrowser.Model.Plugins.PluginStatus.Active })]);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
-        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
         sessions.Raise(value => value.PlaybackStart += null, Arguments(fixture));
         await playback.StopAsync(TestContext.Current.CancellationToken);
@@ -193,7 +193,7 @@ public sealed class PlaybackLifecycleTests
         var plugins = new Mock<IPluginManager>();
         plugins.SetupGet(value => value.Plugins).Returns([]);
         using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock),
-            new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock), fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+            new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock), fixture.Accounts, fixture.LibraryRules, fixture.Clock, NullLogger<PlaybackService>.Instance);
         await playback.StartAsync(TestContext.Current.CancellationToken);
         sessions.Raise(value => value.PlaybackStart += null, new PlaybackProgressEventArgs());
         await playback.StopAsync(TestContext.Current.CancellationToken);
