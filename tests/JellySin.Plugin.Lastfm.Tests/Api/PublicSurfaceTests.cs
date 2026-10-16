@@ -7,6 +7,7 @@ using MediaBrowser.Model.QuickConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
@@ -108,7 +109,7 @@ public sealed class PublicSurfaceTests
     [Fact]
     public void QuickConnectRateGateIsGlobalAndRecoversAfterWindow()
     {
-        var clock = new TestClock();
+        var clock = TestTime.Clock();
         var (controller, _) = Create(clock);
         for (var index = 0; index < 60; index++) Assert.IsType<NotFoundResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value")));
         Assert.Equal(429, Assert.IsType<StatusCodeResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value"))).StatusCode);

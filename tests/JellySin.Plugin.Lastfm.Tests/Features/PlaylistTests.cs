@@ -44,7 +44,7 @@ public sealed class PlaylistTests
         f.Top.Add(local.Track);
         var host = new PlaylistHost(f);
         var recipe = await host.Service.GenerateAsync(f.Core.UserId, new(Guid.Empty, "Daily", PlaylistSource.Top, DailyRefresh: true), Ct);
-        f.Core.Clock.Advance(86401);
+        f.Core.Clock.Advance(TimeSpan.FromSeconds(86401));
         await f.Core.Store.WriteAsync(f.Core.UserId, "feature-playlist-operation",
             new PlaylistOperation(recipe, [Guid.NewGuid()], recipe.PlaylistId, Guid.NewGuid(), Cancelled: true), Ct);
         await host.Service.RefreshDueAsync(f.Core.UserId, Ct);
