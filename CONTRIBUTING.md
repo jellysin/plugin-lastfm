@@ -73,10 +73,13 @@ and never merges old runs or trusts summary percentages from the report header.
 ## Release and compatibility
 
 Release-please collects commits in a release PR and updates `version.txt`, web
-package versions and the changelog. Its `skip-github-release: true` setting prevents
-tag and release creation. Ordinary pushes and PR merges never publish a release.
-The first release PR targets `0.1.0`; later releases stay on 0.x minors until the
-product feature list is complete, and only then does a release PR target `1.0.0`.
+package versions and the changelog. A merged release PR leaves one unpublished draft
+(`draft: true`) and its version tag on the merge commit (`force-tag-creation: true`:
+GitHub gives a draft no tag, and without it release-please misses the previous release
+and repeats its changelog). Ordinary pushes and PR merges never publish a release.
+The first release was `0.1.0`, and the feature list in #96 targets `0.2.0`. With
+`bump-minor-pre-major`, features and breaking changes both raise the minor version
+below 1.0, so a release PR targets `1.0.0` only through an explicit `Release-As` footer.
 
 Stable `vX.Y.Z` tags map to `X.Y.Z.0` for the assembly and Plugin Repository;
 the minimum Jellyfin ABI is separately recorded in `plugin.json`.
