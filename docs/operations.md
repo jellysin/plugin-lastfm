@@ -243,7 +243,9 @@ A run never overlaps another run of the same task.
 | Retry Last.fm scrobble delivery | at server start, then every minute | Sends plays waiting for a backoff and retries plays the server could not store |
 
 The start run finishes work a restart interrupted, such as a playlist write,
-without waiting for the first interval.
+without waiting for the first interval. Jellyfin starts the next run no sooner
+than one minute after the previous run plus the interval, so on an idle server
+the runs come about 6 and 2 minutes apart.
 Accounts that need reconnecting are skipped. Removing a task's triggers stops that
 work until it is started by hand; fresh plays are still sent when stored.
 
