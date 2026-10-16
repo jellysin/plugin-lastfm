@@ -290,6 +290,18 @@ def check_plugin(client: Client) -> None:
     page, _, _ = client.request("/web/configurationpage?name=jellysin-lastfm", raw=True)
     require(b"JellySin" in page, "The plugin's administrator configuration page is missing.")
     check_library_options(client.request("/Libraries/AvailableOptions?libraryContentType=music"))
+    check_scheduled_tasks(client.request("/ScheduledTasks"))
+
+
+def check_scheduled_tasks(tasks: list[dict[str, Any]]) -> None:
+    """The plugin's background work runs as exactly these Jellyfin tasks, at these default intervals."""
+    minute = 600_000_000
+    expected = {"LastfmFavouriteSync": 5 * minute, "LastfmPlaylistRefresh": 5 * minute, "LastfmScrobbleDelivery": minute}
+    own = [task for task in tasks if task.get("category") == "Last.fm"]
+    require(sorted(task["key"] for task in own) == sorted(expected), "Jellyfin does not list exactly the plugin's three scheduled tasks.")
+    for task in own:
+        intervals = [trigger.get("intervalticks") for trigger in task.get("triggers") or []]
+        require(intervals == [expected[task["key"]]], "A plugin scheduled task lacks its default interval.")
 
 
 def own_entries(answer: Any) -> list[str]:
@@ -594,7 +606,7 @@ def run_smoke(host: DockerHost, expect_configured: bool = False) -> dict[str, An
     admin = Client(host.origin)
     admin_user = setup_server(admin, admin_password)
     check_plugin(admin)
-    print("PASS: plugin activation, embedded assets, security headers and configuration page.", flush=True)
+    print("PASS: plugin activation, embedded assets, security headers, configuration page and the three scheduled tasks.", flush=True)
     user = create_user(admin, listener_password)
     listener = Client(host.origin)
     listener.authenticate("SmokeListener", listener_password)
