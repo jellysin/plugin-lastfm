@@ -2,6 +2,7 @@ using Jellyfin.Database.Implementations.Entities;
 using JellySin.Plugin.Lastfm.Playback;
 using JellySin.Plugin.Lastfm.Storage;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
@@ -135,6 +136,29 @@ public sealed class PlaybackLifecycleTests
         using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, fixture.Clock, NullLogger<DeliveryService>.Instance);
         await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
         Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
+        Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
+    }
+
+    [Fact]
+    public async Task AudiobookChapterIsNeverCaptured()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConnectAsync();
+        var sessions = new Mock<ISessionManager>();
+        var plugins = new Mock<IPluginManager>();
+        plugins.SetupGet(value => value.Plugins).Returns([]);
+        var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
+        using var playback = new PlaybackService(sessions.Object, plugins.Object, new PlaybackTracker(fixture.Clock), outbox, fixture.Accounts, fixture.Clock, NullLogger<PlaybackService>.Instance);
+        await playback.StartAsync(TestContext.Current.CancellationToken);
+        var args = Arguments(fixture);
+        args.Item = new AudioBook { Id = Guid.NewGuid(), Name = "Chapter 1", Artists = ["Narrator"], RunTimeTicks = TimeSpan.FromSeconds(600).Ticks };
+        sessions.Raise(value => value.PlaybackStart += null, args);
+        fixture.Clock.Advance(300);
+        args.PlaybackPositionTicks = TimeSpan.FromSeconds(300).Ticks;
+        sessions.Raise(value => value.PlaybackProgress += null, args);
+        await playback.StopAsync(TestContext.Current.CancellationToken);
+        Assert.False(playback.TryTakeNowPlaying(out _));
+        Assert.Equal(0, playback.GetStatus().DroppedSnapshots);
         Assert.Equal(0, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
     }
 
