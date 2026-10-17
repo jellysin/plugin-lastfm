@@ -43,6 +43,8 @@ JellySin: Jellyfin plus sin, a little temptation for your media server; said JEL
   with saved recipes and optional daily refresh.
 - Metadata providers for artist biographies, album wikis and album release dates,
   with HTML stripped to plain text and trailing CC BY-SA attribution preserved.
+- External links to Last.fm artist and album pages built from library names on page
+  render without network calls.
 - Image providers for artist pictures and album covers; Last.fm's grey placeholder
   images are skipped, and Jellyfin keeps the image you choose in its own library.
 

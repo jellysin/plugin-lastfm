@@ -33,6 +33,15 @@ albums (`LastfmAlbumProvider`).
 - **Attribution & Licensing**: Last.fm artist biographies and album wikis are licensed under Creative Commons Attribution-ShareAlike (CC BY-SA). HTML markup is stripped to plain text, the body is capped to `MaxOverviewLength`, and the trailing attribution sentence (`Read more on Last.fm: <https://www.last.fm/...>`) is preserved intact after the body in `Overview`.
 - **Storage & Retention**: Mapped fields land in Jellyfin's library database. The plugin keeps no copy beyond its existing response cache under `jellysin-lastfm/state` inside Jellyfin's data directory.
 
+### External address links
+
+The plugin implements Jellyfin `IExternalUrlProvider` (`LastfmExternalUrlProvider`) to link Jellyfin artist and album pages to their Last.fm pages.
+
+- **Pure local function**: no network calls, database lookups or disk access. Addresses are built from library item names when the page renders.
+- **Address format**: artists link to `https://www.last.fm/music/<artist>` and albums to `https://www.last.fm/music/<album artist>/<album>`. Other item types, empty or whitespace names and albums without an album artist get no link.
+- **Encoding**: each segment is percent-encoded with spaces mapped to `+`, matching Last.fm's own addresses (for example `Sigur+R%C3%B3s`, `AC%2FDC`, `Bj%C3%B6rk/Homogenic`). `/`, `+`, `&`, `?` and `#` are encoded, and a name made only of dots is encoded as `%2E`, so a name cannot add a path segment, query or fragment.
+- **Availability**: links need no API credentials; they are suppressed when the administrator disables the plugin.
+
 ### Image providers and stored data
 
 The plugin implements Jellyfin `IRemoteImageProvider` (`LastfmImageProvider`) for artists and albums.
