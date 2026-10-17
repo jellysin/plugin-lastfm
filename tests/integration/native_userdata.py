@@ -37,6 +37,7 @@ from native_library import (  # noqa: E402
     match_checks,
     match_fixtures,
     other_account,
+    set_policy,
     wait_scan,
 )
 from page_check import StandInContainer  # noqa: E402
@@ -344,10 +345,9 @@ def playlist_checks(
     }
 
 
-def scheduler_checks(host: DockerHost, admin: Client, viewer: Client) -> dict:
+def scheduler_checks(host: DockerHost, admin: Client, viewer: Client, listener: Client, user: dict) -> dict:
     """Interrupts a connected user's playlist write, restarts the host and only reads until the plugin's scheduler
     finishes it. Connecting a first account clears the user's stored state, so this user connects before the write."""
-    listener, user = probe_user(admin)
     approve(listener)
     prepared = admin.request(
         PROBE + "/Playlist/Prepare",
@@ -393,7 +393,44 @@ def scheduler_checks(host: DockerHost, admin: Client, viewer: Client) -> dict:
     }
 
 
-def run(host: DockerHost) -> dict:
+def blocked_refresh_checks(admin: Client, listener: Client, user: dict, stand_in: StandInContainer) -> dict:
+    """Refreshes a connected owner's generated playlist while the parental limit blocks every track: the refresh
+    reads Last.fm, matches nothing it may write and leaves the playlist as it was; without the limit it writes."""
+    viewer = other_account(admin)
+    (recipe,) = listener.request(RECIPES_PATH)
+    body = {key: recipe[key.lower()] for key in ("Id", "Name", "Source", "Period", "Limit", "DailyRefresh")}
+    before = private_playlist(listener, viewer, recipe["playlistid"], user["id"])
+
+    def reads() -> int:
+        return sum(line.endswith(" user.getTopTracks") for line in stand_in.lines("calls.log"))
+
+    asked = reads()
+    set_policy(admin, user["id"], MaxParentalRating=10, BlockUnratedItems=["Music"])
+    listener.request(RECIPES_PATH, "POST", body, expected=409, raw=True)
+    require(reads() > asked, "The blocked refresh was refused before it read the owner's Last.fm top tracks.")
+    require(listener.request(PENDING_PATH) is None, "The blocked refresh left a pending playlist write.")
+    set_policy(admin, user["id"], MaxParentalRating=None, BlockUnratedItems=[])
+    require(
+        private_playlist(listener, viewer, recipe["playlistid"], user["id"]) == before
+        and listener.request(RECIPES_PATH) == [recipe],
+        "A refresh under the parental limit changed the playlist or its recipe.",
+    )
+    refreshed = listener.request(RECIPES_PATH, "POST", body)
+    after = private_playlist(listener, viewer, recipe["playlistid"], user["id"])
+    require(
+        refreshed["playlistid"] == recipe["playlistid"] and len(after) == 1 and after != before,
+        "Without the parental limit the same refresh did not rewrite the playlist from Last.fm's top tracks.",
+    )
+    return {
+        "blocked_refresh_read_lastfm": True,
+        "blocked_refresh_refused_with_409": True,
+        "blocked_refresh_left_no_pending_write": True,
+        "playlist_and_recipe_unchanged_after_limit_lifted": True,
+        "unblocked_refresh_rewrote_playlist": True,
+    }
+
+
+def run(host: DockerHost, stand_in: StandInContainer) -> dict:
     fixture_music(host.fixture_directory / "Public", "JellySin Extra Fixture")
     match_fixtures(host.fixture_directory)
     host.start()
@@ -426,9 +463,11 @@ def run(host: DockerHost) -> dict:
     )
     favourites = favourite_checks(admin, listener, item)
     playlist = playlist_checks(host, admin, listener, user)
-    scheduler = scheduler_checks(host, admin, other_account(admin))
+    connected, connected_user = probe_user(admin)
+    scheduler = scheduler_checks(host, admin, other_account(admin), connected, connected_user)
     listener.origin = host.origin
     limited = limited_owner_checks(host.version, admin, listener, user)
+    blocked_refresh = blocked_refresh_checks(admin, connected, connected_user, stand_in)
     delivery = listener.request("/JellySin/Lastfm/Me/Delivery")
     require(
         delivery["pending"] == 0,
@@ -442,6 +481,7 @@ def run(host: DockerHost) -> dict:
         "scheduler_playlist_recovery": scheduler,
         "library_matching": library,
         "parental_limit_playlist": limited,
+        "parental_limit_refresh": blocked_refresh,
         "no_lastfm_deliveries": True,
     }
 
@@ -479,7 +519,7 @@ def main() -> int:
     (ROOT / "build").mkdir(exist_ok=True)
     try:
         stand_in.start()
-        result = run(host)
+        result = run(host, stand_in)
         result["artifacts"] = {
             "image": image,
             "server": host.version,
@@ -497,6 +537,9 @@ def main() -> int:
         )
         print(
             "PASS: library matching and generated playlist visibility under a parental limit."
+        )
+        print(
+            "PASS: a playlist refresh under a parental limit that blocks every track wrote nothing."
         )
         return 0
     except SmokeFailure:

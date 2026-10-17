@@ -56,6 +56,12 @@ recipe throughout, a second ordinary user never sees playlist or recipe, and lif
 the limit returns the playlist unchanged. The 12.1 boundary comes from the server
 source at tag `v12.1` and is observed on the pinned 12.0, 12.1 and 12.2 servers.
 
+A second user, connected through the Last.fm stand-in, refreshes its generated
+playlist while the same limit blocks every track. The refresh has to read the
+stand-in's top tracks and answer HTTP 409 without a pending write, and the playlist
+and recipe have to be unchanged once the limit is lifted. Without the limit, the same
+refresh has to rewrite the playlist, so the refusal is shown to come from the block.
+
 Build this project explicitly with the repository SDK and locked NuGet references.
 Only `JellySin.NativeProbe.dll` belongs in the fixture mount; the production DLL is
 mounted separately. Host assemblies are never copied into either plugin directory.

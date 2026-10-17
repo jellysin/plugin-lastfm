@@ -113,10 +113,18 @@ playlist: a limit that allows the tracks changes nothing on any of the three ser
 With unrated music blocked, the tracks are unreadable and unmatched on all of them;
 Jellyfin 12.0.0 still lists the playlist, empty, while 12.1.0 and 12.2.0 neither list
 nor return it. The plugin keeps the playlist recipe in every case, a second user never sees playlist or
-recipe, and lifting the limit returns the playlist unchanged. A refresh during the
-block was not run, because it needs Last.fm data. By the code, the plugin looks the
-playlist up as its owner and stops with "unavailable" when the server does not return
-it, without writing to the playlist.
+recipe, and lifting the limit returns the playlist unchanged.
+
+A refresh during the block runs against the Last.fm stand-in with a connected owner
+(`blocked_refresh_checks` in `tests/integration/native_userdata.py`). The refresh
+reads the owner's top tracks, matches none of them because every track is blocked,
+and answers HTTP 409 before it looks the playlist up or writes to it; no pending write
+remains, and after the limit is lifted the playlist and its recipe are unchanged. The
+same refresh without the limit rewrites the playlist from the top tracks. Observed on
+Jellyfin 12.2.0 on 2026-10-17; CI runs the check on the 12.0, 12.1 and 12.2
+servers. When some tracks stay allowed, the plugin looks the playlist up as
+its owner and stops with "unavailable" if the server does not return it: with the
+empty-match refusal removed, the 12.2.0 server answered that lookup with HTTP 403.
 
 A third change, the similar-items cache that Jellyfin 12.1 writes through a temporary
 file, does not concern the plugin: it offers the server no similarity provider.
