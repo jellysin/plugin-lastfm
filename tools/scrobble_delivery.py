@@ -2,11 +2,13 @@
 
 tools/library_load.py runs this while its search and playback clients load the server. Each account signs in to a
 Last.fm user of its own at the stand-in (tests/integration/lastfm_stand_in.py), and every account plays the same
-tracks, so only the session a scrobble carries tells the accounts apart. The run has two periods:
+tracks, so only the session a scrobble carries tells the accounts apart. The run has three periods:
 
 - open: every account plays the first track, and the stand-in must receive it from every account.
 - refused: the stand-in answers scrobbles with the retryable error 16 while every account plays the second track.
   Each account must keep that listen queued. The stand-in then recovers, and the listen must arrive.
+- silent: one account plays the third track as a player that reports only the start and the stop. The server's own
+  progress ticks stand in for the missing reports, and the stand-in must receive that listen once.
 
 The check passes when the stand-in received every listen of every account exactly once and no listen for an
 account that did not play it. No real Last.fm account, application or credential takes part.
@@ -31,11 +33,17 @@ from state_carryover import approve  # noqa: E402
 
 ACCOUNTS = ("one", "two", "three", "four")
 ARTIST = "JellySin Delivery Artist"
-TITLES = ("JellySin Delivery Open", "JellySin Delivery Refused")
+TITLES = ("JellySin Delivery Open", "JellySin Delivery Refused", "JellySin Delivery Silent")
+# The account whose player reports no progress of its own in the silent period.
+SILENT = ACCOUNTS[0]
 # Longer than the 30 seconds Last.fm requires; a listen counts once half of it was heard.
 TRACK_SECONDS = 40
 PLAYED_SECONDS = 24
 PROGRESS_SECONDS = 4
+# The silent play spans more than the 45 seconds one report may credit, so only the server's own ticks can carry it
+# past half of its longer track.
+SILENT_TRACK_SECONDS = 100
+SILENT_PLAYED_SECONDS = 56
 TICKS_PER_SECOND = 10_000_000
 # A scrobble is sent when it is stored; a refused one waits 15 to 30 seconds, then for the one-minute retry task.
 ARRIVAL_SECONDS = 120
@@ -46,7 +54,8 @@ TAGS_SECONDS = 1200
 def fixtures(root: Path) -> None:
     """The delivery tracks, beside the generated library in its Load folder."""
     for title in TITLES:
-        fixture_music(root / "Load" / "Delivery", title, ARTIST, "Delivery Album", seconds=TRACK_SECONDS)
+        seconds = SILENT_TRACK_SECONDS if title == TITLES[2] else TRACK_SECONDS
+        fixture_music(root / "Load" / "Delivery", title, ARTIST, "Delivery Album", seconds=seconds)
 
 
 def items(admin: Client) -> dict[str, str]:
@@ -74,16 +83,18 @@ def connect(admin: Client, password: str) -> dict[str, Client]:
     return clients
 
 
-def play(client: Client, item: str) -> None:
-    """A player that plays in real time: its reported position never runs ahead of the clock."""
+def play(client: Client, item: str, progress: bool = True, seconds: int = PLAYED_SECONDS) -> None:
+    """A player that plays in real time: its reported position never runs ahead of the clock. Without progress it
+    reports only the start and the stop."""
     playing = {"ItemId": item, "MediaSourceId": item, "PlaySessionId": uuid.uuid4().hex, "PositionTicks": 0,
                "IsPaused": False, "PlayMethod": "DirectPlay", "CanSeek": True}
     started, position = time.monotonic(), 0
     client.request("/Sessions/Playing", "POST", playing, 204)
-    while position < PLAYED_SECONDS:
+    while position < seconds:
         time.sleep(PROGRESS_SECONDS)
         position = int(time.monotonic() - started)
-        client.request("/Sessions/Playing/Progress", "POST", {**playing, "PositionTicks": position * TICKS_PER_SECOND, "EventName": "TimeUpdate"}, 204)
+        if progress:
+            client.request("/Sessions/Playing/Progress", "POST", {**playing, "PositionTicks": position * TICKS_PER_SECOND, "EventName": "TimeUpdate"}, 204)
     client.request("/Sessions/Playing/Stopped", "POST", {**playing, "PositionTicks": position * TICKS_PER_SECOND}, 204)
 
 
@@ -111,8 +122,8 @@ def answered(lines: list[str], refused: bool = False) -> set[str]:
     return {label for label, _ in scrobbles(lines, refused)}
 
 
-def listens(title: str) -> Counter[tuple[str, str]]:
-    return Counter((label, f"{ARTIST} - {title}") for label in ACCOUNTS)
+def listens(title: str, accounts: tuple[str, ...] = ACCOUNTS) -> Counter[tuple[str, str]]:
+    return Counter((label, f"{ARTIST} - {title}") for label in accounts)
 
 
 def verdict(expected: Counter[tuple[str, str]], got: Counter[tuple[str, str]]) -> None:
@@ -141,7 +152,7 @@ def pending(clients: dict[str, Client]) -> list[int]:
 
 
 def deliver(executor: Executor, stand_in: StandInContainer, clients: dict[str, Client], ids: dict[str, str]) -> dict:
-    """Runs the open and the refused period and checks what the stand-in received."""
+    """Runs the open, the refused and the silent period and checks what the stand-in received."""
     def calls() -> list[str]:
         return stand_in.lines("calls.log")
 
@@ -160,6 +171,11 @@ def deliver(executor: Executor, stand_in: StandInContainer, clients: dict[str, C
     recovered = wait(lambda: not expected - received(calls()) and not any(pending(clients)), RECOVERY_SECONDS,
                      f"The refused listens were not all delivered within {RECOVERY_SECONDS} seconds of the recovery: "
                      f"missing {sorted(expected - received(calls()))}, pending {pending(clients)}.")
+    verdict(expected, received(calls()))
+    play(clients[SILENT], ids[TITLES[2]], progress=False, seconds=SILENT_PLAYED_SECONDS)
+    expected += listens(TITLES[2], (SILENT,))
+    wait(lambda: not expected - received(calls()) and not any(pending(clients)), ARRIVAL_SECONDS,
+         f"The listen of a player that reports only its start and stop did not arrive: missing {sorted(expected - received(calls()))}.")
     verdict(expected, received(calls()))
     return {"accounts": len(clients), "listens": sum(expected.values()), "refusedAttempts": len(scrobbles(calls(), refused=True)),
             "secondsToRecover": round(recovered, 1), "lastfmCalls": len(calls())}

@@ -6,7 +6,8 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-from scrobble_delivery import ACCOUNTS, ARTIST, TITLES, answered, listens, received, verdict  # noqa: E402
+from scrobble_delivery import (ACCOUNTS, ARTIST, SILENT, SILENT_PLAYED_SECONDS, SILENT_TRACK_SECONDS, TITLES, answered,  # noqa: E402
+                               listens, received, verdict)
 from smoke import SmokeFailure  # noqa: E402
 
 OPEN = f"{ARTIST} - {TITLES[0]}"
@@ -43,6 +44,21 @@ class DeliveryVerdictTests(unittest.TestCase):
             lines = [*(accepted(label, OPEN) for label in ACCOUNTS[1:]), accepted(stray, OPEN) if stray else f"POST track.scrobble | {OPEN}"]
             with self.subTest(stray=stray), self.assertRaises(SmokeFailure):
                 verdict(listens(TITLES[0]), received(lines))
+
+    def test_the_silent_period_expects_one_listen_of_one_account(self):
+        silent = f"{ARTIST} - {TITLES[2]}"
+        expected = listens(TITLES[0]) + listens(TITLES[2], (SILENT,))
+        lines = [*(accepted(label, OPEN) for label in ACCOUNTS), accepted(SILENT, silent)]
+        verdict(expected, received(lines))
+        for stray in (lines[:-1], [*lines, accepted(SILENT, silent)], [*lines[:-1], accepted(ACCOUNTS[1], silent)]):
+            with self.subTest(lines=stray[len(ACCOUNTS):]), self.assertRaises(SmokeFailure):
+                verdict(expected, received(stray))
+
+    def test_the_silent_play_needs_the_servers_own_ticks(self):
+        # One report credits at most 45 seconds, so the stop alone cannot carry the play past half of its track.
+        self.assertGreater(SILENT_PLAYED_SECONDS, 45 + 2)
+        self.assertGreaterEqual(SILENT_PLAYED_SECONDS, SILENT_TRACK_SECONDS / 2 + 4)
+        self.assertLess(SILENT_PLAYED_SECONDS, SILENT_TRACK_SECONDS)
 
     def test_refused_attempts_are_counted_apart_from_accepted_ones(self):
         lines = [f"REFUSED {accepted(label, OPEN)}" for label in ACCOUNTS]

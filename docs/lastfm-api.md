@@ -57,7 +57,13 @@ separate credentials protected in server-side state.
 
 The [scrobbling guide](https://www.last.fm/api/scrobbling) requires tracks longer
 than 30 seconds and listening for half the track or four minutes. Pauses and seeks
-must not count as listening. Retried scrobbles retain the original UTC start time.
+must not count as listening. Jellyfin also raises position updates of its own every
+second between a client's reports. These count only for a session whose client sent
+no progress report since the start other than pausing or resuming, are capped at the distance between the start
+and the position the client's stop reports, and create a listen only when that stop
+arrives; a session with no stop creates none. Plays a client made offline and later
+reports only as a last-played date carry no start time and are not scrobbled.
+Retried scrobbles retain the original UTC start time.
 Now-playing describes the present and is not retried after failure.
 
 JSON API errors must be examined even with HTTP 200. Codes 11 and 16 represent

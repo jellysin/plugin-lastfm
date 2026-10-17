@@ -14,6 +14,12 @@ public sealed record EligibleListen(Guid OccurrenceId, Guid UserId, MusicTrack T
 public sealed record PlaybackUpdate(EligibleListen? NowPlaying, EligibleListen? Scrobble);
 
 /// <summary>Counts only progress confirmed by both monotonic time and track-position movement.</summary>
+/// <remarks>
+/// Some clients report only the start and the stop of a track. For a session that sent no progress of its own since the
+/// start, the server's automated progress ticks count instead, and only once the client's stop confirms the position.
+/// A report that only pauses or resumes the track does not count as progress of the client's own: the server does not
+/// say which player event caused a report, so a change of the paused state is what tells such a report apart.
+/// </remarks>
 public sealed class PlaybackTracker(TimeProvider clock)
 {
     private const int MaxSessions = 1024;
@@ -27,9 +33,10 @@ public sealed class PlaybackTracker(TimeProvider clock)
 
     public PlaybackUpdate Observe(PlaybackSnapshot value)
     {
-        if (value.Automated || value.UserId == Guid.Empty || value.Track.DurationSeconds <= 30
+        if (value.UserId == Guid.Empty || value.Track.DurationSeconds <= 30
             || string.IsNullOrWhiteSpace(value.Track.Artist) || string.IsNullOrWhiteSpace(value.Track.Title)) return new(null, null);
         var key = (value.SessionId, value.UserId);
+        if (value.Automated) { ObserveAutomated(key, value); return new(null, null); }
         _active.TryGetValue(key, out var observation);
         if (observation is not null && (observation.Listen.AccountGeneration != value.AccountGeneration || observation.Listen.CaptureGeneration != value.CaptureGeneration
             || observation.Listen.PluginGeneration != value.PluginGeneration))
@@ -60,6 +67,8 @@ public sealed class PlaybackTracker(TimeProvider clock)
         var movement = (value.PositionTicks - observation.PositionTicks) / (double)TimeSpan.TicksPerSecond;
         if (!observation.Paused && elapsed is > 0 and <= 45 && movement > 0 && movement <= elapsed + 2)
             observation.HeardSeconds += Math.Min(elapsed, movement);
+        if (value.Signal == PlaybackSignal.Progress && value.Paused == observation.Paused) observation.ClientProgress = true;
+        else if (value.Signal == PlaybackSignal.Stop) CreditAutomated(observation, value.PositionTicks);
         observation.Timestamp = value.MonotonicTimestamp;
         observation.PositionTicks = value.PositionTicks;
         observation.Paused = value.Paused;
@@ -77,6 +86,28 @@ public sealed class PlaybackTracker(TimeProvider clock)
 
     public void Reset() { _active.Clear(); _pending.Clear(); }
 
+    private void ObserveAutomated((string Session, Guid User) key, PlaybackSnapshot value)
+    {
+        if (value.Signal != PlaybackSignal.Progress || !_active.TryGetValue(key, out var observation) || observation.ClientProgress
+            || observation.Listen.Track.ItemId != value.Track.ItemId || observation.Listen.AccountGeneration != value.AccountGeneration
+            || observation.Listen.CaptureGeneration != value.CaptureGeneration || observation.Listen.PluginGeneration != value.PluginGeneration
+            || value.MonotonicTimestamp <= observation.AutomatedTimestamp) return;
+        var elapsed = clock.GetElapsedTime(observation.AutomatedTimestamp, value.MonotonicTimestamp).TotalSeconds;
+        var movement = (value.PositionTicks - observation.AutomatedPositionTicks) / (double)TimeSpan.TicksPerSecond;
+        if (!value.Paused && elapsed <= 45 && movement > 0 && movement <= elapsed + 2)
+            observation.AutomatedSeconds += Math.Min(elapsed, movement);
+        observation.AutomatedTimestamp = value.MonotonicTimestamp;
+        observation.AutomatedPositionTicks = value.PositionTicks;
+    }
+
+    /// <summary>The server's ticks count up to the distance the client's stop reports, and never on top of heard time.</summary>
+    private static void CreditAutomated(Observation observation, long stopPositionTicks)
+    {
+        if (observation.ClientProgress) return;
+        var reported = (stopPositionTicks - observation.StartPositionTicks) / (double)TimeSpan.TicksPerSecond + 2;
+        observation.HeardSeconds = Math.Max(observation.HeardSeconds, Math.Min(observation.AutomatedSeconds, reported));
+    }
+
     private void RemoveStale(long timestamp)
     {
         foreach (var key in _active.Where(pair => clock.GetElapsedTime(pair.Value.Timestamp, timestamp) > TimeSpan.FromMinutes(15)).Select(pair => pair.Key).ToArray())
@@ -91,5 +122,10 @@ public sealed class PlaybackTracker(TimeProvider clock)
         public bool Paused { get; set; } = paused;
         public double HeardSeconds { get; set; }
         public bool Submitted { get; set; }
+        public long StartPositionTicks { get; } = positionTicks;
+        public bool ClientProgress { get; set; }
+        public long AutomatedTimestamp { get; set; } = timestamp;
+        public long AutomatedPositionTicks { get; set; } = positionTicks;
+        public double AutomatedSeconds { get; set; }
     }
 }

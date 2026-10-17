@@ -91,16 +91,64 @@ public sealed class PlaybackTests
     }
 
     [Fact]
-    public void SyntheticProgressCannotCreateAListen()
+    public void ServerTicksBetweenStartAndStopCreateAListen()
     {
         var tracker = new PlaybackTracker(_clock);
         tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
-        for (var second = 10; second <= 100; second += 10)
-        {
-            _clock.Advance(10);
-            Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Progress, second) with { Automated = true }).Scrobble);
-        }
-        Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Stop, 100)).Scrobble);
+        Assert.Null(ServerTicks(tracker, 1, 60));
+        Assert.NotNull(tracker.Observe(Snapshot(PlaybackSignal.Stop, 60)).Scrobble);
+        Assert.Single(tracker.Pending());
+    }
+
+    [Fact]
+    public void ServerTicksWithoutAStopCreateNoListen()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
+        Assert.Null(ServerTicks(tracker, 1, 99));
+        Assert.Empty(tracker.Pending());
+    }
+
+    [Fact]
+    public void ServerTicksAfterClientProgressAreIgnored()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
+        _clock.Advance(10);
+        tracker.Observe(Snapshot(PlaybackSignal.Progress, 10));
+        Assert.Null(ServerTicks(tracker, 11, 70));
+        Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Stop, 70)).Scrobble);
+    }
+
+    [Fact]
+    public void ServerTicksCountAcrossAPauseAndResume()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
+        Assert.Null(ServerTicks(tracker, 1, 46));
+        tracker.Observe(Snapshot(PlaybackSignal.Progress, 46) with { Paused = true });
+        _clock.Advance(30);
+        tracker.Observe(Snapshot(PlaybackSignal.Progress, 46));
+        Assert.Null(ServerTicks(tracker, 47, 93));
+        Assert.NotNull(tracker.Observe(Snapshot(PlaybackSignal.Stop, 93)).Scrobble);
+    }
+
+    [Fact]
+    public void ServerTicksCountOnlyUpToTheStopPosition()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
+        ServerTicks(tracker, 1, 60);
+        Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Stop, 20)).Scrobble);
+    }
+
+    [Fact]
+    public void ServerTicksNeverAddToHeardTime()
+    {
+        var tracker = new PlaybackTracker(_clock);
+        tracker.Observe(Snapshot(PlaybackSignal.Start, 0));
+        ServerTicks(tracker, 1, 30);
+        Assert.Null(tracker.Observe(Snapshot(PlaybackSignal.Stop, 30)).Scrobble);
     }
 
     [Fact]
@@ -169,6 +217,18 @@ public sealed class PlaybackTests
         Assert.NotNull(tracker.Observe(Snapshot(PlaybackSignal.Start, 0) with { SessionId = "one more" }).NowPlaying);
         Assert.True(tracker.IsCurrent(listens[0]));
         Assert.False(tracker.IsCurrent(listens[1]));
+    }
+
+    /// <summary>The server's automated progress: one tick a second from <paramref name="first"/> to <paramref name="last"/>.</summary>
+    private EligibleListen? ServerTicks(PlaybackTracker tracker, int first, int last)
+    {
+        EligibleListen? scrobble = null;
+        for (var second = first; second <= last; second++)
+        {
+            _clock.Advance(1);
+            scrobble ??= tracker.Observe(Snapshot(PlaybackSignal.Progress, second) with { Automated = true }).Scrobble;
+        }
+        return scrobble;
     }
 
     private PlaybackSnapshot Snapshot(PlaybackSignal signal, int position)
