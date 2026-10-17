@@ -41,13 +41,17 @@ python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net
 The harness starts a fresh pinned Jellyfin 12 container with two CPUs and 1,536 MiB
 memory, generates and scans 10,000 silent tracks, then runs eight parallel HTTP
 clients: four ordinary-user plugin searches and four playback-progress producers.
-Each request type records 200 samples after warmup. Searches must return the exact
-generated track, delivery state must remain empty and healthy, and HTTP p95 must
-stay below 1,000 ms. No Last.fm account is connected or external music API called.
-Only this harness's uniquely owned container, volumes and fixtures are cleaned up.
+Each client sends at least 55 requests and keeps going until the scrobble delivery
+check below ends; the first five requests of each client are warmup and not timed.
+Searches must return the exact generated track, the load account's delivery state
+must remain empty and healthy, and HTTP p95 must stay below 1,000 ms. No real
+Last.fm account is connected and no external music API is called. Only this
+harness's uniquely owned containers, volumes and fixtures are cleaned up.
 
-Measured on 2026-10-11 for `5489d0a`, one run each. CI enforces the budget on
-Jellyfin 12.2.0 only; the 12.0.0 row is a local run for comparison on the same host.
+Measured on 2026-10-11 for `5489d0a`, one run each, before the delivery check was
+added; each request type then recorded 200 samples. At that commit CI enforced the
+budget on Jellyfin 12.2.0 only; the 12.0.0 row is a local run for comparison on the
+same host. CI now enforces it on 12.2.0 and 12.1.0.
 
 | Run | Server | Scan | Request | Median | p95 | p99 |
 | --- | --- | ---: | --- | ---: | ---: | ---: |
@@ -64,8 +68,45 @@ earlier local run on 12.2.0 the same day measured 33.3/171.6/299.5 ms for search
 shows no difference between the two servers. All runs stayed below the budget.
 
 These numbers include Docker networking, HTTP, authorization and Jellyfin's own
-work. They do not describe the plugin callback alone. The playback requests are
-paused and use an unconnected test account, so this workload cannot send scrobbles.
+work. They do not describe the plugin callback alone. The load clients' playback
+requests are paused and use an unconnected test account, so they send no scrobbles
+themselves.
+
+### Scrobble delivery under that load
+
+While the eight load clients run, four Jellyfin users connected to four accounts of
+a Last.fm stand-in (`tests/integration/lastfm_stand_in.py`, a container on a private
+Docker network; no real Last.fm account or credentials) each play two 40-second
+tracks in real time past the scrobble threshold:
+
+1. The first listen is played while the stand-in accepts scrobbles. Every account
+   must receive it exactly once, and no account may receive another account's
+   listen.
+2. The second listen is played while the stand-in refuses scrobbles with Last.fm
+   error 16 (service temporarily unavailable). Every account must have answered a
+   refused attempt and still hold the listen in its queue.
+3. The stand-in accepts again. Within 600 seconds every refused listen must arrive
+   exactly once, for its own account, and every queue must be empty.
+
+With `--plant-dropped-listen` the stand-in silently loses one accepted listen; the
+check must then fail. Measured on 2026-10-17 on the local host for this change on
+top of `3e9b3d6`, one run each:
+
+| Server | Accounts | Listens delivered | Refused attempts | Recovery | Search p95 | Playback p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 12.2.0 | 4 | 8 of 8 | 4 | 37.2 s | 121.5 ms | 119.8 ms |
+| 12.1.0 | 4 | 8 of 8 | 4 | 98.4 s | 117.4 ms | 182.1 ms |
+| 12.2.0, planted dropped listen | 4 | 7 of 8 | n/a | n/a | n/a | n/a |
+
+The planted run failed as required: "missing [('four', 'JellySin Delivery Artist -
+JellySin Delivery Open')]". Recovery is the time from the end of the refused period
+until the last refused listen arrived and every queue was empty. It follows the retry delay of 15 seconds
+doubled per attempt plus up to 15 seconds of jitter, and the one-minute retry task,
+so it varies between runs; the check asserts only the 600-second bound. Without the
+trigger re-arm of #126, a fresh server ran the retry task only once at startup and
+then not again for an hour, and both runs before that fix failed the 600-second
+bound with every refused listen still queued. The check shows each listen arriving
+once in these runs; it does not prove exactly-once delivery in general.
 
 ## Favourite synchronization
 

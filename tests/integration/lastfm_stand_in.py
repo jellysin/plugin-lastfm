@@ -12,13 +12,21 @@ it carried a request) and out/ready once it listens. An optional loved-count.txt
 user.getLovedTracks serve that many loved tracks named as tools/library_load.py names its generated library,
 200 to a page, for tools/favourites_load.py. It is read on every request, so a run can lower it while the
 stand-in serves. With it, a track.love lists that track newest first until a track.unlove, as Last.fm does.
+
+For tools/library_load.py, an approval token APPROVAL_TOKEN-<label> signs in a Last.fm user of its own with a
+session of its own, and a signed track method names that label in calls.log ("POST track.scrobble as <label> | ...").
+While DIRECTORY/refuse.txt exists, scrobbles and now-playing updates answer the retryable error 16 and are recorded
+as "REFUSED ...". When DIRECTORY/drop-listen.txt exists, the next scrobble is accepted but its first track is left
+out of calls.log: a planted lost listen that the load check must notice.
 """
 
 from __future__ import annotations
 
 import http.server
 import json
+import os
 from pathlib import Path
+import re
 import ssl
 import subprocess
 import sys
@@ -40,6 +48,26 @@ SIMILAR_PLAYS = 7
 NOW = int(time.time())
 LOVED_PAGE = 200
 MAX_LOVED = 20_000
+APPROVAL_TOKEN = "stand-in-approval-token"
+LABEL = re.compile(r"[a-z0-9]{1,16}")
+# The methods a refused period answers with error 16, which the plugin retries.
+REFUSABLE = ("track.scrobble", "track.updateNowPlaying")
+REFUSAL = {"error": 16, "message": "There was a temporary error processing your request. Please try again"}
+
+
+def label_of(token: str) -> str:
+    """The account an approval token names: the part after APPROVAL_TOKEN and a dash; any other token names none."""
+    label = token[len(APPROVAL_TOKEN) + 1:] if token.startswith(APPROVAL_TOKEN + "-") else ""
+    return label if LABEL.fullmatch(label) else ""
+
+
+def owner(values: dict[str, list[str]], session: str) -> str:
+    """The label of the session a signed call carries: empty for the plain session, ? for a session never issued."""
+    key = (values.get("sk") or [""])[0]
+    if key == session:
+        return ""
+    label = key[len(session) + 1:] if key.startswith(session + "-") else ""
+    return label if LABEL.fullmatch(label) else "?"
 
 
 def track(title: str, artist: str = ARTIST, played: int | None = None, plays: int = 0) -> dict[str, Any]:
@@ -84,8 +112,10 @@ def answer(method: str, session: str, carried: list[tuple[str, str]] | None = No
     if method == "user.getLovedTracks" and loved:
         return loved_page(loved, values or {}, loves)
     url = "https://www.last.fm/music/" + urllib.parse.quote(ARTIST)
+    label = label_of(((values or {}).get("token") or [""])[0])
     answers: dict[str, Any] = {
-        "auth.getSession": {"session": {"name": LASTFM_USER, "key": session, "subscriber": 0}},
+        "auth.getSession": {"session": {"name": LASTFM_USER + ("-" + label if label else ""),
+                                        "key": session + ("-" + label if label else ""), "subscriber": 0}},
         "user.getInfo": {"user": {"name": LASTFM_USER, "playcount": "1234", "artist_count": "56", "album_count": "78",
                                   "track_count": "90", "url": "https://www.last.fm/user/" + LASTFM_USER}},
         "user.getTopTracks": page("toptracks", [track(SEED, plays=SEED_PLAYS), track(SIMILAR_LOCAL, plays=SIMILAR_PLAYS)]),
@@ -119,6 +149,15 @@ def loved_count(path: Path | None) -> int:
     return min(MAX_LOVED, int(path.read_text(encoding="utf-8")))
 
 
+def dropped(directory: Path) -> bool:
+    """True once for a planted lost listen: renaming the plant is atomic, so one scrobble alone drops a track."""
+    try:
+        os.replace(directory / "drop-listen.txt", directory / "drop-listen.done")
+    except FileNotFoundError:
+        return False
+    return True
+
+
 class Record:
     """Appends one line per event to a file in the output directory, so the run keeps it even if the stand-in dies."""
 
@@ -136,6 +175,7 @@ class StandIn(http.server.BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
     session = ""
+    directory = Path()
     loved_file: Path | None = None
     # The tracks the server loved, by artist and title, with their loved dates; listed only beside a loved count.
     loves: dict[tuple[str, str], int] = {}
@@ -156,7 +196,14 @@ class StandIn(http.server.BaseHTTPRequestHandler):
         method = (values.get("method") or [""])[0]
         self.answered = True
         carried = tracks_in(values) if method.startswith("track.") else []
-        Record.write("calls.log", ("POST " if signed else "GET ") + method + "".join(f" | {artist} - {title}" for artist, title in carried))
+        label = owner(values, StandIn.session) if signed and method.startswith("track.") else ""
+        refused = method in REFUSABLE and (StandIn.directory / "refuse.txt").exists()
+        recorded = carried[1:] if method == "track.scrobble" and not refused and dropped(StandIn.directory) else carried
+        Record.write("calls.log", ("REFUSED " if refused else "") + ("POST " if signed else "GET ") + method
+                     + (f" as {label}" if label else "") + "".join(f" | {artist} - {title}" for artist, title in recorded))
+        if refused:
+            self.send(REFUSAL)
+            return
         loved = loved_count(StandIn.loved_file)
         with StandIn.loves_lock:
             if method == "track.love":
@@ -164,7 +211,10 @@ class StandIn(http.server.BaseHTTPRequestHandler):
             if method == "track.unlove" and carried:
                 StandIn.loves.pop(carried[0], None)
             loves = sorted(((artist, title, uts) for (artist, title), uts in StandIn.loves.items()), key=lambda love: -love[2])
-        body = json.dumps(answer(method, StandIn.session, carried, values, loved, loves)).encode()
+        self.send(answer(method, StandIn.session, carried, values, loved, loves))
+
+    def send(self, value: dict[str, Any]) -> None:
+        body = json.dumps(value).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -236,6 +286,7 @@ def bind(directory: Path, address: tuple[str, int]) -> http.server.ThreadingHTTP
     """The proxy, listening but not yet serving, with its records in DIRECTORY/out."""
     Record.directory = directory / "out"
     StandIn.session = (directory / "session.txt").read_text(encoding="utf-8").strip()
+    StandIn.directory = directory
     StandIn.loved_file = directory / "loved-count.txt"
     StandIn.loves = {}
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

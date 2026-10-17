@@ -131,7 +131,8 @@ def wait_ready(client: Client) -> None:
     raise SmokeFailure("Jellyfin did not become ready within 180 seconds.")
 
 
-def fixture_music(directory: Path, title: str, artist: str = "JellySin Fixture Artist", album: str = "Smoke Album", name: str | None = None) -> None:
+def fixture_music(directory: Path, title: str, artist: str = "JellySin Fixture Artist", album: str = "Smoke Album", name: str | None = None,
+                  seconds: int = 65) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     directory.chmod(0o755)
     path = directory / ((name or title) + ".wav")
@@ -139,7 +140,7 @@ def fixture_music(directory: Path, title: str, artist: str = "JellySin Fixture A
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(8000)
-        audio.writeframes(b"\0\0" * 8000 * 65)
+        audio.writeframes(b"\0\0" * 8000 * seconds)
     tags = b"INFO"
     for field, value in ((b"INAM", title), (b"IART", artist), (b"IPRD", album)):
         encoded = value.encode() + b"\0"
@@ -402,8 +403,8 @@ def check_page_origin(listener: Client, published: str) -> None:
         require(write(origin, site) == 403, f"A write from {place} was accepted.")
 
 
-def create_user(admin: Client, password: str) -> dict[str, Any]:
-    user = admin.request("/Users/New", "POST", {"Name": "SmokeListener", "Password": password})
+def create_user(admin: Client, password: str, name: str = "SmokeListener") -> dict[str, Any]:
+    user = admin.request("/Users/New", "POST", {"Name": name, "Password": password})
     require(not user["policy"]["isadministrator"], "The ordinary smoke user unexpectedly has administrator rights.")
     return user
 
