@@ -26,10 +26,11 @@ so a stale playback snapshot cannot undo an import. Fresh intentional resets rem
 available. The narrow host-registration boundary, fresh-row reads and fail-closed
 behavior are documented in [ADR 0001](adr/0001-native-userdata-coordination.md).
 
-The plugin offers Jellyfin no metadata, image, external-link or similarity provider,
-so nothing from Last.fm is written into the shared library and a library's provider
-settings gain no entry. Similarity and discovery are answered for one user at a time
-by the plugin's own service and its generated playlists.
+The plugin provides remote metadata providers for music artists (`LastfmArtistProvider`)
+and albums (`LastfmAlbumProvider`), writing biographies, wikis, album release dates, and
+MusicBrainz IDs into Jellyfin's library database. It offers Jellyfin no image,
+external-link or similarity provider. Similarity and discovery are answered for one user
+at a time by the plugin's own service and its generated playlists.
 
 ## HTTP surface
 
