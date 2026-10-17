@@ -1,4 +1,5 @@
-"""The native userdata probe refuses each planted defect in the history, favourite, playlist and scheduler answers it reads."""
+"""The native userdata probe refuses each planted defect in the history, favourite, playlist, scheduler and blocked
+refresh answers it reads."""
 
 import json
 import sys
@@ -8,7 +9,9 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests" / "integration"))
 import native_userdata  # noqa: E402
-from native_userdata import PROBE, favourite_checks, history_checks, playlist_checks, scheduler_checks, validate  # noqa: E402
+from native_userdata import (  # noqa: E402
+    PROBE, blocked_refresh_checks, favourite_checks, history_checks, playlist_checks, scheduler_checks, validate,
+)
 from smoke import SmokeFailure, lower_keys  # noqa: E402
 
 USER = "0c" * 16
@@ -34,12 +37,15 @@ class Server:
         self.native = {"PlayCount": 0, "LastPlayedDate": None}
         self.favourite, self.revision = False, 0
         self.playlists, self.pending, self.recipes, self.injected = {}, None, [], False
+        # The owner's parental limit and the stand-in's count of top-track reads, for the blocked refresh.
+        self.policy, self.reads = {"BlockUnratedItems": []}, 0
         # Only the scheduler check's host runs the plugin's scheduler at startup.
         self.scheduler = False
 
     def answer(self, role, path, method, body):
         route = path.split("?")[0]
-        for handler in (self.history, self.favourites, self.settings, self.items, self.journal, self.playlist):
+        for handler in (self.history, self.favourites, self.settings, self.items, self.users, self.refresh, self.journal,
+                        self.playlist):
             answer = handler(role, route, path, method, body)
             if answer is not None:
                 return answer
@@ -89,6 +95,30 @@ class Server:
             return 200, {"Items": tracks + [{"Id": "0f" * 16, "Path": "/media/Hidden/0.wav"}]}
         return 200, {"Items": [{"Id": playlist} for playlist in self.playlists]}
 
+    def users(self, role, route, path, method, body):
+        if not route.startswith("/Users/"):
+            return None
+        if method == "POST":
+            self.policy = dict(body)
+            return 204, None
+        return 200, {"Policy": dict(self.policy)}
+
+    def refresh(self, role, route, path, method, body):
+        """Refresh the generated playlist from the stand-in's top tracks, of which only the first is in the library."""
+        if route != RECIPES or method != "POST":
+            return None
+        self.reads += "refused before read" not in self.faults
+        (playlist,) = self.playlists
+        if self.policy["BlockUnratedItems"]:
+            if "blocked leaves pending" in self.faults:
+                self.pending = {"OperationId": "operation-2", "Status": UNFINISHED}
+            if "blocked clears" in self.faults or "blocked writes" in self.faults:
+                self.playlists[playlist] = []
+            return (200, {"PlaylistId": playlist}) if "blocked writes" in self.faults else (409, None)
+        if "unblocked ignored" not in self.faults:
+            self.playlists[playlist] = PUBLIC[:1]
+        return 200, {"PlaylistId": playlist}
+
     def journal(self, role, route, path, method, body):
         if route == PROBE + "/Playlist/Prepare":
             return self.prepare(body)
@@ -127,7 +157,8 @@ class Server:
         items = self.pending["Items"]
         self.playlists[playlist] = items[::-1] if "recovery reorders" in self.faults else list(items)
         copies = 2 if "recipe duplicated" in self.faults else 1
-        self.recipes += [{"PlaylistId": playlist}] * (copies - len(self.recipes))
+        recipe = {"Id": "recipe-1", "Name": "Top", "Source": "Top", "Period": "overall", "Limit": 2, "DailyRefresh": False}
+        self.recipes += [{**recipe, "PlaylistId": playlist}] * (copies - len(self.recipes))
         if "journal kept" not in self.faults:
             self.pending = None
         return 200, {"Recovered": True, "InjectedFailure": False}
@@ -183,16 +214,33 @@ def probe(*faults):
         }
 
 
-def scheduled(*faults):
+def scheduled(*faults, server=None):
     """Run the scheduler check against a connected listener on a host whose restart starts the plugin's scheduler."""
-    server = Server(*faults)
+    server = server or Server(*faults)
     server.scheduler = True
     admin, listener, viewer = accounts(server)
     # A zero wait refuses a write still pending after the restart without sleeping through the real interval.
-    with mock.patch.object(native_userdata, "probe_user", return_value=(listener, {"id": USER})), \
-            mock.patch.object(native_userdata, "approve"), \
-            mock.patch.object(native_userdata, "SCHEDULER_SECONDS", 0):
-        return scheduler_checks(server, admin, viewer)
+    with mock.patch.object(native_userdata, "approve"), mock.patch.object(native_userdata, "SCHEDULER_SECONDS", 0):
+        return scheduler_checks(server, admin, viewer, listener, {"id": USER})
+
+
+class StandIn:
+    """The stand-in's call log as the blocked refresh reads it: one line per top-track read the host made."""
+
+    def __init__(self, server):
+        self.server = server
+
+    def lines(self, name):
+        return ["GET user.getTopTracks"] * self.server.reads if name == "calls.log" else []
+
+
+def refreshed(*faults):
+    """Run the blocked refresh against the connected listener whose interrupted write the scheduler recovered."""
+    server = Server(*faults)
+    scheduled(server=server)
+    admin, listener, viewer = accounts(server)
+    with mock.patch.object(native_userdata, "other_account", return_value=viewer):
+        return blocked_refresh_checks(admin, listener, {"id": USER}, StandIn(server))
 
 
 class ValidateTests(unittest.TestCase):
@@ -277,6 +325,23 @@ class SchedulerFaultTests(unittest.TestCase):
         for fault, message in planted.items():
             with self.subTest(fault), self.assertRaisesRegex(SmokeFailure, message):
                 scheduled(fault)
+
+
+class BlockedRefreshTests(unittest.TestCase):
+    def test_a_refresh_that_the_block_refuses_without_a_write_passes(self):
+        self.assertTrue(all(refreshed().values()))
+
+    def test_each_planted_blocked_refresh_fault_is_refused(self):
+        planted = {
+            "refused before read": "refused before it read the owner's Last.fm top tracks",
+            "blocked writes": r"returned HTTP 200; expected \(409,\)",
+            "blocked leaves pending": "left a pending playlist write",
+            "blocked clears": "changed the playlist or its recipe",
+            "unblocked ignored": "did not rewrite the playlist",
+        }
+        for fault, message in planted.items():
+            with self.subTest(fault), self.assertRaisesRegex(SmokeFailure, message):
+                refreshed(fault)
 
 
 if __name__ == "__main__":
