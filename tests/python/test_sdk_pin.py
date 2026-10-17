@@ -47,7 +47,12 @@ def bot_drift(script, updates):
         return [f"the update entry reads {read}"]
     grouped = [rule for rule in updates["packageRules"]
                if sorted(rule.get("matchFileNames", [])) == [".node-version", "global.json", "tools/sdk.sh"] and rule.get("groupName")]
-    return [] if len(grouped) == 1 else ["no single rule puts the script and both version files into one pull request"]
+    if len(grouped) != 1:
+        return ["no single rule puts the script and both version files into one pull request"]
+    # The image registries give no release time; without this rule the three-day wait holds the images forever.
+    timeless = [rule for rule in updates["packageRules"] if rule.get("matchFileNames") == ["tools/sdk.sh"]
+                and rule.get("matchDatasources") == ["docker"] and rule.get("minimumReleaseAgeBehaviour") == "timestamp-optional"]
+    return [] if len(timeless) == 1 else ["no rule lets the images move without a release time"]
 
 
 class SdkPinTests(unittest.TestCase):
@@ -74,6 +79,8 @@ class SdkPinTests(unittest.TestCase):
                 self.assertNotEqual([], drift(changed, versions))
         without_group = {**UPDATES, "packageRules": [rule for rule in UPDATES["packageRules"] if rule.get("groupName") != "SDK toolchain"]}
         self.assertNotEqual([], bot_drift(script, without_group))
+        waiting = {**UPDATES, "packageRules": [rule for rule in UPDATES["packageRules"] if "minimumReleaseAgeBehaviour" not in rule]}
+        self.assertNotEqual([], bot_drift(script, waiting))
 
 
 if __name__ == "__main__":

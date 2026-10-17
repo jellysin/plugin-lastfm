@@ -62,12 +62,32 @@
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "The release-helper checkouts for independent rebuilds pin the commit the release-helper actions use; github-actions reads only the uses: lines.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "repository: jellysin/release-helper\\s+ref: (?<currentDigest>[a-f0-9]{40}) # (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "depNameTemplate": "jellysin/release-helper",
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "semver"
     }
   ],
   "packageRules": [
     {
       "matchManagers": [
         "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "The release-helper checkout refs move in the same pull request as the release-helper actions. tests/python/test_release_helper_pin.py compares them.",
+      "matchPackageNames": [
+        "jellysin/release-helper"
       ],
       "groupName": "GitHub Actions"
     },
@@ -138,6 +158,16 @@
         "tools/sdk.sh"
       ],
       "groupName": "SDK toolchain"
+    },
+    {
+      "description": "The registries return no release time for the SDK images, so the three-day wait would hold them forever and global.json and .node-version would move alone. The images follow the version files, which still wait.",
+      "matchFileNames": [
+        "tools/sdk.sh"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
     }
   ]
 }
