@@ -206,6 +206,38 @@ No Last.fm account was connected in that run, so the key ring folder was empty, 
 an installation from the Plugin Repository was not checked. To remove the data as
 well, delete that folder and that file while the server is stopped.
 
+### From a canary build to a release
+
+A canary build of main is copied into a plugin folder by hand; a release comes from
+the Plugin Repository into a folder Jellyfin names itself, `JellySin Last.fm_<version>`.
+Both carry the same plugin GUID, and a canary's version, `0.0.<run>`, stays below
+every release. To move from a canary to a release:
+
+1. Back up `jellysin-lastfm` in the data directory, as for any move of the server.
+2. Leave the canary in place and install the release from the Plugin Repository.
+   Jellyfin marks the canary as superseded at once.
+3. Restart the server. It then loads the release only and deletes the canary's
+   folder. Connected accounts stay connected; nobody needs to reconnect.
+4. Do not copy a canary into the plugin folder again while the release is installed.
+
+Checked on 2026-10-17 by `tests/integration/catalog_over_canary.py` with the pinned
+Jellyfin 12.0.0 (`jellyfin/jellyfin:12.0@sha256:baba6304…`) and 12.2.0
+(`jellyfin/jellyfin:12.2@sha256:357724bf…`) images. A canary-shaped build 0.0.5.0
+sat in the hand-made folder `JellySin.Lastfm`, and a release-shaped 0.1.0.0 package
+came from a local repository. Both servers behaved the same:
+
+| Step | Plugin folders | Server lists |
+| :--- | :--- | :--- |
+| Canary copied in, account connected | `JellySin.Lastfm` (the server wrote its `meta.json`, 0.0.5.0) | 0.0.5.0 Active |
+| Release installed, before the restart | `JellySin.Lastfm`, `JellySin Last.fm_0.1.0.0` | 0.0.5.0 Superseded, 0.1.0.0 Restart |
+| After the restart | `JellySin Last.fm_0.1.0.0` | 0.1.0.0 Active |
+
+`jellysin-lastfm/state` and `jellysin-lastfm/keys` were kept, the account was still
+connected, and a favourite loved after the restart reached the Last.fm stand-in with
+the stored session key. The canary folder was writable for the server in that run;
+a canary in a folder the server cannot write was not checked. In that case delete
+the folder by hand while the server is stopped.
+
 ## Scrobbling
 
 Only observed listening counts. Pauses and seeks do not create listening time.
