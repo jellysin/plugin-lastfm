@@ -49,6 +49,27 @@ downloaded assets. Each attestation is SLSA provenance v1, signed for
 `2da94661557abba9d99e0a6eebc2b230d9aadcfe` and run 39060252451, attempt 1. The ZIP's
 entry in the public transparency log has index 3299431495.
 
+## Catalog install
+
+After the Plugin Repository listed 0.1.0.0 (jellysin/repo#49, merged as `fff77b2`), a
+fresh Jellyfin 12.2.0 server (image digest
+`sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037`) installed
+the release from `https://raw.githubusercontent.com/jellysin/repo/main/manifest.json`
+on 2026-10-17. The run used the startup wizard and client of `tools/smoke.py`:
+
+1. Before the install the server listed only its bundled plugins and held no JellySin
+   files.
+2. `POST /Repositories` added the catalog, `GET /Packages` offered the plugin's GUID and
+   `POST /Packages/Installed` installed version 0.1.0.0, which the server then listed
+   with status `Restart`.
+3. After each of two restarts `GET /Plugins` listed `JellySin Last.fm` 0.1.0.0 as
+   `Active` and the plugin's configuration page answered 200.
+
+The installed `JellySin.Plugin.Lastfm.dll` has SHA-256
+`7f5cde943dddb6797227fef67c2acd372e115dd4abef57190166d7d93077b0b2`, the same as the
+assembly inside `plugin-lastfm-0.1.0.zip`. The same run against the catalog before
+#49, which listed no plugin, stopped with "The server does not offer the package."
+
 ## Release workflows afterwards
 
 `release.yml` (Publish exact release tag) had been turned off by hand. It was turned on
