@@ -146,7 +146,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jellysin/release-helper
-          ref: 1357f403704538bee3df4d963268fa43f0b81d50 # v1.2.1
+          ref: 043c6288642b0734ba53e46603a02cfdb3ca0014 # v1.2.2
           path: build/repro-tooling
           persist-credentials: false
       # The helper holds the plugin's own server references at the floor; planted ones show that this pin does.
