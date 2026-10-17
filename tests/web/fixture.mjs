@@ -60,6 +60,7 @@ async function callback(page, url, state) {
 }
 
 function begin(url, state) {
+  if (state.applicationMissing) return applicationMissing;
   const back = `${url.origin}${state.prefix}/JellySin/Lastfm/Callback?attempt=${previewId.replaceAll('-', '')}`;
   return { ...json({ AuthorizationUrl: state.authorizationUrl ?? `https://www.last.fm/api/auth/?api_key=fixture&cb=${encodeURIComponent(back)}`, ExpiresAt: '2026-09-08T15:10:00Z' }),
     headers: { 'Set-Cookie': `JellySinLastfmAttempt=${binding}; Path=${state.prefix}/JellySin/Lastfm/Callback; Max-Age=600; HttpOnly; SameSite=Lax` } };
@@ -72,6 +73,10 @@ function finish(state) {
   state.connected = true;
   return json(connection(state));
 }
+
+// ApiExceptionFilter's answer when the server has no usable Last.fm application; the page must show its own text, not this title.
+const applicationMissing = { status: 503, contentType: 'application/problem+json',
+  body: JSON.stringify({ type: 'urn:jellysin:lastfm:application-missing', title: 'Server text the page must not show.', status: 503 }) };
 
 const connection = state => ({ Connected: state.connected, Username: state.connected ? 'Listener' : null, NeedsReconnect: Boolean(state.needsReconnect), ScrobblingEnabled: true, ApprovalPending: state.approvalPending });
 

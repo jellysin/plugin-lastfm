@@ -106,7 +106,7 @@ public sealed class AccountService(
         cancellationToken = linked.Token;
         using var lease = await _connectionGates.AcquireAsync(userId, cancellationToken).ConfigureAwait(false);
         var app = await credentials.GetAsync(cancellationToken).ConfigureAwait(false);
-        if (!app.IsConfigured) throw new LastfmException(10);
+        if (!app.IsConfigured) throw new ApplicationMissingException();
         cancellationToken.ThrowIfCancellationRequested();
         RequireHostAccess(userId);
         var attempt = new StoredAttempt(Guid.NewGuid(), string.Empty, clock.GetUtcNow().Add(AttemptLifetime), ApplicationCredentialService.Identity(app), authorization.Id);

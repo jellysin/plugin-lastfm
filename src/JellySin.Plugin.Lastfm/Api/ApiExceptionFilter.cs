@@ -12,6 +12,9 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IEx
     /// <summary>Marks the one conflict the page explains differently: no Last.fm account is connected. web/client.ts holds the same value.</summary>
     public const string NotConnectedType = "urn:jellysin:lastfm:not-connected";
 
+    /// <summary>Marks a request refused because the server has no usable Last.fm application. web/client.ts holds the same value.</summary>
+    public const string ApplicationMissingType = "urn:jellysin:lastfm:application-missing";
+
     public void OnException(ExceptionContext context)
     {
         var (status, title, type) = context.Exception switch
@@ -21,6 +24,7 @@ public sealed class ApiExceptionFilter(ILogger<ApiExceptionFilter> logger) : IEx
             ArgumentException => (400, "Check the supplied values.", null),
             KeyNotFoundException => (404, "This item is no longer available.", null),
             InvalidOperationException => (409, "The operation is unavailable or its preview has expired. Refresh and try again.", null),
+            ApplicationMissingException => (503, "No Last.fm application is configured on this server. Ask an administrator.", ApplicationMissingType),
             LastfmException => (502, "Last.fm could not complete the request. Check your connection and try again.", null),
             OperationCanceledException => (408, "The operation was cancelled or timed out.", null),
             StorageBudgetException => (507, "The Last.fm data storage limit was reached. Any saved progress is retained.", null),

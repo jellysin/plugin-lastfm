@@ -22,7 +22,7 @@ public interface ILastfmClient
     TimeSpan GetCacheLifetime(JsonDocument response) => TimeSpan.Zero;
 }
 
-public sealed class LastfmException(int code, TimeSpan? retryAfter = null) : Exception($"Last.fm request failed with code {code}.")
+public class LastfmException(int code, TimeSpan? retryAfter = null) : Exception($"Last.fm request failed with code {code}.")
 {
     public int Code { get; } = code;
 
@@ -30,3 +30,7 @@ public sealed class LastfmException(int code, TimeSpan? retryAfter = null) : Exc
 
     public TimeSpan? RetryAfter { get; } = retryAfter;
 }
+
+/// <summary>The plugin refused a call before sending it: no Last.fm application is configured, or its stored keys cannot be read.
+/// It keeps Last.fm's code 10 (invalid API key), so stored plays treat it as before.</summary>
+public sealed class ApplicationMissingException() : LastfmException(10);

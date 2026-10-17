@@ -123,7 +123,7 @@ public sealed class LastfmClient(HttpClient http, ApplicationCredentialService c
         if (work.Method == "track.updateNowPlaying" && clock.GetUtcNow() - work.CreatedAt > TimeSpan.FromSeconds(20)) throw new LastfmException(8);
         if (work.IsCurrent?.Invoke() == false) throw new LastfmException(8);
         var app = await credentials.GetAsync(cancellationToken).ConfigureAwait(false);
-        if (!app.IsConfigured) throw new LastfmException(10);
+        if (!app.IsConfigured) throw new ApplicationMissingException();
         if (work.ApplicationIdentity is { } expected && expected != ApplicationCredentialService.Identity(app)) throw new LastfmException(9);
         var values = new Dictionary<string, string>(work.Parameters, StringComparer.Ordinal)
         { ["method"] = work.Method, ["api_key"] = app.ApiKey };
