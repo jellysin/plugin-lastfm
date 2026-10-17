@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.2.0](https://github.com/jellysin/plugin-lastfm/compare/v0.1.0...v0.2.0) (2026-10-17)
+
+
+### Features
+
+* **favourites:** log one line per finished favourites run ([#136](https://github.com/jellysin/plugin-lastfm/issues/136)) ([4d3f110](https://github.com/jellysin/plugin-lastfm/commit/4d3f11032387b6dadcd641294ffd71a1839e3dde))
+* **favourites:** match pending loved tracks after a library scan ([#124](https://github.com/jellysin/plugin-lastfm/issues/124)) ([55252e6](https://github.com/jellysin/plugin-lastfm/commit/55252e6fb6d247aaf433998c73da0532c4139808))
+* **favourites:** reuse loved-track matches by MusicBrainz id ([#117](https://github.com/jellysin/plugin-lastfm/issues/117)) ([78d836e](https://github.com/jellysin/plugin-lastfm/commit/78d836e4b538d3158c06b156105a79d0e00fb125))
+* let administrators choose the media types to scrobble ([#119](https://github.com/jellysin/plugin-lastfm/issues/119)) ([28c1ce9](https://github.com/jellysin/plugin-lastfm/commit/28c1ce9a7bbd24674a3d3c934414359fa8659f03))
+* let users choose which devices and media types scrobble ([#123](https://github.com/jellysin/plugin-lastfm/issues/123)) ([d0cbb55](https://github.com/jellysin/plugin-lastfm/commit/d0cbb55be88c0a221ae7dd05ae0729bbe4f2fb35))
+* **metadata:** add Last.fm artist and album metadata providers ([#130](https://github.com/jellysin/plugin-lastfm/issues/130)) ([f1b681e](https://github.com/jellysin/plugin-lastfm/commit/f1b681e231bb62653782ce8febf9c46c13a0043c))
+* **metadata:** link artists and albums to their Last.fm pages ([#133](https://github.com/jellysin/plugin-lastfm/issues/133)) ([9ba4e88](https://github.com/jellysin/plugin-lastfm/commit/9ba4e8875174248a5edcde5f1e772509c619a425))
+* **metadata:** offer Last.fm album covers and artist images ([#134](https://github.com/jellysin/plugin-lastfm/issues/134)) ([a254ff8](https://github.com/jellysin/plugin-lastfm/commit/a254ff8062f660a8e0d395b321eb4b0f8face216))
+* **playback:** scrobble plays of clients that report only start and stop ([#131](https://github.com/jellysin/plugin-lastfm/issues/131)) ([9634c8d](https://github.com/jellysin/plugin-lastfm/commit/9634c8dad9b5eaf562b4d6a9ad1ccd6588442305))
+* run favourites, playlists and delivery retry as scheduled tasks ([#118](https://github.com/jellysin/plugin-lastfm/issues/118)) ([8ad6b46](https://github.com/jellysin/plugin-lastfm/commit/8ad6b46e38f350062223195be1cafb225842b5c9))
+* **scrobble:** let admins and users choose which libraries scrobble ([#116](https://github.com/jellysin/plugin-lastfm/issues/116)) ([fa8c591](https://github.com/jellysin/plugin-lastfm/commit/fa8c591bd2f4a249cf787682c7b4bac377dd0bfd))
+
+
+### Bug Fixes
+
+* **agents:** give the audit and gate personas their model tiers ([#111](https://github.com/jellysin/plugin-lastfm/issues/111)) ([21f2ac7](https://github.com/jellysin/plugin-lastfm/commit/21f2ac7edf00b03ec132a0130caee0f5c1fb8bc3))
+* **api:** answer a missing Last.fm application with its own status ([#137](https://github.com/jellysin/plugin-lastfm/issues/137)) ([dfc3c66](https://github.com/jellysin/plugin-lastfm/commit/dfc3c66be8418619b478070ce64647723421041b)), closes [#99](https://github.com/jellysin/plugin-lastfm/issues/99)
+* **playback:** never scrobble audiobook chapters ([#114](https://github.com/jellysin/plugin-lastfm/issues/114)) ([8a88694](https://github.com/jellysin/plugin-lastfm/commit/8a88694468ee23a21e70d4da7bcd7742cbf1b886))
+* **release:** tag the release commit when the draft is created ([#113](https://github.com/jellysin/plugin-lastfm/issues/113)) ([33443a9](https://github.com/jellysin/plugin-lastfm/commit/33443a9f0bd5262e4e6e509b598a2acfcb56a55b))
+* **tasks:** re-arm the interval after a task's first run ([#126](https://github.com/jellysin/plugin-lastfm/issues/126)) ([3e9b3d6](https://github.com/jellysin/plugin-lastfm/commit/3e9b3d66f43be708b5353346c55009508045f77b))
+
+
+### Reverts
+
+* **metadata:** remove the Last.fm image provider before 0.2.0 ([#135](https://github.com/jellysin/plugin-lastfm/issues/135)) ([6080ac0](https://github.com/jellysin/plugin-lastfm/commit/6080ac056436fdc92fcf89080072856945712f71))
+
 ## 0.1.0 (2026-10-16)
 
 
