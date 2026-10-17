@@ -36,17 +36,8 @@ export function setupAuthentication(client: Client, refresh: () => Promise<void>
     element('quick-code').textContent = attempt.code;
     element('quick-instructions').hidden = false;
     try {
-      for (let poll = 0; poll < 200; poll++) {
-        await delay(current.signal);
-        if (document.hidden) continue;
-        const status = await client.api<{ authenticated: boolean }>('Auth/QuickConnect/Status', 'POST', { secret: attempt.secret }, current.signal);
-        if (status.authenticated) {
-          client.acceptSession(await client.request<Session>('/Users/AuthenticateWithQuickConnect', 'POST', { Secret: attempt.secret }, current.signal));
-          await refresh();
-          return;
-        }
-      }
-      throw new Error('Quick Connect expired. Start a new request.');
+      client.acceptSession(await awaitApproval(client, attempt.secret, current.signal));
+      await refresh();
     } catch (error) { if (!current.signal.aborted) throw error; }
     finally {
       attempt.secret = '';
@@ -63,6 +54,17 @@ export function setupAuthentication(client: Client, refresh: () => Promise<void>
     message('Signed out of this page.');
   });
   window.addEventListener('pagehide', () => pending?.abort());
+}
+
+/** Polls until the code is approved; the bound stops an abandoned attempt. */
+async function awaitApproval(client: Client, secret: string, signal: AbortSignal): Promise<Session> {
+  for (let poll = 0; poll < 200; poll++) {
+    await delay(signal);
+    if (document.hidden) continue;
+    const status = await client.api<{ authenticated: boolean }>('Auth/QuickConnect/Status', 'POST', { secret }, signal);
+    if (status.authenticated) return client.request<Session>('/Users/AuthenticateWithQuickConnect', 'POST', { Secret: secret }, signal);
+  }
+  throw new Error('Quick Connect expired. Start a new request.');
 }
 
 function delay(signal: AbortSignal): Promise<void> {

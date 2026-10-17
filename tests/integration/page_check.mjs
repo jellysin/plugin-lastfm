@@ -139,7 +139,7 @@ try {
     try { results.push({ name, passed: true, detail: await check(context) }); }
     catch (error) {
       results.push({ name, passed: false, detail: error instanceof Refused ? error.message : String(error).split('\n')[0] });
-      for (const [index, page] of context.pages().entries()) await shot(page, `failed-${name.replaceAll(/[^a-z]+/g, '-')}-${index}`).catch(() => {});
+      for (const [index, page] of context.pages().entries()) await shot(page, `failed-${name.replaceAll(/[^a-z]+/g, '-')}-${index}`).catch(shotError => console.log(`screenshot skipped: ${String(shotError).split('\n')[0]}`));
     }
     const last = results.at(-1);
     console.log(`${last.passed ? 'PASS' : 'FAIL'}: ${last.name}: ${last.detail}`);

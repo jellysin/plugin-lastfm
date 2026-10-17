@@ -38,6 +38,23 @@ export async function run(control: HTMLButtonElement | null, action: () => Promi
   }
 }
 
+/** A row button without its own listener: the list that holds it acts on it through delegate. */
+export function rowButton(text: string, data: Record<string, string>): HTMLButtonElement {
+  const control = document.createElement('button');
+  control.type = 'button';
+  control.textContent = text;
+  Object.assign(control.dataset, data);
+  return control;
+}
+
+/** One click handler for the row buttons of a list, bound once; rendering a row never binds an action. */
+export function delegate(list: HTMLElement, action: (control: HTMLButtonElement) => Promise<void>): void {
+  list.addEventListener('click', event => {
+    const control = event.target instanceof Element ? event.target.closest('button') : null;
+    if (control && list.contains(control) && control.dataset.action) void run(control, () => action(control));
+  });
+}
+
 export function bind(id: string, action: () => Promise<void>): void {
   const control = element<HTMLButtonElement>(id);
   control.addEventListener('click', () => { void run(control, action); });

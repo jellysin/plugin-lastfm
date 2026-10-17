@@ -11,7 +11,7 @@ async function start(): Promise<void> {
   if (!response.ok) throw new Error('The plugin could not load its server configuration.');
   const config = await readJson(response, 4096) as Bootstrap;
   let storage: Storage | undefined;
-  try { storage = sessionStorage; } catch { /* Private browser settings may disable storage. */ }
+  try { storage = sessionStorage; } catch { storage = undefined; /* Private browser settings may disable storage; the session then lives in memory only. */ }
   const client = new Client(config, storage);
   client.addEventListener('sessioncleared', () => {
     clearPrivateView();

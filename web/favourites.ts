@@ -1,5 +1,5 @@
 import { Client } from './client.js';
-import { bind, button, element, line, message } from './view.js';
+import { bind, delegate, element, line, message, rowButton } from './view.js';
 import { type Track } from './music.js';
 
 interface Review { enabled: boolean; pending: { id: string; track: Track; removeFrom: string }[]; lastSync?: string; status: string; total: number; page: number; pages: number; running: boolean }
@@ -21,13 +21,15 @@ export function setupFavourites(client: Client): void {
       const item = document.createElement('li');
       line(item, `${removal.track.artist} — ${removal.track.title}`);
       line(item, `Remove the favourite from ${removal.removeFrom === 'lastfm' ? 'Last.fm' : 'Jellyfin'}?`, 'muted');
-      for (const apply of [true, false]) item.append(button(apply ? 'Apply removal' : 'Keep unchanged', async () => {
-        render(await client.api<Review>('Me/Favourites/Review', 'POST', { reviewId: removal.id, apply }));
-        message(apply ? 'Removal reviewed against current favourites.' : 'Removal dismissed.');
-      }));
+      for (const apply of [true, false]) item.append(rowButton(apply ? 'Apply removal' : 'Keep unchanged', { action: String(apply), review: removal.id }));
       list.append(item);
     }
   };
+  delegate(element('removal-list'), async control => {
+    const apply = control.dataset.action === 'true';
+    render(await client.api<Review>('Me/Favourites/Review', 'POST', { reviewId: control.dataset.review, apply }));
+    message(apply ? 'Removal reviewed against current favourites.' : 'Removal dismissed.');
+  });
   bind('favourites-save', async () => {
     render(await client.api<Review>('Me/Favourites', 'PUT', { enabled: element<HTMLInputElement>('favourites-enabled').checked }));
     message('Favourite synchronization preference saved.');
