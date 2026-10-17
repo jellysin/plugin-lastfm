@@ -131,7 +131,8 @@ def wait_ready(client: Client) -> None:
     raise SmokeFailure("Jellyfin did not become ready within 180 seconds.")
 
 
-def fixture_music(directory: Path, title: str, artist: str = "JellySin Fixture Artist", album: str = "Smoke Album", name: str | None = None) -> None:
+def fixture_music(directory: Path, title: str, artist: str = "JellySin Fixture Artist", album: str = "Smoke Album", name: str | None = None,
+                  seconds: int = 65) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     directory.chmod(0o755)
     path = directory / ((name or title) + ".wav")
@@ -139,7 +140,7 @@ def fixture_music(directory: Path, title: str, artist: str = "JellySin Fixture A
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(8000)
-        audio.writeframes(b"\0\0" * 8000 * 65)
+        audio.writeframes(b"\0\0" * 8000 * seconds)
     tags = b"INFO"
     for field, value in ((b"INAM", title), (b"IART", artist), (b"IPRD", album)):
         encoded = value.encode() + b"\0"
@@ -324,11 +325,21 @@ def own_entries(answer: Any) -> list[str]:
     raise SmokeFailure("The answer held more values than the smoke-test bound.")
 
 
+# The metadata providers the plugin offers, by the item type they fill; it offers nothing else in a library's options.
+PROVIDED_FETCHERS = {"MusicAlbum": ["Last.fm"], "MusicArtist": ["Last.fm"]}
+
+
 def check_library_options(options: dict[str, Any]) -> None:
     kinds = {item.get("type") for item in options.get("typeoptions", [])}
     require({"Audio", "MusicAlbum", "MusicArtist"} <= kinds, "Jellyfin did not list the options of a music library.")
-    found = own_entries(options)
-    require(not found, "The plugin must offer nothing in the options of a library, found: " + ", ".join(found) + ".")
+    found = own_entries({key: value for key, value in options.items() if key != "typeoptions"})
+    for item in options.get("typeoptions", []):
+        kind = item.get("type")
+        fetchers = own_entries(item.get("metadatafetchers", []))
+        require(fetchers == PROVIDED_FETCHERS.get(kind, []),
+                f"The plugin must offer exactly {PROVIDED_FETCHERS.get(kind, [])} as metadata fetchers of {kind}, found: {fetchers}.")
+        found += own_entries({key: value for key, value in item.items() if key != "metadatafetchers"})
+    require(not found, "The plugin must offer nothing else in the options of a library, found: " + ", ".join(found) + ".")
 
 
 def unfollowed(client: Client, path: str) -> tuple[int, dict[str, str]]:
@@ -402,8 +413,8 @@ def check_page_origin(listener: Client, published: str) -> None:
         require(write(origin, site) == 403, f"A write from {place} was accepted.")
 
 
-def create_user(admin: Client, password: str) -> dict[str, Any]:
-    user = admin.request("/Users/New", "POST", {"Name": "SmokeListener", "Password": password})
+def create_user(admin: Client, password: str, name: str = "SmokeListener") -> dict[str, Any]:
+    user = admin.request("/Users/New", "POST", {"Name": name, "Password": password})
     require(not user["policy"]["isadministrator"], "The ordinary smoke user unexpectedly has administrator rights.")
     return user
 

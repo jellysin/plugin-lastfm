@@ -31,14 +31,13 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lastfm_stand_in import LASTFM_USER  # noqa: E402
+from lastfm_stand_in import APPROVAL_TOKEN, LASTFM_USER  # noqa: E402
 from page_check import CALL_SECONDS, StandInContainer, named, wait_for_call  # noqa: E402
 from smoke import (  # noqa: E402
     IMAGES, PREFIX, Client, DockerHost, SmokeFailure, add_library, create_user, docker, fixture_music, lower_keys,
     remove_container, require, setup_server, wait_music,
 )
 
-APPROVAL_TOKEN = "stand-in-approval-token"
 # One library favourite per server the account is carried to; each must reach the stand-in as its own love.
 FAVOURITES = {"before": "Carryover Before", "upgrade": "Carryover Upgrade", "restore": "Carryover Restore",
               "keyless": "Carryover Without Keys"}
@@ -52,15 +51,17 @@ def add_fixtures(host: DockerHost) -> None:
         fixture_music(host.fixture_directory / "Public", title)
 
 
-def approve(listener: Client) -> None:
-    """Begin, return from the stand-in's approval with the attempt cookie, and finish, as the browser would."""
+def approve(listener: Client, token: str = APPROVAL_TOKEN, user: str = LASTFM_USER) -> None:
+    """Begin, return from the stand-in's approval with the attempt cookie, and finish, as the browser would.
+
+    The stand-in signs token in as user; a token with a label of its own names a Last.fm user of its own."""
     payload, headers, _ = listener.request(PREFIX + "/Me/Connection/Begin", "POST", {"ReturnToSettings": False}, raw=True)
     cookie = next((part for part in headers.get("set-cookie", "").split(";") if part.strip().startswith(COOKIE + "=")), "")
     require(cookie, "Beginning the connection set no attempt cookie.")
     start = lower_keys(json.loads(payload))
     callback = urllib.parse.urlsplit(dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(start["authorizationurl"]).query))["cb"])
     require(callback.path.endswith("/JellySin/Lastfm/Callback"), "The approval address does not return to this server.")
-    query = urllib.parse.urlencode([*urllib.parse.parse_qsl(callback.query), ("token", APPROVAL_TOKEN)])
+    query = urllib.parse.urlencode([*urllib.parse.parse_qsl(callback.query), ("token", token)])
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *_: Any) -> None:
@@ -73,7 +74,7 @@ def approve(listener: Client) -> None:
         status = error.code
     require(status == 302, f"The return from the approval answered HTTP {status}.")
     status = listener.request(PREFIX + "/Me/Connection/Finish", "POST")
-    require(status["connected"] and status["username"] == LASTFM_USER and not status["needsreconnect"],
+    require(status["connected"] and status["username"] == user and not status["needsreconnect"],
             f"Finishing the connection answered {status}.")
 
 

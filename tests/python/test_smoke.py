@@ -413,21 +413,38 @@ class ReturnAddressTests(unittest.TestCase):
 def library_options(kinds=("Audio", "MusicAlbum", "MusicArtist")):
     """The options Jellyfin lists for a music library, in the letter case the smoke client reads."""
     return {"metadatasavers": [{"name": "Nfo", "defaultenabled": False}], "metadatareaders": [{"name": "Nfo", "defaultenabled": True}],
-            "typeoptions": [{"type": kind, "metadatafetchers": [{"name": "MusicBrainz", "defaultenabled": True}], "imagefetchers": [],
-                             "similaritemproviders": [{"name": "Local Genre", "defaultenabled": True}]} for kind in kinds]}
+            "typeoptions": [{"type": kind, "metadatafetchers": [{"name": "MusicBrainz", "defaultenabled": True}]
+                             + ([{"name": "Last.fm", "defaultenabled": True}] if kind in ("MusicAlbum", "MusicArtist") else []),
+                             "imagefetchers": [], "similaritemproviders": [{"name": "Local Genre", "defaultenabled": True}]} for kind in kinds]}
 
 
 class LibraryOptionsTests(unittest.TestCase):
-    def test_accepts_options_that_name_only_other_providers(self):
+    def test_accepts_options_that_name_the_album_and_artist_fetchers_beside_other_providers(self):
         smoke.check_library_options(library_options())
 
-    def test_refuses_an_entry_of_the_plugin_in_a_list_of_a_type_or_of_the_library(self):
+    def test_refuses_an_entry_of_the_plugin_in_another_list_of_a_type_or_of_the_library(self):
         for name, place in (("JellySin Last.fm", lambda options: options["typeoptions"][1]["similaritemproviders"]),
-                            ("Last.fm", lambda options: options["typeoptions"][2]["metadatafetchers"]),
+                            ("Last.fm", lambda options: options["typeoptions"][2]["imagefetchers"]),
                             ("JellySin Last.fm", lambda options: options.setdefault("lyricfetchers", []))):
             options = library_options()
             place(options).append({"name": name, "defaultenabled": False})
-            with self.subTest(name=name), self.assertRaisesRegex(SmokeFailure, "offer nothing in the options of a library, found: " + re.escape(name)):
+            with self.subTest(name=name), self.assertRaisesRegex(SmokeFailure, "offer nothing else in the options of a library, found: " + re.escape(name)):
+                smoke.check_library_options(options)
+
+    def test_refuses_a_missing_repeated_or_misplaced_metadata_fetcher(self):
+        def remove(options):
+            options["typeoptions"][2]["metadatafetchers"].pop()
+
+        def repeat(options):
+            options["typeoptions"][1]["metadatafetchers"].append({"name": "Last.fm", "defaultenabled": True})
+
+        def audio(options):
+            options["typeoptions"][0]["metadatafetchers"].append({"name": "Last.fm", "defaultenabled": True})
+
+        for change, kind in ((remove, "MusicArtist"), (repeat, "MusicAlbum"), (audio, "Audio")):
+            options = library_options()
+            change(options)
+            with self.subTest(kind=kind), self.assertRaisesRegex(SmokeFailure, "as metadata fetchers of " + kind):
                 smoke.check_library_options(options)
 
     def test_refuses_an_answer_that_does_not_list_the_music_types(self):

@@ -86,6 +86,47 @@ class StandInTests(unittest.TestCase):
         self.assertEqual(["POST track.updateNowPlaying | A - T", "POST user.getInfo"], self.lines("calls.log"))
         self.assertNotIn(SESSION, (self.directory / "out" / "calls.log").read_text(encoding="utf-8"))
 
+    def scrobble(self, key, title="T"):
+        return self.post(urllib.parse.urlencode({"method": "track.scrobble", "artist[0]": "A", "track[0]": title, "timestamp[0]": "1",
+                                                 "sk": key, "api_sig": "f" * 32}))
+
+    def test_a_labelled_approval_token_signs_in_a_user_of_its_own(self):
+        answer = self.post(f"method=auth.getSession&token={lastfm_stand_in.APPROVAL_TOKEN}-two&format=json")
+        self.assertEqual({"name": lastfm_stand_in.LASTFM_USER + "-two", "key": SESSION + "-two", "subscriber": 0}, answer["session"])
+
+    def test_a_scrobble_names_the_account_of_its_session_and_never_the_key(self):
+        self.scrobble(SESSION + "-two")
+        self.scrobble(SESSION + "-never-issued")
+        self.scrobble("stand-in-session-other-two")
+        self.assertEqual(["POST track.scrobble as two | A - T", "POST track.scrobble as ? | A - T", "POST track.scrobble as ? | A - T"],
+                         self.lines("calls.log"))
+        self.assertNotIn(SESSION, (self.directory / "out" / "calls.log").read_text(encoding="utf-8"))
+
+    def test_a_refused_period_answers_the_retryable_error_and_records_the_refusal(self):
+        (self.directory / "refuse.txt").write_text("error 16\n", encoding="utf-8")
+        self.assertEqual(16, self.scrobble(SESSION)["error"])
+        self.assertEqual(16, self.post(urllib.parse.urlencode({"method": "track.updateNowPlaying", "artist": "A", "track": "T",
+                                                                "sk": SESSION, "api_sig": "f" * 32}))["error"])
+        self.assertIn("session", self.post("method=auth.getSession&token=t&format=json"))
+        (self.directory / "refuse.txt").unlink()
+        self.assertEqual(1, self.scrobble(SESSION)["scrobbles"]["@attr"]["accepted"])
+        self.assertEqual(["REFUSED POST track.scrobble | A - T", "REFUSED POST track.updateNowPlaying | A - T",
+                          "POST auth.getSession", "POST track.scrobble | A - T"], self.lines("calls.log"))
+
+    def test_a_planted_drop_loses_one_listen_of_the_next_scrobble_only(self):
+        (self.directory / "drop-listen.txt").write_text("drop\n", encoding="utf-8")
+        self.assertEqual(1, self.scrobble(SESSION, "First")["scrobbles"]["@attr"]["accepted"])
+        self.scrobble(SESSION, "Second")
+        self.assertEqual(["POST track.scrobble", "POST track.scrobble | A - Second"], self.lines("calls.log"))
+        self.assertFalse((self.directory / "drop-listen.txt").exists())
+
+    def test_a_refused_scrobble_does_not_spend_the_planted_drop(self):
+        (self.directory / "drop-listen.txt").write_text("drop\n", encoding="utf-8")
+        (self.directory / "refuse.txt").write_text("error 16\n", encoding="utf-8")
+        self.scrobble(SESSION, "First")
+        self.assertTrue((self.directory / "drop-listen.txt").exists())
+        self.assertEqual(["REFUSED POST track.scrobble | A - First"], self.lines("calls.log"))
+
     def test_the_loved_collection_holds_a_track_the_library_has(self):
         loved = lastfm_stand_in.answer("user.getLovedTracks", SESSION)["lovedtracks"]["track"]
         self.assertEqual([lastfm_stand_in.SIMILAR_LOCAL], [entry["name"] for entry in loved])

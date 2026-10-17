@@ -127,12 +127,13 @@ jobs:
       # Jellyfin 12.1 is the first release that hides a playlist whose tracks a parental limit blocks.
       - name: Verify generated playlist visibility under a parental limit on Jellyfin 12.1
         run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server '12.1' --report build/native-userdata-12.1.json
-      - name: Enforce real-library search and concurrent playback budgets
+      # Four connected accounts play against a Last.fm stand-in during the load: every listen must arrive once, also after a refused period.
+      - name: Enforce real-library search and playback budgets and scrobble delivery under that load
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server newest
       # Support starts at 12.0.0, so the release between the floor and the newest loads the same build under the same checks.
       - name: Exercise load, account isolation and restart on Jellyfin 12.1
         run: python tools/smoke.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server '12.1'
-      - name: Enforce real-library search and concurrent playback budgets on Jellyfin 12.1
+      - name: Enforce real-library search and playback budgets and scrobble delivery under that load on Jellyfin 12.1
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server '12.1'
       - name: Validate installable package and release metadata
         uses: jellysin/release-helper/actions/package@043c6288642b0734ba53e46603a02cfdb3ca0014 # v1.2.2

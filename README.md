@@ -41,6 +41,10 @@ JellySin: Jellyfin plus sin, a little temptation for your media server; said JEL
   artists and albums linked to Last.fm.
 - Private Jellyfin playlists from loved tracks, charts, similarity and discovery,
   with saved recipes and optional daily refresh.
+- Metadata providers for artist biographies, album wikis and album release dates,
+  with HTML stripped to plain text and a link back to the Last.fm page.
+- External links to Last.fm artist and album pages built from library names on page
+  render without network calls.
 
 The account dashboard is served by the plugin at `/JellySin/Lastfm/` under your
 Jellyfin server's base path. Sign in with Jellyfin credentials or Quick Connect,
@@ -71,7 +75,12 @@ up. Every change is checked on Jellyfin 12.0.0, 12.1.0 and 12.2.0; [release read
 covers.
 
 Scrobbling reads the playback reports the server receives, whichever client sends
-them; a client that reports no playback to the server produces no listen. The checks
+them; a client that reports no playback to the server produces no listen. Some
+clients report only when a track starts and when it stops. For such a session the
+server's own once-a-second position updates count as listening time, up to the
+position the client's stop reports, and only once that stop arrives. Plays a client
+made offline and reports later only as a last-played date are not scrobbled
+([#129](https://github.com/jellysin/plugin-lastfm/issues/129)). The checks
 send these reports through the server's API. The account dashboard is a web page of
 the server and was checked in a Chromium browser and in Jellyfin's web interface;
 Jellyfin's TV, mobile and desktop clients were not checked.

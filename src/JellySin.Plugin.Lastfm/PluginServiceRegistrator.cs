@@ -54,6 +54,8 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         // Jellyfin finds the scheduled tasks in this assembly itself and builds them from these services.
         serviceCollection.AddSingleton<DeliveryService>();
         serviceCollection.AddHostedService(provider => provider.GetRequiredService<DeliveryService>());
+        // Jellyfin arms a fresh task's interval an hour out; this re-arms it after the task's first run.
+        serviceCollection.AddHostedService<JellySin.Plugin.Lastfm.Tasks.TaskTriggerRearm>();
         serviceCollection.AddLastfmFeatures();
     }
 }
