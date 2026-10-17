@@ -79,10 +79,15 @@ and never merges old runs or trusts summary percentages from the report header.
 ## Release and compatibility
 
 Release-please collects commits in a release PR and updates `version.txt`, web
-package versions and the changelog. A merged release PR leaves one unpublished draft
-(`draft: true`) and its version tag on the merge commit (`force-tag-creation: true`:
-GitHub gives a draft no tag, and without it release-please misses the previous release
-and repeats its changelog). Ordinary pushes and PR merges never publish a release.
+package versions and the changelog. It writes no tag and no release
+(`skip-github-release: true`), whichever workflow runs it: the release tag and its one
+unpublished draft come only from `prepare-release.yml` below. Two writers raced for
+0.2.0 and left two drafts for one tag, which the release helper refuses to publish.
+Release-please finds the previous release through its tag, which the prepare step
+creates on the merged release commit. A merged release PR keeps the
+`autorelease: pending` label until a workflow moves it once that tag exists, and
+release-please opens no new release PR before then. Ordinary pushes and PR merges
+never publish a release. `tests/python/test_release_please_config.py` holds the limits.
 The first release was `0.1.0`, and the feature list in #96 targets `0.2.0`. With
 `bump-minor-pre-major`, features and breaking changes both raise the minor version
 below 1.0, so a release PR targets `1.0.0` only through an explicit `Release-As` footer.
