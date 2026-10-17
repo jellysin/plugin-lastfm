@@ -35,11 +35,15 @@ form passed on 12.2.0 in a browser against a Last.fm stand-in, without a live ac
 | Repository checks | PR/squash protections, pinned Actions, locks, Renovate and read-only defaults configured; candidate CI and all four CodeQL analyses passed |
 | Publication and installation | No plugin release is available in the Plugin Repository |
 | Legacy migration | Separate plugin GUID and explicit uninstall/reconnect instructions; existing Last.fm history remains on Last.fm |
-| Last.fm API terms | Closed as the project's own reading of the terms; the clarification is not sent (decision of 2026-10-12, below); no written Last.fm approval exists |
+| Last.fm API terms | Closed as the project's own reading of the terms; the clarification is not sent (decisions of 2026-10-12 and 2026-10-17, below); no written Last.fm approval exists; no Last.fm images are offered (clause 5.1.8) |
 
 The Last.fm API terms and the storage and display questions across independent
 installations are documented in [API research](lastfm-api.md). On 2026-10-12 the
 maintainer decided not to send the [clarification draft](lastfm-permission-request.md).
+On 2026-10-17 the maintainer decided again not to write to Last.fm, after the
+metadata providers and a Last.fm image provider had been added. Clause 5.1.8 of the
+terms excludes images and artwork, so the image provider was removed before 0.2.0;
+the biography and album text providers stay, with the link back to Last.fm.
 The application key and shared secret identify the application, not a user, and the
 plugin ships them in its DLL as the earlier Jellyfin Last.fm plugin did: its published
 source holds both as constants
