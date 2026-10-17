@@ -56,6 +56,10 @@ Pull requests fail on advisories in production dependencies only; that tree is e
 today. `.github/workflows/audit.yml` audits the whole lock every day, fails on a finding
 and keeps one open issue for it. `tools/dependency_audit.py --self-test` plants a
 vulnerable lock first. Renovate raises security fixes without the three-day wait.
+The local gate's SDK images in `tools/sdk.sh` move in one pull request with
+`global.json` and `.node-version`. Their registries give no release time, so the
+images skip the wait and follow the version files, which still wait; the Python
+tests fail when either rule is missing.
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,
@@ -176,7 +180,9 @@ The [Plugin Repository](https://github.com/jellysin/repo) has separate ownership
 so this repository needs no cross-repository write token. All shared tooling is
 pinned to full SHAs in [release-helper](https://github.com/jellysin/release-helper).
 The Python tests fail unless every workflow reference to it names the same commit and
-the release that commit is.
+the release that commit is. Renovate moves the `uses:` lines and the two checkout refs
+of the independent rebuilds in one pull request, and the tests fail when its entry
+for the checkouts no longer reads each ref.
 
 The engineering baseline is in
 [JellySin principles](https://github.com/jellysin/.github/blob/main/docs/principles.md).
