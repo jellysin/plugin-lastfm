@@ -141,9 +141,10 @@ def snapshot(host: DockerHost, admin: Client) -> dict[str, Any]:
     return {"folders": folders(host), "plugins": listed(admin), "state": state_folders(host)}
 
 
-def connect(host: DockerHost, stand_in: StandInContainer, password: str) -> Client:
-    admin = Client(host.origin)
-    setup_server(admin, password)
+def connect(host: DockerHost, stand_in: StandInContainer, password: str, admin: Client | None = None) -> Client:
+    if admin is None:
+        admin = Client(host.origin)
+        setup_server(admin, password)
     for title in FAVOURITES:
         fixture_music(host.fixture_directory / "Public", title)
     add_library(admin, "Public")

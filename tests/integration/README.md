@@ -270,3 +270,38 @@ because the account asks for a new connection. The plugin creates an empty key r
 at start, so only the love with the stored session key shows that the ring was kept.
 The record in `docs/operations.md` comes from this check. It stays manual, like the
 carry-over check.
+
+## What a removal leaves behind
+
+`removal_leftovers.py` starts a disposable Jellyfin 12 server with the plugin placed
+either by copying a build into the plugin directory by hand (`--source copy`, the
+default) or by installing a release-shaped package from the local Plugin Repository
+container (`--source repository`), connects an ordinary user through the Last.fm
+stand-in of the page check and has a library favourite loved. It removes the plugin
+through Jellyfin's server API (`DELETE /Plugins/{pluginId}/{version}`), restarts the
+server, verifies that the plugin is no longer listed, stops the container, and inspects
+the stopped configuration volume with a throwaway container.
+
+The listing records relative paths and sizes in bytes, never file content. The check
+fails unless no plugin folder contains the assembly,
+`configurations/JellySin.Plugin.Lastfm.xml` is present with non-zero size,
+`jellysin-lastfm/state` keeps its response cache files, and `jellysin-lastfm/keys`
+keeps the user's protection key ring.
+
+```sh
+dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore \
+  -p:Version=0.0.5-canary -p:AssemblyVersion=0.0.5.0 -p:FileVersion=0.0.5.0
+mkdir -p build/canary-shape && cp src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll build/canary-shape/
+dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
+
+# Hand-copied plugin folder
+python tests/integration/removal_leftovers.py --build build/canary-shape/JellySin.Plugin.Lastfm.dll \
+  --source copy --report build/removal-leftovers-copy.json --server floor
+
+# Plugin Repository installation
+python tests/integration/removal_leftovers.py --build src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
+  --source repository --report build/removal-leftovers-repository.json --server floor
+```
+
+`--plant skip-remove` skips the removal API call; the run must then fail because the
+assembly is still present in the plugin directory. The check stays manual, like the carry-over check.
