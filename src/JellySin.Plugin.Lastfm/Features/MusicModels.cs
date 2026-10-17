@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace JellySin.Plugin.Lastfm.Features;
 
@@ -100,5 +102,96 @@ internal static class MusicJson
         if (text.ValueKind == JsonValueKind.String && text.GetString() is { Length: > 0 } value) return value;
         var name = Child(node, "name");
         return name.ValueKind == JsonValueKind.String ? name.GetString() ?? string.Empty : string.Empty;
+    }
+
+    public const int MaxOverviewLength = 32_768;
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
+    private static readonly Regex AttributionRegex = new(
+        @"(?:\bRead more on Last\.fm\s*)?<a\s+[^>]*href=[""'](?<url>[^""']+)[""'][^>]*>\s*Read more on Last\.fm\.?\s*<\/a>\.?",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly Regex AnchorRegex = new(
+        @"<a\s+[^>]*>(?<text>.*?)<\/a>",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly Regex BrRegex = new(
+        @"<br\s*/?>",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly Regex ParagraphCloseRegex = new(
+        @"</p>",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly Regex AnyTagRegex = new(
+        @"<[^>]+>",
+        RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    private static readonly Regex NewlineRegex = new(
+        @"\n{3,}",
+        RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    public static string? CleanWiki(JsonElement node)
+    {
+        var raw = Text(node, "content");
+        if (string.IsNullOrWhiteSpace(raw)) raw = Text(node, "summary");
+        return CleanWikiText(raw);
+    }
+
+    public static string? CleanWikiText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        string? attribution = null;
+        var matches = AttributionRegex.Matches(raw);
+        if (matches.Count > 0)
+        {
+            var url = matches[^1].Groups["url"].Value.Trim();
+            if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                url = "https://" + url[7..];
+            else if (url.StartsWith('/'))
+                url = "https://www.last.fm" + url;
+
+            var safe = SafeUrl(url);
+            attribution = safe is not null ? $"Read more on Last.fm: {safe}" : "Read more on Last.fm";
+        }
+
+        var bodyRaw = matches.Count > 0 ? AttributionRegex.Replace(raw, string.Empty) : raw;
+
+        var text = AnchorRegex.Replace(bodyRaw, "${text}");
+        text = BrRegex.Replace(text, "\n");
+        text = ParagraphCloseRegex.Replace(text, "\n\n");
+        text = AnyTagRegex.Replace(text, string.Empty);
+        text = WebUtility.HtmlDecode(text);
+
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = text.Split('\n', StringSplitOptions.None);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            if (line.Contains('\t') || line.Contains("  ", StringComparison.Ordinal))
+                line = string.Join(" ", line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            else
+                line = line.Trim();
+            lines[i] = line;
+        }
+
+        text = string.Join("\n", lines);
+        text = NewlineRegex.Replace(text, "\n\n").Trim();
+
+        var maxBodyLength = attribution is null ? MaxOverviewLength : MaxOverviewLength - 1;
+        if (text.Length > maxBodyLength)
+            text = text[..maxBodyLength].TrimEnd();
+
+        if (attribution is not null)
+            text = string.IsNullOrWhiteSpace(text) ? attribution : $"{text}\n{attribution}";
+
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 }

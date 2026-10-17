@@ -41,6 +41,8 @@ JellySin: Jellyfin plus sin, a little temptation for your media server; said JEL
   artists and albums linked to Last.fm.
 - Private Jellyfin playlists from loved tracks, charts, similarity and discovery,
   with saved recipes and optional daily refresh.
+- Metadata providers for artist biographies, album wikis and album release dates,
+  with HTML stripped to plain text and trailing CC BY-SA attribution preserved.
 
 The account dashboard is served by the plugin at `/JellySin/Lastfm/` under your
 Jellyfin server's base path. Sign in with Jellyfin credentials or Quick Connect,

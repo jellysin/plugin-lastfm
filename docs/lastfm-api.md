@@ -13,14 +13,24 @@ album, track, user, tag, chart, geo, library and authentication families.
 | History | [`user.getRecentTracks`](https://www.last.fm/api/show/user.getRecentTracks); paginated UTC windows, up to 200 entries per page, with a now-playing entry that is not a completed listen |
 | Listening charts | [`user.getTopTracks`](https://www.last.fm/api/show/user.getTopTracks), `user.getTopArtists`, `user.getTopAlbums`, weekly-chart families; fixed supported periods, not arbitrary private listening reports |
 | Similarity | [`track.getSimilar`](https://www.last.fm/api/show/track.getSimilar), `artist.getSimilar`; similarity seeds can resolve to local accessible items or external catalog links |
-| Broader discovery | Artist top tracks/albums, tag charts, global charts and [`geo.getTopTracks`](https://www.last.fm/api/show/geo.getTopTracks); discovery is assembled from documented public methods |
+| Metadata | [`artist.getInfo`](https://www.last.fm/api/show/artist.getInfo), [`album.getInfo`](https://www.last.fm/api/show/album.getInfo); artist biographies and album wikis mapped to Jellyfin `Overview`, and album release date (`releasedate`) mapped to `PremiereDate` and `ProductionYear` when present; HTML stripped to plain text; trailing CC BY-SA attribution preserved; MusicBrainz identifiers (`MusicBrainzArtist`, `MusicBrainzAlbum`) used for remote query when present (never written back into library items) |
 
-The API also exposes artist, album and track descriptions
-([`artist.getInfo`](https://www.last.fm/api/show/artist.getInfo) and its album and track
-counterparts), community tags, search/corrections, personal tags, user profiles/friends
-and library artist listings. This release uses none of them: it writes no Last.fm
-descriptions or tags into the Jellyfin library and adds no personal tag editing, friend
-synchronization or global search takeover. No private Last.fm endpoints are scraped.
+The API also exposes track descriptions, community tags, search/corrections, personal tags, user profiles/friends
+and library artist listings. This release uses none of them: it writes no Last.fm track descriptions or tags
+into the Jellyfin library and adds no personal tag editing, friend synchronization or global search takeover.
+No private Last.fm endpoints are scraped.
+
+### Metadata providers and stored data
+
+The plugin implements Jellyfin `IRemoteMetadataProvider` for artists (`LastfmArtistProvider`) and
+albums (`LastfmAlbumProvider`).
+
+- **Mapped fields**:
+  - `artist.getInfo`: `bio.content` (fallback `bio.summary`) mapped to `MusicArtist.Overview`. Last.fm response MBIDs never write or overwrite `MusicBrainzArtist` in Jellyfin to avoid wrong-match risks.
+  - `album.getInfo`: `wiki.content` (fallback `wiki.summary`) mapped to `MusicAlbum.Overview`. Album release date (`releasedate`) mapped to `MusicAlbum.PremiereDate` and `ProductionYear`. `wiki.published` is the wiki revision edit timestamp, not the release date, and is never used. Last.fm response MBIDs never write or overwrite `MusicBrainzAlbum` in Jellyfin.
+- **Library activation & queries**: whether Jellyfin runs a newly installed metadata provider depends on the library's saved settings. In the Jellyfin 12.0 source, a library whose metadata settings list fetchers for the item type runs only the listed ones, so a newly installed provider stays off until an administrator enables "Last.fm" there ([`BaseItemManager.cs` lines 40-43](https://github.com/jellyfin/jellyfin/blob/6c073e19ddf604b2369c638716164fdab4c952dc/MediaBrowser.Controller/BaseItemManager/BaseItemManager.cs#L40-L43)). A library with no saved settings for the type runs every remote provider the server's metadata options do not disable ([`BaseItemManager.cs` lines 45-46](https://github.com/jellyfin/jellyfin/blob/6c073e19ddf604b2369c638716164fdab4c952dc/MediaBrowser.Controller/BaseItemManager/BaseItemManager.cs#L45-L46)), and an artist derived from tags without a folder of its own runs every remote provider ([`ProviderManager.cs` lines 607-610](https://github.com/jellyfin/jellyfin/blob/6c073e19ddf604b2369c638716164fdab4c952dc/MediaBrowser.Providers/Manager/ProviderManager.cs#L607-L610)). Every refresh that runs the provider sends the artist or album name, or its MusicBrainz identifier (`MusicBrainzArtist` or `MusicBrainzAlbum`), to Last.fm over HTTPS.
+- **Attribution & Licensing**: Last.fm artist biographies and album wikis are licensed under Creative Commons Attribution-ShareAlike (CC BY-SA). HTML markup is stripped to plain text, the body is capped to `MaxOverviewLength`, and the trailing attribution sentence (`Read more on Last.fm: <https://www.last.fm/...>`) is preserved intact after the body in `Overview`.
+- **Storage & Retention**: Mapped fields land in Jellyfin's library database. The plugin keeps no copy beyond its existing response cache under `jellysin-lastfm/state` inside Jellyfin's data directory.
 
 ## Authentication
 
