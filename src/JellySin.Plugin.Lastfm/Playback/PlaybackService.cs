@@ -138,7 +138,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     {
         try
         {
-            if (_legacyPresent || Plugin.Instance?.ListeningEnabled == false || args.IsAutomated) return;
+            if (_legacyPresent || Plugin.Instance?.ListeningEnabled == false) return;
             if (args.Item is not (Audio or MusicVideo) || args.Item is not IHasArtist performed || !libraryRules.IsMediaTypeAllowed(args.Item)) return;
             var item = args.Item;
             var artist = performed.Artists.FirstOrDefault();
@@ -158,7 +158,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
                 var binding = accounts.GetCaptureBinding(user.Id);
                 if (binding is null) continue;
                 if (!libraryRules.IsScrobblingAllowed(user.Id, item, args.DeviceId)) continue;
-                var snapshot = new PlaybackSnapshot(sessionId, user.Id, track, signal, args.PlaybackPositionTicks ?? 0, args.IsPaused, false, timestamp, utc, binding.AccountGeneration, binding.CaptureGeneration, Plugin.Instance?.ListeningGeneration ?? 0);
+                var snapshot = new PlaybackSnapshot(sessionId, user.Id, track, signal, args.PlaybackPositionTicks ?? 0, args.IsPaused, signal == PlaybackSignal.Progress && args.IsAutomated, timestamp, utc, binding.AccountGeneration, binding.CaptureGeneration, Plugin.Instance?.ListeningGeneration ?? 0);
                 if (!_snapshots.Writer.TryWrite(snapshot)) Interlocked.Increment(ref _dropped);
             }
         }
