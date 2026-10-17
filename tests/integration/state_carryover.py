@@ -82,9 +82,9 @@ def connection(listener: Client) -> dict[str, Any]:
     return listener.request(PREFIX + "/Me")["connection"]
 
 
-def love(listener: Client, stand_in: StandInContainer, title: str, first: bool) -> None:
+def love(listener: Client, stand_in: StandInContainer, title: str, first: bool, tracks: int = LIBRARY_TRACKS) -> None:
     """Marks a library favourite and synchronizes; the stand-in must receive the signed love for that track."""
-    item = next(entry["id"] for entry in wait_music(listener, LIBRARY_TRACKS) if entry["name"] == title)
+    item = next(entry["id"] for entry in wait_music(listener, tracks) if entry["name"] == title)
     require(listener.request("/UserFavoriteItems/" + item, "POST")["isfavorite"], "The native favourite was not saved.")
     review = listener.request(PREFIX + "/Me/Favourites", "PUT", {"Enabled": True}) if first else \
         listener.request(PREFIX + "/Me/Favourites/Sync", "POST")
