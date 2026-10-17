@@ -2,8 +2,9 @@
 """Measure bounded plugin search and playback HTTP requests on a real synthetic music library, and scrobble delivery under that load.
 
 While the search and playback clients run, connected accounts play to the scrobble threshold against the Last.fm
-stand-in of tools/scrobble_delivery.py, through an open period and a period the stand-in refuses. With
---plant-dropped-listen the stand-in loses one listen, and the check must fail.
+stand-in of tools/scrobble_delivery.py, through an open period, a period the stand-in refuses, and a period in which
+one player reports only its start and stop. With --plant-dropped-listen the stand-in loses one listen, and the check
+must fail.
 """
 
 from __future__ import annotations

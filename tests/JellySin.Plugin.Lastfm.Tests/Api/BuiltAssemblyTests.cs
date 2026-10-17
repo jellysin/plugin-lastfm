@@ -22,6 +22,19 @@ public sealed class BuiltAssemblyTests
         ["Configuration.AccountLifecycle"] = ["MediaBrowser.Controller.Events.IEventConsumer`1"],
         ["Configuration.PluginConfiguration"] = ["MediaBrowser.Model.Plugins.BasePluginConfiguration"],
         ["Features.CoordinatedUserData"] = ["MediaBrowser.Controller.Library.IUserDataManager"],
+        ["Metadata.LastfmAlbumProvider"] =
+        [
+            "MediaBrowser.Controller.Providers.IMetadataProvider", "MediaBrowser.Controller.Providers.IMetadataProvider`1",
+            "MediaBrowser.Controller.Providers.IRemoteMetadataProvider", "MediaBrowser.Controller.Providers.IRemoteMetadataProvider`2",
+            "MediaBrowser.Controller.Providers.IRemoteSearchProvider", "MediaBrowser.Controller.Providers.IRemoteSearchProvider`1",
+        ],
+        ["Metadata.LastfmArtistProvider"] =
+        [
+            "MediaBrowser.Controller.Providers.IMetadataProvider", "MediaBrowser.Controller.Providers.IMetadataProvider`1",
+            "MediaBrowser.Controller.Providers.IRemoteMetadataProvider", "MediaBrowser.Controller.Providers.IRemoteMetadataProvider`2",
+            "MediaBrowser.Controller.Providers.IRemoteSearchProvider", "MediaBrowser.Controller.Providers.IRemoteSearchProvider`1",
+        ],
+        ["Metadata.LastfmExternalUrlProvider"] = ["MediaBrowser.Controller.Providers.IExternalUrlProvider"],
         ["Plugin"] =
         [
             "MediaBrowser.Common.Plugins.BasePlugin", "MediaBrowser.Common.Plugins.BasePlugin`1", "MediaBrowser.Common.Plugins.IHasPluginConfiguration",
@@ -86,7 +99,13 @@ public sealed class BuiltAssemblyTests
     public void BuiltPluginOffersNoProviderToTheServer()
     {
         var providers = Providers(HostSurface(Built.Value));
-        Assert.True(providers.Length == 0, string.Join(Environment.NewLine, providers));
+        Assert.Equal(
+            [
+                "JellySin.Plugin.Lastfm.Metadata.LastfmAlbumProvider: MediaBrowser.Controller.Providers.IMetadataProvider, MediaBrowser.Controller.Providers.IMetadataProvider`1, MediaBrowser.Controller.Providers.IRemoteMetadataProvider, MediaBrowser.Controller.Providers.IRemoteMetadataProvider`2, MediaBrowser.Controller.Providers.IRemoteSearchProvider, MediaBrowser.Controller.Providers.IRemoteSearchProvider`1",
+                "JellySin.Plugin.Lastfm.Metadata.LastfmArtistProvider: MediaBrowser.Controller.Providers.IMetadataProvider, MediaBrowser.Controller.Providers.IMetadataProvider`1, MediaBrowser.Controller.Providers.IRemoteMetadataProvider, MediaBrowser.Controller.Providers.IRemoteMetadataProvider`2, MediaBrowser.Controller.Providers.IRemoteSearchProvider, MediaBrowser.Controller.Providers.IRemoteSearchProvider`1",
+                "JellySin.Plugin.Lastfm.Metadata.LastfmExternalUrlProvider: MediaBrowser.Controller.Providers.IExternalUrlProvider",
+            ],
+            providers);
     }
 
     [Fact]

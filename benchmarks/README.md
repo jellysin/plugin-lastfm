@@ -87,6 +87,11 @@ tracks in real time past the scrobble threshold:
    refused attempt and still hold the listen in its queue.
 3. The stand-in accepts again. Within 600 seconds every refused listen must arrive
    exactly once, for its own account, and every queue must be empty.
+4. One account plays a third, 100-second track for 56 seconds as a player that
+   reports only the start and the stop, with no progress in between. One report
+   credits at most 45 seconds, so only the server's own position updates can
+   carry that play past half of the track, and the stand-in must receive that
+   listen exactly once.
 
 With `--plant-dropped-listen` the stand-in silently loses one accepted listen; the
 check must then fail. Measured on 2026-10-17 on the local host for this change on
@@ -107,6 +112,22 @@ trigger re-arm of #126, a fresh server ran the retry task only once at startup a
 then not again for an hour, and both runs before that fix failed the 600-second
 bound with every refused listen still queued. The check shows each listen arriving
 once in these runs; it does not prove exactly-once delivery in general.
+
+The fourth period was measured on 2026-10-17 on the local host for its change on
+top of `dcb62fb`, 2,000 generated tracks, one run each:
+
+| Server | Accounts | Listens delivered | Refused attempts | Recovery | Search p95 | Playback p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 12.2.0 | 4 | 9 of 9 | 4 | 33.1 s | 91.9 ms | 105.1 ms |
+| 12.1.0 | 4 | 9 of 9 | 4 | 37.1 s | 90.4 ms | 91.0 ms |
+| 12.2.0, server updates ignored | 4 | 8 of 9 | 4 | n/a | n/a | n/a |
+
+The last row ran with the plugin changed back to ignore the server's own updates;
+it failed as required: "The listen of a player that reports only its start and stop
+did not arrive: missing [('one', 'JellySin Delivery Artist - JellySin Delivery
+Silent')]". An earlier version of the period played the silent track for only 24
+seconds; the client's stop alone then credited the listen, and the same planted
+change passed, so the period was lengthened past the 45-second limit.
 
 ## Favourite synchronization
 

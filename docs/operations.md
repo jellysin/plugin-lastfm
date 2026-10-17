@@ -157,6 +157,11 @@ page reports it as unreadable, and nothing reaches Last.fm until an administrato
 enters the application again or removes the override.
 Server administrators can access host files and remain trusted.
 
+Metadata fetched by the artist and album metadata providers (biographies, wikis, and
+release dates) is written directly into Jellyfin's library database by the server. The
+plugin retains no independent metadata storage or secondary database beyond its
+bounded HTTP response cache under `jellysin-lastfm/state`.
+
 The state store has an 80 MB aggregate accounting budget, an 8 MB document limit
 and bounded document counts. Disposable cache entries
 are evicted before durable account or delivery state. Reaching a durable limit
