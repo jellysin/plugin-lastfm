@@ -103,6 +103,15 @@ is in use and lets an administrator store an override or remove it again. Changi
 applications requires reconnecting user accounts; old sessions cannot be assumed
 valid under another application's credentials.
 
+Without a usable application (none configured, or a stored override whose keys
+cannot be read, for example after a restore without the plugin's key ring), the
+plugin sends nothing to Last.fm. A listener's request that needs Last.fm then
+answers HTTP 503 marked `urn:jellysin:lastfm:application-missing`, and the
+dashboard says "This server has no usable Last.fm application. Ask a server
+administrator." Plays already stored stay stored, held with Last.fm's code 10 as
+before, and are sent again when the listener retries delivery. An administrator
+fixes the application in the **Advanced** section of the settings page.
+
 Last.fm session keys are protected on the server and are not returned to the
 browser. Jellyfin sign-in remains subject to Jellyfin's own permissions. The
 dashboard does not bypass music-library access restrictions.

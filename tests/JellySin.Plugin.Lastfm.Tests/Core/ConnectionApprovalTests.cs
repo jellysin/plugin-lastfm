@@ -36,7 +36,7 @@ public sealed class ConnectionApprovalTests
     {
         using var fixture = new CoreFixture();
         Assert.False((await fixture.Credentials.GetAsync(TestContext.Current.CancellationToken)).IsConfigured);
-        var error = await Assert.ThrowsAsync<LastfmException>(() => fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ApplicationMissingException>(() => fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken));
         Assert.Equal(10, error.Code);
         Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
         Assert.Empty(fixture.Client.Calls);

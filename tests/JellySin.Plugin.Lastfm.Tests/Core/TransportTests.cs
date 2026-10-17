@@ -206,7 +206,7 @@ public sealed class TransportTests
         var handler = new Handler(_ => throw new InvalidOperationException("Network must remain unused."));
         using var client = Create(fixture, handler);
         await client.StartAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(10, (await Assert.ThrowsAsync<LastfmException>(() => Call(client))).Code);
+        Assert.Equal(10, (await Assert.ThrowsAsync<ApplicationMissingException>(() => Call(client))).Code);
         Assert.Equal(0, handler.Count);
         await client.StopAsync(TestContext.Current.CancellationToken);
     }

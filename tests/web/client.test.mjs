@@ -18,6 +18,19 @@ test('response normalization rejects excessive depth and item counts', () => {
   for (let index = 0; index < 18; index++) value = { child: value };
   assert.throws(() => normalize(value), /deeply nested/);
   assert.throws(() => normalize(Array(20_001).fill(null)), /too large/);
+  let deepest = 'leaf';
+  for (let index = 0; index < 16; index++) deepest = { child: deepest };
+  assert.equal(JSON.stringify(normalize(deepest)), JSON.stringify(deepest));
+});
+
+test('normalization keeps order, nesting and the later of two keys that differ only in case', () => {
+  const value = normalize(JSON.parse('{"Name":"first","Items":[1,{"Id":"a"},[true,null]],"name":"second","Count":0}'));
+  assert.deepEqual(Object.keys(value), ['name', 'items', 'count']);
+  assert.equal(value.name, 'second');
+  assert.equal(JSON.stringify(value.items), '[1,{"id":"a"},[true,null]]');
+  assert.equal(value.count, 0);
+  assert.equal(normalize(null), null);
+  assert.equal(normalize('text'), 'text');
 });
 
 test('tokens stay in authorization headers and prefixed server paths', async context => {
@@ -77,9 +90,23 @@ test('storage failures allow memory-only login, and cross-server tokens are reje
   const client = new Client(bootstrap, storage);
   client.acceptSession(session);
   assert.equal(client.signedIn, true);
+  assert.equal(client.storageCurrent, false);
   assert.throws(() => client.acceptSession({ ...session, serverId: 'another-server' }), /invalid sign-in session/);
   client.clearSession();
   assert.equal(client.signedIn, false);
+  assert.equal(client.storageCurrent, false);
+});
+
+test('working storage keeps the stored session current', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  const client = new Client(bootstrap, storage);
+  client.acceptSession(session);
+  assert.equal(client.storageCurrent, true);
+  assert.equal(values.size, 1);
+  client.clearSession();
+  assert.equal(client.storageCurrent, true);
+  assert.equal(values.size, 0);
 });
 
 test('invalid base paths and off-origin request paths are rejected', async () => {
@@ -109,6 +136,16 @@ test('chunked responses are cancelled as soon as the byte budget is exceeded', a
   await assert.rejects(readJson(new Response(stream), 15), /too large/);
   assert.equal(cancelled, true);
   assert.ok(reads <= 3);
+});
+
+test('a response of endless empty chunks stops at the read bound', async () => {
+  let cancelled = false;
+  const stream = new ReadableStream({
+    pull(controller) { controller.enqueue(new Uint8Array(0)); },
+    cancel() { cancelled = true; },
+  });
+  await assert.rejects(readJson(new Response(stream)), /too large/);
+  assert.equal(cancelled, true);
 });
 
 test('storage exhaustion explains the limit without exposing server response bodies', async context => {
@@ -211,6 +248,26 @@ test('a conflict is explained as a missing connection only when the answer carri
   for (const [body, expected] of answers) {
     context.mock.method(globalThis, 'fetch', async () => new Response(body, { status: 409 }));
     await assert.rejects(client.api('Me/Overview'), error => error.message === expected, body.slice(0, 60));
+  }
+});
+
+test('a refusal is explained as a missing Last.fm application only when the answer carries the mark', async context => {
+  const client = new Client(bootstrap);
+  const mark = 'urn:jellysin:lastfm:application-missing';
+  const missing = 'This server has no usable Last.fm application. Ask a server administrator.';
+  const unavailable = 'The request could not be completed (HTTP 503).';
+  const answers = [
+    [503, JSON.stringify({ type: mark, title: 'Text the page must not show.' }), missing],
+    [503, JSON.stringify({ Type: mark }), missing],
+    [503, JSON.stringify({ title: missing }), unavailable],
+    [503, JSON.stringify({ type: 'urn:jellysin:lastfm:not-connected' }), unavailable],
+    [503, JSON.stringify({ type: mark, padding: 'x'.repeat(5000) }), unavailable],
+    [503, 'not JSON', unavailable],
+    [502, JSON.stringify({ type: mark }), 'The request could not be completed (HTTP 502).'],
+  ];
+  for (const [status, body, expected] of answers) {
+    context.mock.method(globalThis, 'fetch', async () => new Response(body, { status }));
+    await assert.rejects(client.api('Me/Favourites/Sync', 'POST'), error => error.message === expected, `${status} ${body.slice(0, 60)}`);
   }
 });
 

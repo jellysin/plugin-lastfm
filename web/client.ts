@@ -3,6 +3,13 @@ export interface Session { accessToken: string; user: { name: string }; serverId
 
 /** The server marks the conflict "no Last.fm account connected" with this value (ApiExceptionFilter.NotConnectedType). */
 export const notConnectedType = 'urn:jellysin:lastfm:not-connected';
+/** The server marks a request refused for lack of a usable Last.fm application with this value (ApiExceptionFilter.ApplicationMissingType). */
+export const applicationMissingType = 'urn:jellysin:lastfm:application-missing';
+
+/** Reads per response; a server that sends many empty chunks stops here as well. */
+const maxReads = 65_536;
+/** Values per response; a 4 MB answer cannot hold more. */
+const maxValues = 4_000_000;
 
 /** Stop reading as soon as the byte budget is exhausted, including chunked responses. */
 export async function readJson(response: Response, limit = 4_000_000): Promise<unknown> {
@@ -12,44 +19,71 @@ export async function readJson(response: Response, limit = 4_000_000): Promise<u
   const parts: string[] = [];
   let bytes = 0;
   try {
-    for (;;) {
+    let done = false;
+    for (let reads = 0; !done && reads < maxReads; reads++) {
       const chunk = await reader.read();
+      done = chunk.done;
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
       if (bytes > limit) throw new Error('The server response is too large.');
       parts.push(decoder.decode(chunk.value, { stream: true }));
     }
+    if (!done) throw new Error('The server response is too large.');
     parts.push(decoder.decode());
     return normalize(JSON.parse(parts.join('')) as unknown);
   } finally { await reader.cancel(); reader.releaseLock(); }
 }
 
+interface Pending { source: unknown; depth: number; place: (value: unknown) => void }
+
 /** JSON from either Jellyfin serializer profile is normalized with a fixed nesting bound. */
-export function normalize(value: unknown, depth = 0): unknown {
+export function normalize(value: unknown): unknown {
+  let result: unknown;
+  const pending: Pending[] = [{ source: value, depth: 0, place: normalized => { result = normalized; } }];
+  for (let visited = 0; pending.length > 0 && visited < maxValues; visited++) {
+    const next = pending.pop();
+    if (next) next.place(shallow(next.source, next.depth, pending));
+  }
+  if (pending.length > 0) throw new Error('The server response is too large.');
+  return result;
+}
+
+/** One level of the walk: containers are created here and their entries are queued for the next steps. */
+function shallow(value: unknown, depth: number, pending: Pending[]): unknown {
   if (depth > 16) throw new Error('The server response is too deeply nested.');
   if (Array.isArray(value)) {
     if (value.length > 20_000) throw new Error('The server response is too large.');
-    return value.map((entry: unknown) => normalize(entry, depth + 1));
+    const list: unknown[] = new Array<unknown>(value.length);
+    value.forEach((entry: unknown, index: number) => pending.push({ source: entry, depth: depth + 1, place: normalized => { list[index] = normalized; } }));
+    return list;
   }
   if (value !== null && typeof value === 'object') {
-    const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    const record: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    // A later key that differs only in its first letter's case replaces the earlier value, as plain assignment does.
+    const entries = new Map<string, unknown>();
     for (const [key, entry] of Object.entries(value).slice(0, 200)) {
       if (['__proto__', 'constructor', 'prototype'].includes(key)) continue;
-      result[key.charAt(0).toLowerCase() + key.slice(1)] = normalize(entry, depth + 1);
+      entries.set(key.charAt(0).toLowerCase() + key.slice(1), entry);
     }
-    return result;
+    for (const [key, entry] of entries) {
+      record[key] = undefined;
+      pending.push({ source: entry, depth: depth + 1, place: normalized => { record[key] = normalized; } });
+    }
+    return record;
   }
   return value;
 }
 
-/** Whether a conflict says that no Last.fm account is connected. Only the mark is compared; no text of the answer is shown. */
-async function notConnected(response: Response): Promise<boolean> {
-  try { return (await readJson(response, 4096) as { type?: unknown } | null)?.type === notConnectedType; }
+/** Whether an error answer carries the given mark. Only the mark is compared; no text of the answer is shown. */
+async function marked(response: Response, type: string): Promise<boolean> {
+  try { return (await readJson(response, 4096) as { type?: unknown } | null)?.type === type; }
   catch { return false; }
 }
 
 export class Client extends EventTarget {
   private token = '';
+  /** Whether browser storage matches the session in memory; false when storage refused the last write. */
+  storageCurrent = true;
   private sessionRequests = new AbortController();
   private readonly deviceId = Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
   private readonly storageKey: string;
@@ -76,13 +110,13 @@ export class Client extends EventTarget {
     this.sessionRequests.abort();
     this.sessionRequests = new AbortController();
     this.token = session.accessToken;
-    try { this.storage?.setItem(this.storageKey, this.token); } catch { /* Memory-only sign-in remains available. */ }
+    try { this.storage?.setItem(this.storageKey, this.token); this.storageCurrent = true; } catch { this.storageCurrent = false; /* Memory-only sign-in remains available. */ }
   }
 
   clearSession(): void {
     this.resetAccount();
     this.token = '';
-    try { this.storage?.removeItem(this.storageKey); } catch { /* Storage may be disabled. */ }
+    try { this.storage?.removeItem(this.storageKey); this.storageCurrent = true; } catch { this.storageCurrent = false; /* Storage may be disabled. */ }
     this.dispatchEvent(new Event('sessioncleared'));
   }
 
@@ -130,7 +164,8 @@ export class Client extends EventTarget {
     if (response.status === 401) { this.clearSession(); throw new Error('Your Jellyfin session expired. Sign in again.'); }
     if (!response.ok) throw new Error(response.status === 403 ? 'Your account cannot perform this action.'
       : response.status === 507 ? 'JellySin reached its data storage limit. Any saved progress is retained; check storage before retrying.'
-      : response.status === 409 ? await notConnected(response) ? 'Connect Last.fm first.' : 'This action is unavailable or its preview expired. Refresh and try again.'
+      : response.status === 409 ? await marked(response, notConnectedType) ? 'Connect Last.fm first.' : 'This action is unavailable or its preview expired. Refresh and try again.'
+      : response.status === 503 && await marked(response, applicationMissingType) ? 'This server has no usable Last.fm application. Ask a server administrator.'
       : `The request could not be completed (HTTP ${response.status}).`);
     if (response.status === 204) return undefined as T;
     const result = await readJson(response) as T;

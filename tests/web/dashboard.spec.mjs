@@ -210,6 +210,17 @@ test('a return that Last.fm did not approve says so, starts nothing and leaves a
   expect(state.requests.filter(request => request.path.endsWith('/Connection/Finish'))).toHaveLength(0);
 });
 
+test('without a usable Last.fm application, connecting asks for an administrator instead of blaming the connection', async ({ page }) => {
+  const state = await installServer(page);
+  state.connected = false;
+  state.applicationMissing = true;
+  await passwordLogin(page);
+  await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
+  await expect(page.locator('#status')).toHaveText('This server has no usable Last.fm application. Ask a server administrator.');
+  await expect(page.locator('#status')).toHaveAttribute('role', 'alert');
+  expect(page.url()).toBe('http://127.0.0.1:4177/JellySin/Lastfm/');
+});
+
 test('an approval that Last.fm then refuses is reported and not repeated', async ({ page }) => {
   const state = await installServer(page);
   state.connected = false;
