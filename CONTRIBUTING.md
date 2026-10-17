@@ -148,7 +148,8 @@ Immutable releases must be
 enabled before publication. Retry by dispatching the same workflow on the same tag;
 never use an upload replacement option or change already published bytes.
 
-The plugin is in development and has no published release available.
+The first release, `0.1.0`, was published this way on 2026-10-17; the record is
+`docs/validation/release-0.1.0.md`.
 Draft asset checks use authenticated numeric API identities; GitHub assigns their
 canonical public download URLs when the release is published.
 

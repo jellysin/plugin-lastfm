@@ -4,8 +4,7 @@ JellySin Last.fm is a new plugin for Jellyfin 12, with a new GUID:
 `2034650d-a290-4a16-b195-89fb44cfb932`. It uses the JellySin Plugin Repository.
 It does not replace an older plugin automatically and cannot run on Jellyfin 10.11.
 
-The plugin is in development; no published release is available. Once an
-installable release is available:
+The plugin is in development; the first release is [0.1.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.1.0). To move to it:
 
 1. Back up the Jellyfin configuration and plugin data directories.
 2. Disable the previous Last.fm plugin's scrobbling and favourite synchronization,
