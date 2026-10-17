@@ -24,7 +24,7 @@ generated agent context against `AGENTS.md`.
 
 Last.fm music integration for **Jellyfin 12**: scrobbling, favourites, listening
 insights, discovery and playlists. This is a new implementation with its own
-plugin identity. The plugin is in development; no published release is available.
+plugin identity. The plugin is in development; the first release is [0.1.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.1.0).
 
 It is a project of the [JellySin](https://github.com/jellysin) organisation.
 JellySin: Jellyfin plus sin, a little temptation for your media server; said JELLY-sin.

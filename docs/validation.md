@@ -217,9 +217,9 @@ implementation, not claims of improvement over an inherited one.
 
 ## Release availability
 
-The plugin is in development; no published release is available in the
-Plugin Repository. The checks above are evidence for the commit they name and
-do not establish production release approval.
+Release [0.1.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.1.0) was published on 2026-10-17; its attestation, immutability and
+reproduction are recorded in [validation/release-0.1.0.md](validation/release-0.1.0.md).
+The checks above are evidence for the commit they name.
 The separate Last.fm terms questions remain documented; no provider confirmation
 is claimed. Native client
 behavior beyond the tested host surfaces must not be inferred from unit coverage.

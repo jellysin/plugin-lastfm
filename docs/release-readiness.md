@@ -1,7 +1,8 @@
 # Release readiness
 
-The plugin is in development; no published release is available. The candidate
-validation below records observed checks, not approval for production publication.
+The plugin is in development; the first release is [0.1.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.1.0), recorded in
+[validation/release-0.1.0.md](validation/release-0.1.0.md). The candidate validation
+below records observed checks.
 
 The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
 up. The automated server checks run on Jellyfin 12.0.0 and 12.2.0 on every change, and
