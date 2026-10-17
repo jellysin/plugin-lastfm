@@ -152,6 +152,14 @@ reproduced it. Final reports recorded no page errors or attempted Last.fm writes
 The existing connection stayed valid with scrobbling/favourites paused and no
 pending deliveries.
 
+The native-browser exception has not come back. Since 2026-10-13 every CI run opens
+the plugin's pages on the newest Jellyfin 12 with `tests/integration/page_check.py`,
+with a Last.fm stand-in instead of the live service, and a page error fails that
+step. By 2026-10-17, 34 runs on `main` had passed it, and no failed run in that
+time printed a page error. On 2026-10-17 the same check passed without page errors
+on 12.0.0, 12.1.0 and 12.2.0. This closes the limit; the paragraph above stays as
+the record of the 2026-09-08 run.
+
 ## Observed on 2026-10-12 with Jellyfin 12.2.0
 
 A Jellyfin 12.2.0 server with the project application and a live Last.fm account ran

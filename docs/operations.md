@@ -151,10 +151,21 @@ administrator can give every user a link to the dashboard through the
 Checked on 2026-10-11 with the Jellyfin 12.2.0 container image under the base
 path `/jellyfin`, for an administrator and for an ordinary user: the link
 appears in the top bar of a wide window and in the side menu of a narrow one,
-and opens the dashboard. Package installations and other clients than the web
-interface were not checked; the file locations are those of
+and opens the dashboard.
+
+Checked on 2026-10-17 with Jellyfin's Debian 13 packages from Jellyfin's own
+repository, without a base path. `jellyfin-web` registers
+`/usr/share/jellyfin/web/config.json` as a configuration file, and the default
+file is the same in 12.0, 12.1 and 12.2. With the entry added, the upgrades from
+12.0 to 12.1 and from 12.1 to 12.2 kept it without a question. On 12.0, 12.1 and
+12.2 the link appeared for an administrator and for an ordinary user, in the top
+bar of a wide window and in the side menu of a narrow one, and opened the
+dashboard in a new tab; on 12.2 without the entry, no link appeared. `apt` asks
+about the file only when an update also changes the default file, which none of
+these updates did. Clients other than the web interface were not checked; the
+file locations are those of
 [Jellyfin's documentation](https://jellyfin.org/docs/general/clients/web-config/),
-read on the same day.
+read on 2026-10-11.
 
 ## Stored data
 
