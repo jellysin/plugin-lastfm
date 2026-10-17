@@ -45,23 +45,7 @@ public sealed class PlaybackTracker(TimeProvider clock)
             observation = null;
         }
         if (observation is not null && value.MonotonicTimestamp < observation.Timestamp) return new(null, null);
-        if (value.Signal == PlaybackSignal.Start)
-        {
-            if (observation is not null && observation.Listen.Track.ItemId == value.Track.ItemId
-                && !(value.PositionTicks <= TimeSpan.TicksPerSecond && observation.PositionTicks > TimeSpan.TicksPerSecond * 2)
-                && clock.GetElapsedTime(observation.Timestamp, value.MonotonicTimestamp) < TimeSpan.FromMinutes(15))
-            {
-                observation.Timestamp = value.MonotonicTimestamp;
-                observation.PositionTicks = value.PositionTicks;
-                observation.Paused = value.Paused;
-                return new(null, null);
-            }
-            if (_active.Count >= MaxSessions && observation is null) RemoveStale(value.MonotonicTimestamp);
-            if (_active.Count >= MaxSessions && observation is null) throw new InvalidOperationException("Playback tracking capacity reached.");
-            var listen = new EligibleListen(Guid.NewGuid(), value.UserId, value.Track, value.UtcTimestamp, value.AccountGeneration, value.CaptureGeneration, value.PluginGeneration);
-            _active[key] = new Observation(listen, value.MonotonicTimestamp, value.PositionTicks, value.Paused);
-            return new(value.Paused ? null : listen, null);
-        }
+        if (value.Signal == PlaybackSignal.Start) return ObserveStart(key, value, observation);
         if (observation is null || observation.Listen.Track.ItemId != value.Track.ItemId) return new(null, null);
         var elapsed = clock.GetElapsedTime(observation.Timestamp, value.MonotonicTimestamp).TotalSeconds;
         var movement = (value.PositionTicks - observation.PositionTicks) / (double)TimeSpan.TicksPerSecond;
@@ -85,6 +69,24 @@ public sealed class PlaybackTracker(TimeProvider clock)
     }
 
     public void Reset() { _active.Clear(); _pending.Clear(); }
+
+    private PlaybackUpdate ObserveStart((string Session, Guid User) key, PlaybackSnapshot value, Observation? observation)
+    {
+        if (observation is not null && observation.Listen.Track.ItemId == value.Track.ItemId
+            && !(value.PositionTicks <= TimeSpan.TicksPerSecond && observation.PositionTicks > TimeSpan.TicksPerSecond * 2)
+            && clock.GetElapsedTime(observation.Timestamp, value.MonotonicTimestamp) < TimeSpan.FromMinutes(15))
+        {
+            observation.Timestamp = value.MonotonicTimestamp;
+            observation.PositionTicks = value.PositionTicks;
+            observation.Paused = value.Paused;
+            return new(null, null);
+        }
+        if (_active.Count >= MaxSessions && observation is null) RemoveStale(value.MonotonicTimestamp);
+        if (_active.Count >= MaxSessions && observation is null) throw new InvalidOperationException("Playback tracking capacity reached.");
+        var listen = new EligibleListen(Guid.NewGuid(), value.UserId, value.Track, value.UtcTimestamp, value.AccountGeneration, value.CaptureGeneration, value.PluginGeneration);
+        _active[key] = new Observation(listen, value.MonotonicTimestamp, value.PositionTicks, value.Paused);
+        return new(value.Paused ? null : listen, null);
+    }
 
     private void ObserveAutomated((string Session, Guid User) key, PlaybackSnapshot value)
     {
