@@ -238,3 +238,35 @@ without its key ring did not start: reading the override threw while Jellyfin
 loaded the plugin. That defect is what the last step guards. An upgrade from a
 published plugin release is not part of the check, since no release has been
 published yet. The check stays manual.
+
+## A release installed over a canary
+
+`catalog_over_canary.py` copies a canary-shaped build into a plugin folder of a
+disposable Jellyfin 12 server, connects an ordinary user through the Last.fm stand-in
+of the page check and has a favourite loved. A second container on the run's network
+serves a repository manifest and a release-shaped archive (stored entries, the
+assembly and `LICENSE`, MD5 checksum), which the server installs through its own
+package API before a restart. The check fails unless the server then lists the
+release alone and active, the canary folder no longer loads, the account is still
+connected and a second favourite reaches the stand-in. The JSON report records the
+image, the server release, the plugin folders with their `meta.json` and the server's
+plugin list before the install, after it and after the restart.
+
+Build the two shapes first: the canary with the version options of
+`.github/workflows/canary.yml`, copied aside, then the ordinary release build.
+
+```sh
+dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore \
+  -p:Version=0.0.5-canary -p:AssemblyVersion=0.0.5.0 -p:FileVersion=0.0.5.0
+mkdir -p build/canary-shape && cp src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll build/canary-shape/
+dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
+python tests/integration/catalog_over_canary.py --canary build/canary-shape/JellySin.Plugin.Lastfm.dll \
+  --release src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
+  --report build/catalog-over-canary.json --server floor
+```
+
+`--plant keys` removes the key ring before the restart; the run must then fail
+because the account asks for a new connection. The plugin creates an empty key ring
+at start, so only the love with the stored session key shows that the ring was kept.
+The record in `docs/operations.md` comes from this check. It stays manual, like the
+carry-over check.

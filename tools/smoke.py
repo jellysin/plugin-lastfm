@@ -174,12 +174,13 @@ def remove_container(name: str) -> bool:
 
 
 class DockerHost:
-    def __init__(self, plugin: Path, image: str, probe_plugin: Path | None = None, published: str = "",
+    def __init__(self, plugin: Path | None, image: str, probe_plugin: Path | None = None, published: str = "",
                  extra_arguments: tuple[str, ...] = ()) -> None:
         self.name = "jellysin-smoke-" + uuid.uuid4().hex[:16]
         self.config = self.name + "-config"
         self.cache = self.name + "-cache"
         self.image = image
+        # None mounts no plugin file: a check that places the plugin in the configuration volume itself.
         self.plugin = plugin
         self.probe_plugin = probe_plugin.resolve(strict=True) if probe_plugin else None
         if self.probe_plugin:
@@ -215,13 +216,14 @@ class DockerHost:
         probe_arguments = [] if self.probe_plugin is None else [
             "--env", "JELLYSIN_NATIVE_PROBE=1", "--mount",
             f"type=bind,src={self.probe_plugin},dst=/config/plugins/JellySin.NativeProbe/JellySin.NativeProbe.dll,readonly"]
+        plugin_arguments = [] if self.plugin is None else [
+            "--mount", f"type=bind,src={self.plugin},dst=/config/plugins/JellySin.Lastfm/JellySin.Plugin.Lastfm.dll,readonly"]
         published_arguments = ["--env", "JELLYFIN_PublishedServerUrl=" + self.published] if self.published else []
         docker("run", "--detach", "--name", self.name, "--label", "org.jellysin.smoke=true",
                "--user", "1000:1000", "--memory", "1536m", "--cpus", "2", "--stop-timeout", "20",
                "--publish", "127.0.0.1::8096", "--mount", f"type=volume,src={self.config},dst=/config",
                "--mount", f"type=volume,src={self.cache},dst=/cache",
-               "--mount", f"type=bind,src={self.plugin},dst=/config/plugins/JellySin.Lastfm/JellySin.Plugin.Lastfm.dll,readonly",
-               "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", *probe_arguments, *published_arguments,
+               *plugin_arguments, "--mount", f"type=bind,src={self.fixture_directory},dst=/media,readonly", *probe_arguments, *published_arguments,
                *self.extra_arguments, self.image)
         self.started = True
         self.refresh_origin()
