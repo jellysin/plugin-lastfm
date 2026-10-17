@@ -60,7 +60,7 @@ public sealed class LastfmArtistProvider(
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
     }
 
-    private static (Dictionary<string, string>? Parameters, bool QueriedById) BuildParameters(ArtistInfo info)
+    internal static (Dictionary<string, string>? Parameters, bool QueriedById) BuildParameters(ArtistInfo info)
     {
         if (info.ProviderIds is not null && info.ProviderIds.TryGetValue("MusicBrainzArtist", out var mbid) && !string.IsNullOrWhiteSpace(mbid))
         {

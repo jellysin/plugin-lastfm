@@ -34,6 +34,8 @@ public sealed class BuiltAssemblyTests
             "MediaBrowser.Controller.Providers.IRemoteMetadataProvider", "MediaBrowser.Controller.Providers.IRemoteMetadataProvider`2",
             "MediaBrowser.Controller.Providers.IRemoteSearchProvider", "MediaBrowser.Controller.Providers.IRemoteSearchProvider`1",
         ],
+        // One provider for the covers of albums and the pictures of artists.
+        ["Metadata.LastfmImageProvider"] = ["MediaBrowser.Controller.Providers.IImageProvider", "MediaBrowser.Controller.Providers.IRemoteImageProvider"],
         ["Plugin"] =
         [
             "MediaBrowser.Common.Plugins.BasePlugin", "MediaBrowser.Common.Plugins.BasePlugin`1", "MediaBrowser.Common.Plugins.IHasPluginConfiguration",
@@ -102,6 +104,7 @@ public sealed class BuiltAssemblyTests
             [
                 "JellySin.Plugin.Lastfm.Metadata.LastfmAlbumProvider: MediaBrowser.Controller.Providers.IMetadataProvider, MediaBrowser.Controller.Providers.IMetadataProvider`1, MediaBrowser.Controller.Providers.IRemoteMetadataProvider, MediaBrowser.Controller.Providers.IRemoteMetadataProvider`2, MediaBrowser.Controller.Providers.IRemoteSearchProvider, MediaBrowser.Controller.Providers.IRemoteSearchProvider`1",
                 "JellySin.Plugin.Lastfm.Metadata.LastfmArtistProvider: MediaBrowser.Controller.Providers.IMetadataProvider, MediaBrowser.Controller.Providers.IMetadataProvider`1, MediaBrowser.Controller.Providers.IRemoteMetadataProvider, MediaBrowser.Controller.Providers.IRemoteMetadataProvider`2, MediaBrowser.Controller.Providers.IRemoteSearchProvider, MediaBrowser.Controller.Providers.IRemoteSearchProvider`1",
+                "JellySin.Plugin.Lastfm.Metadata.LastfmImageProvider: MediaBrowser.Controller.Providers.IImageProvider, MediaBrowser.Controller.Providers.IRemoteImageProvider",
             ],
             providers);
     }
