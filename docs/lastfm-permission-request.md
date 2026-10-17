@@ -4,7 +4,8 @@ Status: not sent, and on 2026-10-12 the maintainer decided not to send it; the r
 is recorded in [release readiness](release-readiness.md). No Last.fm approval was
 received. The project application is registered under Lothario87, and live
 authorization and one approved scrobble passed. The draft is kept as the record of
-the open questions. Do not put API keys, shared secrets or user session keys in this
+the open questions as of 2026-09-08; it predates the metadata providers, which now
+write Last.fm biographies and album wikis into library descriptions. Do not put API keys, shared secrets or user session keys in this
 message or its attachments.
 
 To: partners@last.fm

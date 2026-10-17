@@ -325,13 +325,8 @@ def own_entries(answer: Any) -> list[str]:
     raise SmokeFailure("The answer held more values than the smoke-test bound.")
 
 
-# The metadata and image providers the plugin offers, by the item type they fill; it offers nothing else in a
-# library's options. Each key is the list of a type's options (as Jellyfin names it) with its description.
-PROVIDED_FETCHERS = {
-    "metadatafetchers": "metadata fetchers",
-    "imagefetchers": "image fetchers",
-}
-PROVIDED_FETCHER_TYPES = {"MusicAlbum": ["Last.fm"], "MusicArtist": ["Last.fm"]}
+# The metadata providers the plugin offers, by the item type they fill; it offers nothing else in a library's options.
+PROVIDED_FETCHERS = {"MusicAlbum": ["Last.fm"], "MusicArtist": ["Last.fm"]}
 
 
 def check_library_options(options: dict[str, Any]) -> None:
@@ -340,12 +335,10 @@ def check_library_options(options: dict[str, Any]) -> None:
     found = own_entries({key: value for key, value in options.items() if key != "typeoptions"})
     for item in options.get("typeoptions", []):
         kind = item.get("type")
-        expected = PROVIDED_FETCHER_TYPES.get(kind, [])
-        for key, description in PROVIDED_FETCHERS.items():
-            fetchers = own_entries(item.get(key, []))
-            require(fetchers == expected,
-                    f"The plugin must offer exactly {expected} as {description} of {kind}, found: {fetchers}.")
-        found += own_entries({key: value for key, value in item.items() if key not in PROVIDED_FETCHERS})
+        fetchers = own_entries(item.get("metadatafetchers", []))
+        require(fetchers == PROVIDED_FETCHERS.get(kind, []),
+                f"The plugin must offer exactly {PROVIDED_FETCHERS.get(kind, [])} as metadata fetchers of {kind}, found: {fetchers}.")
+        found += own_entries({key: value for key, value in item.items() if key != "metadatafetchers"})
     require(not found, "The plugin must offer nothing else in the options of a library, found: " + ", ".join(found) + ".")
 
 
