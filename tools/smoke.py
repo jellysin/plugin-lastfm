@@ -325,11 +325,21 @@ def own_entries(answer: Any) -> list[str]:
     raise SmokeFailure("The answer held more values than the smoke-test bound.")
 
 
+# The metadata providers the plugin offers, by the item type they fill; it offers nothing else in a library's options.
+PROVIDED_FETCHERS = {"MusicAlbum": ["Last.fm"], "MusicArtist": ["Last.fm"]}
+
+
 def check_library_options(options: dict[str, Any]) -> None:
     kinds = {item.get("type") for item in options.get("typeoptions", [])}
     require({"Audio", "MusicAlbum", "MusicArtist"} <= kinds, "Jellyfin did not list the options of a music library.")
-    found = own_entries(options)
-    require(not found, "The plugin must offer nothing in the options of a library, found: " + ", ".join(found) + ".")
+    found = own_entries({key: value for key, value in options.items() if key != "typeoptions"})
+    for item in options.get("typeoptions", []):
+        kind = item.get("type")
+        fetchers = own_entries(item.get("metadatafetchers", []))
+        require(fetchers == PROVIDED_FETCHERS.get(kind, []),
+                f"The plugin must offer exactly {PROVIDED_FETCHERS.get(kind, [])} as metadata fetchers of {kind}, found: {fetchers}.")
+        found += own_entries({key: value for key, value in item.items() if key != "metadatafetchers"})
+    require(not found, "The plugin must offer nothing else in the options of a library, found: " + ", ".join(found) + ".")
 
 
 def unfollowed(client: Client, path: str) -> tuple[int, dict[str, str]]:
