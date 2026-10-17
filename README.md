@@ -45,6 +45,8 @@ JellySin: Jellyfin plus sin, a little temptation for your media server; said JEL
   with HTML stripped to plain text and trailing CC BY-SA attribution preserved.
 - External links to Last.fm artist and album pages built from library names on page
   render without network calls.
+- Image providers for artist pictures and album covers; Last.fm's grey placeholder
+  images are skipped, and Jellyfin keeps the image you choose in its own library.
 
 The account dashboard is served by the plugin at `/JellySin/Lastfm/` under your
 Jellyfin server's base path. Sign in with Jellyfin credentials or Quick Connect,
