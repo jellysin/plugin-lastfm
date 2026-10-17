@@ -106,6 +106,7 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         };
         await store.WriteAsync(userId, Key, state, ct).ConfigureAwait(false);
         await store.DeleteAsync(userId, AdditionsKey, ct).ConfigureAwait(false);
+        NoteFinished(userId, state, additions, complete, unresolved.Count);
         return Review(state);
     }
 
@@ -267,6 +268,16 @@ public sealed class FavouritesService(MusicApi api, IMusicLibrary library, IMusi
         await store.ReadAsync<FavouriteState>(id, Key, ct).ConfigureAwait(false) ?? new(false, [], []);
 
     private static FavouriteReview Review(FavouriteState state) => new(state.Enabled, state.Pending, state.LastSync, state.Status);
+
+    /// <summary>One line per finished run, with counts only. A run never unloves: removals wait for the listener's review.</summary>
+    private void NoteFinished(Guid userId, FavouriteState state, List<FavouriteAddition> additions, bool complete, int unresolved)
+    {
+        var loved = additions.Count(a => a.Target == "lastfm");
+        var favourited = additions.Count(a => a.Target == "jellyfin" && state.Observed.GetValueOrDefault(a.ItemId) is { Local: true });
+        logger.LogInformation(
+            "Favourite synchronization for user {User} finished {Scope}: {Loved} loved on Last.fm, {Favourited} set as server favourites, {Pending} removals awaiting review, {Unresolved} ambiguous tracks left unchanged.",
+            LogName.Of(userId), complete ? "all tracks" : "200 tracks, more remain", loved, favourited, state.Pending.Count, unresolved);
+    }
 
     private void NotePause(Guid userId, LovedReadGap? gap)
     {
