@@ -303,7 +303,8 @@ server log alone:
 A line with nothing to report is not written. An update another track overtook leaves
 no line. A user appears as in the
 [sign-in lines](#what-the-server-log-says-about-a-sign-in), never by name or id.
-No line holds an account name or a track.
+No line holds an account name or a track. Favourite runs write their own lines,
+described under [Favourites, history and playlists](#favourites-history-and-playlists).
 
 The ignore codes Last.fm documents: 1 artist ignored, 2 track ignored,
 3 timestamp too old, 4 timestamp too new, 5 daily scrobble limit exceeded.
@@ -340,6 +341,15 @@ page 1, so the next run reads the whole collection again. The server keeps this 
 memory only, for at most 24 hours, 8 users and 10,000 tracks per user, and a
 restart discards it. The [benchmarks](../benchmarks/README.md#favourite-synchronization)
 show what it changes.
+
+A run that finishes writes one line at information level:
+`Favourite synchronization for user ... finished all tracks: ... loved on Last.fm, ... set as server favourites, ... removals awaiting review, ... ambiguous tracks left unchanged.`
+A run that stops after its window of 200 tracks says `finished 200 tracks, more remain`
+instead; the next run continues. The counts cover this run only, except removals
+awaiting review, which counts every proposal still open. A run never unloves a
+track or removes a server favourite, so the line has no such count; removals
+happen only when the listener applies them on the page. A disabled run writes no
+line, and a run that fails, pauses or is cancelled writes none of this kind.
 
 A run that fails writes one warning that begins `Favourite synchronization for
 user`, names the user as in

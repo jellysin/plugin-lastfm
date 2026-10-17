@@ -53,7 +53,7 @@ public sealed class FavouritesPauseLogTests
         f.Loved.Add(Track(1));
         var review = await f.EnableAndSyncAsync(Ct);
         Assert.DoesNotContain("paused", review.Status!, StringComparison.Ordinal);
-        Assert.Empty(f.FavouriteLog.Lines);
+        Assert.DoesNotContain(f.FavouriteLog.Lines, line => line.Level == LogLevel.Warning);
     }
 
     [Fact]
