@@ -196,15 +196,21 @@ sent to Last.fm or reverse changes applied to Jellyfin. Last.fm authorization ca
 be revoked separately in its application settings.
 
 Removing the plugin in Jellyfin does not remove this data: the plugin has no step
-that runs at removal. Checked on 2026-10-11 with the Jellyfin 12.2.0 container image
-and a build of `1cd8e91` copied into the plugin folder by hand: after the removal the
-server no longer listed the plugin, also after a restart, and the folder with the
-plugin file was gone. Still present were `jellysin-lastfm` in the data directory,
-with a preference the plugin had stored for a user, and the settings file
-`configurations/JellySin.Plugin.Lastfm.xml` in Jellyfin's plugin directory.
-No Last.fm account was connected in that run, so the key ring folder was empty, and
-an installation from the Plugin Repository was not checked. To remove the data as
-well, delete that folder and that file while the server is stopped.
+that runs at removal. `tests/integration/removal_leftovers.py` checks this; it was run
+on 2026-10-17 against the Jellyfin 12.2.0 image
+(`sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037`) and the
+12.0.0 image (`sha256:baba630419915985442f315f08b0cf46d9f4c8a0cc4bd38e94a6d35751dd5ef5`),
+each once with a build of `012395a` copied into the plugin folder by hand and once
+with the same build packaged as version 0.1.0.0 and installed from a local Plugin
+Repository. Each run connected an
+account to a local stand-in for Last.fm, removed the plugin through Jellyfin and
+restarted the server. In all four runs the server no longer listed the plugin and
+the plugin file was gone. Still present were the settings file
+`configurations/JellySin.Plugin.Lastfm.xml` in Jellyfin's plugin directory and the
+`jellysin-lastfm` folder in the data directory, with the protected application
+credentials, the user's account and preference files under `state/` and one key
+file under `keys/`. To remove the data as well, delete that folder and that file
+while the server is stopped.
 
 ### From a canary build to a release
 
