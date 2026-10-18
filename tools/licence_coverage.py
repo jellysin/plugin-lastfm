@@ -38,7 +38,7 @@ FIRST_PARTY = (
     "tests/**.cs", "tests/**.csproj", "tests/**.json", "tests/**.mjs", "tests/**.py",
     "tools/**.cs", "tools/**.csproj", "tools/**.json", "tools/**.mjs", "tools/**.py",
     "tools/**.sh", "tools/**.xml",
-    "web/**.ts",
+    "web/**.json", "web/**.ts",
 )
 # Split, so that reuse lint does not read this file as declaring a licence expression.
 SPDX_HEADER = re.compile(rb"SPDX-License-" rb"Identifier:([^\r\n]*)")
