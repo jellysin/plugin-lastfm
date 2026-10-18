@@ -143,12 +143,13 @@ public sealed class MetadataCleanupTests
     [Fact]
     public void TimedOutPattern_LeavesFieldUnchanged()
     {
-        // The album has no length cap of its own, so only the timeout keeps it unchanged.
-        var rules = new[] { new MetadataRule(MetadataRuleField.Album, MetadataRuleKind.Pattern, "a", "b") };
-        var album = new string('a', 1_000_000);
+        // One match across the whole album, which has no length cap of its own, so only the timeout keeps it unchanged.
+        var rules = new[] { new MetadataRule(MetadataRuleField.Album, MetadataRuleKind.Pattern, "a+", "b") };
+        var album = new string('a', 4_000_000);
         var track = new MusicTrack(Guid.NewGuid(), "Artist", "Title", album, null, 180);
         Assert.Equal(album, new MetadataCleanup(() => rules, null, TimeSpan.FromTicks(1)).Apply(track).Album);
-        Assert.Equal(new string('b', 1_000_000), new MetadataCleanup(() => rules).Apply(track).Album);
+        // The same rule rewrites a short album within the default timeout.
+        Assert.Equal("b", new MetadataCleanup(() => rules).Apply(track with { Album = "aaa" }).Album);
     }
 
     [Fact]
