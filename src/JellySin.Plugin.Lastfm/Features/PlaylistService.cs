@@ -16,6 +16,10 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
 {
     private const string RecipesKey = "feature-playlists";
     private const string OperationKey = "feature-playlist-operation";
+    private const string HistoryKey = "playlist-history";
+    private const int MaxRetentionDays = 90;
+    private const int MaxHistoryEntries = 2000;
+    private const int MaxHistoryRecipes = 64;
 
     public async Task<IReadOnlyList<PlaylistRecipe>> GetRecipesAsync(Guid userId, CancellationToken ct)
     {
@@ -60,6 +64,7 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
         }
         var recipes = (await GetRecipesAsync(userId, ct).ConfigureAwait(false)).Where(r => r.Id != recipeId).ToList();
         await store.WriteAsync(userId, RecipesKey, recipes, ct).ConfigureAwait(false);
+        await RemoveRecipeHistoryAsync(userId, recipeId, ct).ConfigureAwait(false);
     }
 
     public Task<PlaylistOperation?> GetPendingOperationAsync(Guid userId, CancellationToken ct) =>
@@ -89,8 +94,13 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
     private async Task<Guid[]> ResolveAsync(Guid userId, PlaylistRecipe recipe, CancellationToken ct)
     {
         if (recipe.Source is PlaylistSource.Similar or PlaylistSource.Discovery)
-            return (await discovery.GetAsync(userId, recipe.SeedItemId, ct).ConfigureAwait(false)).Local
-                .Select(m => m.ItemId!.Value).Distinct().Take(recipe.Limit).ToArray();
+        {
+            var local = (await discovery.GetAsync(userId, recipe.SeedItemId, ct).ConfigureAwait(false)).Local
+                .Select(m => m.ItemId!.Value).Distinct();
+            if (recipe.RetentionDays <= 0) return local.Take(recipe.Limit).ToArray();
+            var candidates = local.Take(recipe.Limit * 4).ToArray();
+            return await RotateCandidatesAsync(userId, recipe, candidates, ct).ConfigureAwait(false);
+        }
         var page = recipe.Source == PlaylistSource.Loved
             ? await api.GetAllLovedAsync(userId, ct).ConfigureAwait(false)
             : await api.GetPageAsync(userId, "user.getTopTracks", 1, recipe.Period, ct).ConfigureAwait(false);
@@ -121,6 +131,7 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
             .Select(recipe => recipe.Id == pending.Recipe.Id ? recipe with { DailyRefresh = false } : recipe).ToList();
         await store.WriteAsync(userId, RecipesKey, recipes, ct).ConfigureAwait(false);
         await store.DeleteAsync(userId, OperationKey, ct).ConfigureAwait(false);
+        if (pending.StopManaging) await RemoveRecipeHistoryAsync(userId, pending.Recipe.Id, ct).ConfigureAwait(false);
     }
 
     private async Task<PlaylistRecipe> ExecutePendingAsync(Guid userId, PlaylistOperation operation, CancellationToken ct)
@@ -173,7 +184,67 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
         var recipes = (await GetRecipesAsync(userId, ct).ConfigureAwait(false)).Where(r => r.Id != result.Id).Append(result).ToList();
         await store.WriteAsync(userId, RecipesKey, recipes, ct).ConfigureAwait(false);
         await store.DeleteAsync(userId, OperationKey, ct).ConfigureAwait(false);
+        if (operation.Recipe.RetentionDays > 0)
+            await RecordHistoryAsync(userId, operation.Recipe.Id, operation.Items, ct).ConfigureAwait(false);
         return result;
+    }
+
+    private async Task<Guid[]> RotateCandidatesAsync(Guid userId, PlaylistRecipe recipe, Guid[] candidates, CancellationToken ct)
+    {
+        if (candidates.Length == 0) return [];
+        var history = await store.ReadAsync<Dictionary<Guid, List<PlaylistHistoryEntry>>>(userId, HistoryKey, ct).ConfigureAwait(false);
+        var entries = history is not null && history.TryGetValue(recipe.Id, out var list) ? list : [];
+        var lastUsedByItem = entries.GroupBy(e => e.ItemId).ToDictionary(g => g.Key, g => g.Max(e => e.LastUsedAt));
+        var cutoff = clock.GetUtcNow().AddDays(-recipe.RetentionDays);
+        var kept = new List<Guid>();
+        var excluded = new List<(Guid ItemId, DateTimeOffset LastUsedAt)>();
+        foreach (var candidate in candidates)
+        {
+            if (lastUsedByItem.TryGetValue(candidate, out var lastUsed) && lastUsed >= cutoff)
+                excluded.Add((candidate, lastUsed));
+            else
+                kept.Add(candidate);
+        }
+        if (kept.Count < recipe.Limit && excluded.Count > 0)
+        {
+            var needed = recipe.Limit - kept.Count;
+            kept.AddRange(excluded.OrderBy(e => e.LastUsedAt).Take(needed).Select(e => e.ItemId));
+        }
+        return kept.Take(recipe.Limit).ToArray();
+    }
+
+    private async Task RecordHistoryAsync(Guid userId, Guid recipeId, Guid[] items, CancellationToken ct)
+    {
+        var history = await store.ReadAsync<Dictionary<Guid, List<PlaylistHistoryEntry>>>(userId, HistoryKey, ct).ConfigureAwait(false) ?? [];
+        var now = clock.GetUtcNow();
+        var cutoff = now.AddDays(-MaxRetentionDays);
+        var cleaned = new Dictionary<Guid, List<PlaylistHistoryEntry>>();
+        foreach (var (id, entries) in history)
+        {
+            var filtered = entries.Where(e => e.LastUsedAt >= cutoff).ToList();
+            if (filtered.Count > 0) cleaned[id] = filtered;
+        }
+        var recipeEntries = cleaned.TryGetValue(recipeId, out var existing) ? existing : [];
+        recipeEntries.RemoveAll(e => items.Contains(e.ItemId));
+        foreach (var item in items) recipeEntries.Add(new(item, now));
+        if (recipeEntries.Count > MaxHistoryEntries)
+            recipeEntries = recipeEntries.OrderByDescending(e => e.LastUsedAt).Take(MaxHistoryEntries).ToList();
+        cleaned[recipeId] = recipeEntries;
+        if (cleaned.Count > MaxHistoryRecipes)
+        {
+            cleaned = cleaned
+                .OrderByDescending(kv => kv.Value.Count > 0 ? kv.Value.Max(e => e.LastUsedAt) : DateTimeOffset.MinValue)
+                .Take(MaxHistoryRecipes)
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
+        await store.WriteAsync(userId, HistoryKey, cleaned, ct).ConfigureAwait(false);
+    }
+
+    private async Task RemoveRecipeHistoryAsync(Guid userId, Guid recipeId, CancellationToken ct)
+    {
+        var history = await store.ReadAsync<Dictionary<Guid, List<PlaylistHistoryEntry>>>(userId, HistoryKey, ct).ConfigureAwait(false);
+        if (history is not null && history.Remove(recipeId))
+            await store.WriteAsync(userId, HistoryKey, history, ct).ConfigureAwait(false);
     }
 
     private static void Validate(PlaylistRecipe recipe)
@@ -181,10 +252,13 @@ public sealed class PlaylistService(MusicApi api, DiscoveryService discovery, IM
         if (string.IsNullOrWhiteSpace(recipe.Name) || recipe.Name.Length > 100 || recipe.Name.Any(char.IsControl))
             throw new ArgumentException("Playlist name must contain between 1 and 100 printable characters.", nameof(recipe));
         if (!Enum.IsDefined(recipe.Source) || !MusicApi.Periods.Contains(recipe.Period, StringComparer.Ordinal)
-            || recipe.Limit is < 1 or > 200 || recipe.Source == PlaylistSource.Similar && recipe.SeedItemId is null)
+            || recipe.Limit is < 1 or > 200 || recipe.Source == PlaylistSource.Similar && recipe.SeedItemId is null
+            || recipe.RetentionDays is < 0 or > MaxRetentionDays
+            || (recipe.RetentionDays > 0 && recipe.Source is not (PlaylistSource.Similar or PlaylistSource.Discovery)))
             throw new ArgumentException("Invalid playlist recipe.", nameof(recipe));
     }
 
     private static bool SameRecipe(PlaylistRecipe left, PlaylistRecipe right) => left.Name == right.Name && left.Source == right.Source
-        && left.Period == right.Period && left.SeedItemId == right.SeedItemId && left.Limit == right.Limit && left.DailyRefresh == right.DailyRefresh;
+        && left.Period == right.Period && left.SeedItemId == right.SeedItemId && left.Limit == right.Limit && left.DailyRefresh == right.DailyRefresh
+        && left.RetentionDays == right.RetentionDays;
 }

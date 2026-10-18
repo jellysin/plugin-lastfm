@@ -50,7 +50,9 @@ public enum PlaylistSource { Loved, Top, Similar, Discovery }
 
 public sealed record PlaylistRecipe(Guid Id, string Name, PlaylistSource Source, string Period = "1month",
     Guid? SeedItemId = null, int Limit = 50, bool DailyRefresh = false, Guid? PlaylistId = null,
-    DateTimeOffset? UpdatedAt = null);
+    DateTimeOffset? UpdatedAt = null, int RetentionDays = 0);
+
+public sealed record PlaylistHistoryEntry(Guid ItemId, DateTimeOffset LastUsedAt);
 
 internal static class MusicJson
 {

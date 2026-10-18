@@ -35,6 +35,24 @@ for (const prefix of ['', '/jellyfin']) {
   });
 }
 
+test('playlist form supports rotating recommendations with retention days', async ({ page }) => {
+  const state = await installServer(page);
+  await passwordLogin(page);
+  await page.getByLabel('Playlist name').fill('Rotating discovery');
+  const rotateInput = page.getByLabel('Rotate: keep tracks out for N days');
+  await expect(rotateInput).toBeDisabled();
+  await page.getByLabel('Build from').selectOption('2');
+  await expect(rotateInput).toBeEnabled();
+  await rotateInput.fill('14');
+  await page.getByRole('button', { name: 'Create private playlist' }).click();
+  await expect(page.locator('#playlist-list')).toContainText('Rotating discovery');
+  const playlist = state.requests.find(request => request.path === '/JellySin/Lastfm/Me/Playlists' && request.method === 'POST');
+  expect(playlist.body.retentionDays).toBe(14);
+  await page.locator('#playlists-refresh').click();
+  await expect(page.locator('#playlist-list')).toContainText('Rotating discovery');
+  await expect(page.locator('#playlist-list')).toContainText('rotates 14d');
+});
+
 test('Quick Connect exchanges secrets only in request bodies', async ({ page }) => {
   const state = await installServer(page, { prefix: '/jellyfin' });
   await page.getByRole('button', { name: 'Use Quick Connect' }).click();
