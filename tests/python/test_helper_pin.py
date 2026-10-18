@@ -13,7 +13,7 @@ PIN = r"([0-9a-f]{40}) # (v\d+\.\d+\.\d+)$"
 USED = re.compile(r"uses: jellysin/release-helper/[A-Za-z0-9_./-]+@(\S+)(.*)$", re.MULTILINE)
 CHECKED_OUT = re.compile(r"repository: jellysin/release-helper\n\s+ref: (\S+)(.*)$", re.MULTILINE)
 MENTION = re.compile(r"jellysin/release-helper")
-EXPECTED = {"build-signed.yml": 1, "ci.yml": 3, "prepare-release.yml": 1, "release.yml": 3, "release-automation.yml": 1}
+EXPECTED = {"build-signed.yml": 2, "ci.yml": 3, "prepare-release.yml": 1, "release.yml": 1, "release-automation.yml": 1}
 
 
 def pins(text):

@@ -1,0 +1,32 @@
+name: Verify the signed build
+description: >-
+  Check provenance, the SBOM attestation and the cosign signature of every file in dist/
+  against build-signed.yml at the calling ref. Any file that fails either check fails the job.
+runs:
+  using: composite
+  steps:
+    - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      with:
+        cosign-release: v3.1.3
+    - name: Verify provenance and the SBOM attestation with gh attestation verify
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SIGNER: ${{ github.repository }}/.github/workflows/build-signed.yml
+      run: |
+        for file in dist/*; do
+          gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER" --source-ref "$GITHUB_REF" --deny-self-hosted-runners
+        done
+        for file in dist/*.zip; do
+          gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --signer-workflow "$SIGNER" --source-ref "$GITHUB_REF" --deny-self-hosted-runners --predicate-type https://spdx.dev/Document/v2.3
+        done
+    # Runs after a failed attestation check too, so a tampered file shows both rejections.
+    - name: Verify the cosign signatures with cosign verify-blob
+      if: success() || failure()
+      shell: bash
+      env:
+        IDENTITY: ${{ github.server_url }}/${{ github.repository }}/.github/workflows/build-signed.yml@${{ github.ref }}
+      run: |
+        for file in dist/*; do
+          cosign verify-blob --bundle "signatures/$(basename "$file").sigstore.json" --certificate-identity "$IDENTITY" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$file"
+        done
