@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 
 namespace JellySin.Plugin.Lastfm.Playback;
 
-public sealed class MetadataCleanup(Func<MetadataRule[]>? getRules = null, ILogger? logger = null, TimeSpan? matchTimeout = null)
+public sealed class MetadataCleanup(Func<MetadataRule[]>? getRules = null, ILogger? logger = null, TimeSpan? matchTimeout = null, Func<bool>? removeFeatured = null)
 {
     public const int MaxRules = 64;
     public static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(50);
@@ -12,18 +12,25 @@ public sealed class MetadataCleanup(Func<MetadataRule[]>? getRules = null, ILogg
     private readonly Func<MetadataRule[]> _getRules = getRules ?? (() => []);
     private readonly ILogger? _logger = logger;
     private readonly TimeSpan _matchTimeout = matchTimeout ?? MatchTimeout;
+    private readonly Func<bool> _removeFeatured = removeFeatured ?? (() => false);
     private readonly object _sync = new();
     private CacheEntry _cache = new([], []);
 
-    public MetadataCleanup(MetadataRule[] rules, ILogger? logger = null)
-        : this(() => rules, logger)
+    public MetadataCleanup(MetadataRule[] rules, ILogger? logger = null, Func<bool>? removeFeatured = null)
+        : this(() => rules, logger, removeFeatured: removeFeatured)
     {
     }
 
     public static MusicTrack Apply(MusicTrack track, MetadataRule[]? rules, ILogger? logger = null)
         => new MetadataCleanup(rules ?? [], logger).Apply(track);
 
-    public MusicTrack Apply(MusicTrack track) => CleanTrack(track, _getRules());
+    public MusicTrack Apply(MusicTrack track)
+    {
+        var current = _removeFeatured()
+            ? track with { Artist = FeaturedCredit.Strip(track.Artist), Title = FeaturedCredit.Strip(track.Title) }
+            : track;
+        return CleanTrack(current, _getRules());
+    }
 
     private MusicTrack CleanTrack(MusicTrack track, MetadataRule[]? rules)
     {

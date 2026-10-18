@@ -33,6 +33,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     // Off by default: Last.fm files a joined credit as an artist of its own, apart from each artist's page.
     public bool ScrobbleAllArtists { get; set; }
 
+    // Off by default: a title or artist that names its featured artist is sent as tagged, as before this option.
+    public bool RemoveFeaturedArtists { get; set; }
+
     public Guid[] LibraryIds
     {
         get => _libraryIds;
