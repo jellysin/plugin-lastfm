@@ -47,6 +47,9 @@
             "context": "CI"
           },
           {
+            "context": "scanners"
+          },
+          {
             "context": "analyze (csharp)"
           },
           {
