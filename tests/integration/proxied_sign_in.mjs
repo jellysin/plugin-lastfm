@@ -73,7 +73,8 @@ function answered(page, path, method) {
 /** The page stays where it is and names both addresses, or sends an ordinary user to the administrator. */
 async function refusal(page, click, status, expected) {
   await page.click(click);
-  await page.locator(status, { hasText: 'Last.fm sign-in could not start.' }).waitFor({ timeout: 15_000 }).catch(() => {});
+  await page.locator(status, { hasText: 'Last.fm sign-in could not start.' }).waitFor({ timeout: 15_000 })
+    .catch(error => console.log(`refusal text not shown within 15 s: ${String(error).split('\n')[0]}`));
   const text = (await page.locator(status).textContent() ?? '').trim();
   require(new URL(page.url()).origin !== 'https://www.last.fm', 'the browser left for Last.fm from an address the return cannot reach');
   for (const part of expected) require(text.includes(part), `the page says ${JSON.stringify(text)}; missing: ${part}`);
@@ -145,7 +146,8 @@ try {
     catch (error) {
       results.push({ name, passed: false, detail: error instanceof Refused ? error.message : String(error).split('\n')[0] });
       for (const [index, page] of context.pages().entries()) {
-        await page.screenshot({ path: join(run.report, `${name.replaceAll(/[^a-z]+/g, '-')}-${index}.png`) }).catch(() => {});
+        await page.screenshot({ path: join(run.report, `${name.replaceAll(/[^a-z]+/g, '-')}-${index}.png`) })
+          .catch(error => console.log(`screenshot skipped: ${String(error).split('\n')[0]}`));
       }
     }
     await context.close();
