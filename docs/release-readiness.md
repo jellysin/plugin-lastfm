@@ -36,7 +36,7 @@ form passed on 12.2.0 in a browser against a Last.fm stand-in, without a live ac
 | Release tooling | The tooling revision tested on 2026-09-08 passed 67 tests with two distinct plugin fixtures, SBOM inventory, strict validation and interrupted-upload retry |
 | Reproducibility | Two independent checkouts matched the actual selected ZIP, release metadata, SBOM and checksums locally and in hosted CI; production tag repeats the gate with embedded credentials |
 | Repository checks | PR/squash protections, pinned Actions, locks, Renovate and read-only defaults configured; candidate CI and all four CodeQL analyses passed |
-| Publication and installation | No plugin release is available in the Plugin Repository |
+| Publication and installation | The Plugin Repository lists 0.1.0.0 and 0.2.0.0; a fresh Jellyfin 12.2.0 server installed 0.2.0.0 from the catalog and listed it as `Active` after each of two restarts ([record](validation/release-0.2.0.md#catalog-install)) |
 | Legacy migration | Separate plugin GUID and explicit uninstall/reconnect instructions; existing Last.fm history remains on Last.fm |
 | Last.fm API terms | Closed as the project's own reading of the terms; the clarification is not sent (decisions of 2026-10-12 and 2026-10-17, below); no written Last.fm approval exists; no Last.fm images are offered (clause 5.1.8) |
 
