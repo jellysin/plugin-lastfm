@@ -28,6 +28,19 @@ probe='import sys; print(sys.version_info[0], sys.version_info[1], sep=chr(46))'
 cr=$(printf '\r') #
 tried='' #
 #
+# Drop Git repository selection so nested git invocations (e.g. in test jobs)
+# cannot target the pushing repository. Pre-commit hooks pass --keep-index to
+# preserve GIT_INDEX_FILE for partial-commit staging.
+keep_index=false #
+if [ "${1-}" = "--keep-index" ]; then #
+  keep_index=true #
+  shift #
+fi #
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES #
+if [ "$keep_index" != true ]; then #
+  unset GIT_INDEX_FILE #
+fi #
+#
 # proven CANDIDATE [ARGUMENT]: it ran the probe and stated Python 3.floor or newer.
 # The probe reads nothing: the hook's own standard input stays untouched.
 proven() { #

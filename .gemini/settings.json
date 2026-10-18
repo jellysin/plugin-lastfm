@@ -12,5 +12,14 @@
         ]
       }
     ]
+  },
+  "mcpServers": {
+    "asdecided": {
+      "args": [
+        "decisions",
+        "serve"
+      ],
+      "command": "praetorctl"
+    }
   }
 }
