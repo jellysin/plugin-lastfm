@@ -43,8 +43,10 @@ jobs:
           name: ${{ needs.build.outputs.artifact }}
       - uses: ./.github/actions/verify-signed
       - name: Verify bytes, resume missing draft uploads and publish
-        uses: jellysin/release-helper/actions/publish@043c6288642b0734ba53e46603a02cfdb3ca0014 # v1.2.2
+        uses: jellysin/release-helper/actions/publish@f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
         with:
           directory: dist
           tag: ${{ github.ref_name }}
           token: ${{ github.token }}
+          # build-signed.yml builds and attests the artifacts; this workflow only publishes them.
+          signer-workflow: .github/workflows/build-signed.yml
