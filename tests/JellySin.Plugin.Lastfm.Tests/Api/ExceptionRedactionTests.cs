@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
 
@@ -42,7 +43,7 @@ public sealed class ExceptionRedactionTests
             _ => new Exception(secret)
         };
         var context = new ExceptionContext(new ActionContext(new DefaultHttpContext(), new RouteData(), new ActionDescriptor()), []) { Exception = exception };
-        var logger = new CapturingLogger();
+        var logger = new FakeLogger<ApiExceptionFilter>();
         new ApiExceptionFilter(logger).OnException(context);
         var result = Assert.IsType<ObjectResult>(context.Result);
         Assert.Equal(expectedStatus, result.StatusCode);
@@ -51,7 +52,7 @@ public sealed class ExceptionRedactionTests
         if (category == "not connected") Assert.Equal(ApiExceptionFilter.NotConnectedType, problem.Type);
         else if (category == "conflict") Assert.Null(problem.Type);
         Assert.DoesNotContain(secret, System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.Ordinal);
-        Assert.DoesNotContain(secret, logger.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, Output(logger), StringComparison.Ordinal);
     }
 
     [Theory]
@@ -76,19 +77,18 @@ public sealed class ExceptionRedactionTests
         {
             Exception = new InvalidOperationException("boom"),
         };
-        var logger = new CapturingLogger();
+        var logger = new FakeLogger<ApiExceptionFilter>();
         new ApiExceptionFilter(logger).OnException(context);
-        Assert.Contains(template, logger.Output, StringComparison.Ordinal);
-        Assert.Contains(expectedMethodLog, logger.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain(marker, logger.Output, StringComparison.Ordinal);
+        var output = Output(logger);
+        Assert.Contains(template, output, StringComparison.Ordinal);
+        Assert.Contains(expectedMethodLog, output, StringComparison.Ordinal);
+        Assert.DoesNotContain(marker, output, StringComparison.Ordinal);
     }
 
-    private sealed class CapturingLogger : ILogger<ApiExceptionFilter>
+    private static string Output(FakeLogger<ApiExceptionFilter> logger)
     {
-        public string Output { get; private set; } = string.Empty;
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        { Output += formatter(state, exception); Assert.Null(exception); }
+        var records = logger.Collector.GetSnapshot();
+        Assert.All(records, record => Assert.Null(record.Exception));
+        return string.Concat(records.Select(record => record.Message));
     }
 }
