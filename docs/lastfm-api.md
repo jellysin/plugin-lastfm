@@ -86,7 +86,8 @@ second between a client's reports. These count only for a session whose client s
 no progress report since the start other than pausing or resuming, are capped at the distance between the start
 and the position the client's stop reports, and create a listen only when that stop
 arrives; a session with no stop creates none. Plays a client made offline and later
-reports only as a last-played date carry no start time and are not scrobbled.
+reports only as a last-played date carry no start time and are not scrobbled
+([design note](offline-scrobbles.md)).
 Retried scrobbles retain the original UTC start time.
 Now-playing describes the present and is not retried after failure.
 
