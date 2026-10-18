@@ -5,6 +5,10 @@ This check names where first-party files live and which types they have. A file 
 when it matches one of those places, one of the other REUSE.toml tables, or carries its
 own SPDX licence header; anything else, such as a copied third-party asset,
 fails until it is declared.
+
+A file whose text names an MIT origin, such as an upstream MIT notice or a provenance
+line that gives MIT in parentheses, must also be labelled MIT by its own SPDX header or
+by a REUSE.toml table; the whole-tree EUPL-1.2 table alone would drop the upstream licence.
 """
 
 import argparse
@@ -37,7 +41,11 @@ FIRST_PARTY = (
     "web/**.ts",
 )
 # Split, so that reuse lint does not read this file as declaring a licence expression.
-SPDX_HEADER = re.compile(rb"SPDX-License-" rb"Identifier:")
+SPDX_HEADER = re.compile(rb"SPDX-License-" rb"Identifier:([^\r\n]*)")
+MIT_NOTICE = re.compile(rb"\(MIT\)|MIT [Ll]icen[cs]e|Permission is hereby " rb"granted, free of charge")
+MIT_ID = re.compile(r"\bMIT\b")
+# REUSE ignores licence files wherever they are, so their MIT text needs no label.
+LICENCE_FILE = re.compile(r"(?:^|.*/)(?:LICEN[CS]E|COPYING)[^/]*|LICENSES/.*")
 
 
 class CoverageError(ValueError):
@@ -52,16 +60,17 @@ def pattern(glob):
 
 
 def declared_tables(reuse_toml):
-    """Paths of every REUSE.toml table except the whole-tree "**" one."""
+    """(path, licence) of every REUSE.toml table path except the whole-tree "**" one."""
     try:
         data = tomllib.loads(reuse_toml.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError) as error:
         raise CoverageError(f"cannot read {reuse_toml}: {error}") from error
-    globs = []
+    declared = []
     for table in data.get("annotations", []):
         paths = table.get("path", [])
-        globs += [paths] if isinstance(paths, str) else list(paths)
-    return [glob for glob in globs if glob != "**"]
+        licence = str(table.get("SPDX-License-Identifier", ""))
+        declared += [(glob, licence) for glob in ([paths] if isinstance(paths, str) else paths)]
+    return [(glob, licence) for glob, licence in declared if glob != "**"]
 
 
 def listed_files(root):
@@ -77,23 +86,48 @@ def listed_files(root):
     return files
 
 
-def has_header(path):
+def head(path):
+    """The first HEADER_BYTES of a file, or nothing when it cannot be read."""
     try:
         with path.open("rb") as handle:
-            return bool(SPDX_HEADER.search(handle.read(HEADER_BYTES)))
+            return handle.read(HEADER_BYTES)
     except OSError:
-        return False
+        return b""
+
+
+def has_header(path):
+    return bool(SPDX_HEADER.search(head(path)))
 
 
 def undeclared(root):
     root = Path(root)
-    globs = (*LICENCE_TEXTS, *FIRST_PARTY, *declared_tables(root / "REUSE.toml"))
-    patterns = [pattern(glob) for glob in globs]
+    tables = [glob for glob, _ in declared_tables(root / "REUSE.toml")]
+    patterns = [pattern(glob) for glob in (*LICENCE_TEXTS, *FIRST_PARTY, *tables)]
     found = []
     for name in listed_files(root):
         if any(compiled.fullmatch(name) for compiled in patterns):
             continue
         if not (root / name).is_file() or not has_header(root / name):
+            found.append(name)
+    return found
+
+
+def mit_unlabelled(root):
+    """Files that name an MIT origin while neither a header nor a table labels them MIT."""
+    root = Path(root)
+    tables = declared_tables(root / "REUSE.toml")
+    mit_tables = [pattern(glob) for glob, licence in tables if MIT_ID.search(licence)]
+    found = []
+    for name in listed_files(root):
+        if LICENCE_FILE.fullmatch(name) or not (root / name).is_file():
+            continue
+        content = head(root / name)
+        if not MIT_NOTICE.search(content):
+            continue
+        headers = [match.decode("utf-8", "replace") for match in SPDX_HEADER.findall(content)]
+        if any(MIT_ID.search(expression) for expression in headers):
+            continue
+        if not any(compiled.fullmatch(name) for compiled in mit_tables):
             found.append(name)
     return found
 
@@ -104,15 +138,20 @@ def main(arguments=None):
     options = parser.parse_args(arguments)
     try:
         found = undeclared(options.root)
+        unlabelled = mit_unlabelled(options.root)
     except CoverageError as error:
         print(f"licence coverage: {error}", file=sys.stderr)
         return 2
     for name in found:
         print(f"licence coverage: {name}: no declared place or type and no SPDX header; "
               "declare it in tools/licence_coverage.py or REUSE.toml, or add a header", file=sys.stderr)
-    if found:
+    for name in unlabelled:
+        print(f"licence coverage: {name}: names an MIT origin but is not labelled MIT; "
+              "add a REUSE.toml table or an SPDX header that names MIT", file=sys.stderr)
+    if found or unlabelled:
         return 1
-    print("licence coverage: every file has a declared place and type, a REUSE.toml table or a header")
+    print("licence coverage: every file has a declared place and type, a REUSE.toml table or a header, "
+          "and every file that names an MIT origin is labelled MIT")
     return 0
 
 

@@ -65,6 +65,9 @@ REUSE lint check) through `tools/reuse-lint.sh`, which fails when reuse 6 is not
 installed. Because `REUSE.toml` labels the whole tree, the same script then runs
 `tools/licence_coverage.py`: a file of a new type or in a new place fails until it
 is declared there, in another `REUSE.toml` table, or in its own SPDX header.
+A file that names an MIT origin, such as an adapted skill under `.agents/skills`,
+must also be labelled MIT by a `REUSE.toml` table or its own header. `LICENSES/MIT.txt`
+holds the licence text; each skill keeps its upstream notice in its own `LICENSE` file.
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,
