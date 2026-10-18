@@ -150,7 +150,9 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
             if (_legacyPresent || Plugin.Instance?.ListeningEnabled == false) return;
             if (args.Item is not (Audio or MusicVideo) || args.Item is not IHasArtist performed || !libraryRules.IsMediaTypeAllowed(args.Item)) return;
             var item = args.Item;
-            var artist = ArtistCredit.Format(performed.Artists, libraryRules.GetConfiguration().ScrobbleAllArtists);
+            var config = libraryRules.GetConfiguration();
+            if (BlockRules.IsBlocked(item, config.BlockRules)) return;
+            var artist = ArtistCredit.Format(performed.Artists, config.ScrobbleAllArtists);
             if (artist is null || string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 1024) return;
             var sessionId = args.PlaySessionId ?? args.Session?.Id ?? args.DeviceId;
             if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > 256) return;

@@ -13,8 +13,10 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public const int MaxConfiguredLibraries = 256;
     public const int MaxMetadataRules = 64;
+    public const int MaxBlockRules = 64;
     private Guid[] _libraryIds = [];
     private MetadataRule[] _metadataRules = [];
+    private BlockRule[] _blockRules = [];
     private int _scrobblePercent = ScrobbleThreshold.LastfmPercent;
     private int _scrobbleCeilingSeconds = ScrobbleThreshold.LastfmCeilingSeconds;
     private int _scrobbleMinimumLengthSeconds = ScrobbleThreshold.LastfmMinimumLengthSeconds;
@@ -51,6 +53,16 @@ public sealed class PluginConfiguration : BasePluginConfiguration
                 && rule.Match.Length <= MetadataRule.MaxMatchLength
                 && (rule.Replacement?.Length ?? 0) <= MetadataRule.MaxReplacementLength)
             .Take(MaxMetadataRules)
+            .ToArray();
+    }
+
+    public BlockRule[] BlockRules
+    {
+        get => _blockRules;
+        set => _blockRules = value is null ? [] : value
+            .Where(rule => rule is not null && !string.IsNullOrWhiteSpace(rule.Value)
+                && rule.Value.Length <= BlockRule.MaxValueLength)
+            .Take(MaxBlockRules)
             .ToArray();
     }
 

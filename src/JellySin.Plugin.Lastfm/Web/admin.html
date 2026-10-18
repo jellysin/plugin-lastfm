@@ -47,6 +47,12 @@
         <div id="jellysin-rules-list"></div>
         <button id="jellysin-add-rule" is="emby-button" type="button" class="raised block" style="margin-top:0.5rem;"><span>Add cleanup rule</span></button>
       </fieldset>
+      <fieldset id="jellysin-block-rules-group" style="margin-top:1rem;">
+        <legend>Block rules</legend>
+        <p>Never scrobble or send now playing for items matching any rule.</p>
+        <div id="jellysin-block-rules-list"></div>
+        <button id="jellysin-add-block-rule" is="emby-button" type="button" class="raised block" style="margin-top:0.5rem;"><span>Add block rule</span></button>
+      </fieldset>
       <button is="emby-button" type="submit" class="raised button-submit block" style="margin-top:1rem;"><span>Save</span></button>
       <p id="jellysin-settings-status" role="status" aria-live="polite"></p>
     </form>
@@ -173,6 +179,7 @@
 
     const ruleFields = ['Artist', 'Title', 'Album', 'AlbumArtist'];
     const ruleKinds = ['Correction', 'Pattern'];
+    const blockRuleFields = ['Genre', 'Artist', 'Title', 'Rating'];
 
     // Jellyfin may return an enum as its number or its name; the page saves the number.
     function enumIndex(names, raw) {
@@ -196,34 +203,52 @@
       return select;
     }
 
-    function createRuleRow(rule) {
-      const div = document.createElement('div');
-      div.className = 'jellysin-rule-row';
-      div.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.5rem;';
+    function ruleRemoveButton(label, onRemove) {
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'raised jellysin-remove-rule';
       removeBtn.setAttribute('is', 'emby-button');
-      removeBtn.setAttribute('aria-label', 'Remove rule');
+      removeBtn.setAttribute('aria-label', label);
       removeBtn.appendChild(Object.assign(document.createElement('span'), { textContent: 'Remove' }));
-      removeBtn.addEventListener('click', () => div.remove());
+      removeBtn.addEventListener('click', onRemove);
+      return removeBtn;
+    }
+
+    function createRuleRow(rule) {
+      const div = document.createElement('div');
+      div.className = 'jellysin-rule-row';
+      div.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.5rem;';
       div.append(
         ruleSelect('jellysin-rule-field', 'Rule field', ruleFields, ['Artist', 'Title', 'Album', 'Album artist'], enumIndex(ruleFields, rule && rule.Field)),
         ruleSelect('jellysin-rule-kind', 'Rule kind', ruleKinds, ruleKinds, enumIndex(ruleKinds, rule && rule.Kind)),
         ruleControl('input', 'jellysin-rule-match', 'Rule match', { type: 'text', maxLength: 512, placeholder: 'Match', value: (rule && rule.Match) || '' }),
         ruleControl('input', 'jellysin-rule-replacement', 'Rule replacement', { type: 'text', maxLength: 1024, placeholder: 'Replacement', value: (rule && rule.Replacement) || '' }),
-        removeBtn);
+        ruleRemoveButton('Remove rule', () => div.remove()));
       return div;
     }
 
-    function loadRules(rules) {
-      const list = byId('jellysin-rules-list');
+    function createBlockRuleRow(rule) {
+      const div = document.createElement('div');
+      div.className = 'jellysin-block-rule-row';
+      div.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.5rem;';
+      div.append(
+        ruleSelect('jellysin-block-rule-field', 'Block rule field', blockRuleFields, blockRuleFields, enumIndex(blockRuleFields, rule && rule.Field)),
+        ruleControl('input', 'jellysin-block-rule-value', 'Block rule value', { type: 'text', maxLength: 512, placeholder: 'Value', value: (rule && rule.Value) || '' }),
+        ruleRemoveButton('Remove block rule', () => div.remove()));
+      return div;
+    }
+
+    function loadRuleList(containerId, rules, createRow) {
+      const list = byId(containerId);
       list.innerHTML = '';
       const items = Array.isArray(rules) ? rules : [];
       for (let i = 0; i < Math.min(items.length, 64); i++) {
-        list.appendChild(createRuleRow(items[i]));
+        list.appendChild(createRow(items[i]));
       }
     }
+
+    function loadRules(rules) { loadRuleList('jellysin-rules-list', rules, createRuleRow); }
+    function loadBlockRules(rules) { loadRuleList('jellysin-block-rules-list', rules, createBlockRuleRow); }
 
     byId('jellysin-admin').addEventListener('pageshow', async function () {
       byId('jellysin-dashboard-link').href = api('');
@@ -243,6 +268,7 @@
         updateLibraryGroupVisibility();
         await loadLibraries(config.LibraryIds);
         loadRules(config.MetadataRules);
+        loadBlockRules(config.BlockRules);
       } catch { byId('jellysin-settings-status').textContent = 'Settings could not be loaded.'; }
       try { await loadConnection(await loadApplication()); }
       catch { byId('jellysin-connection-status').textContent = 'The Last.fm connection could not be loaded.'; }
@@ -313,12 +339,17 @@
       finally { control.disabled = false; }
     });
 
-    byId('jellysin-add-rule').addEventListener('click', function () {
-      const list = byId('jellysin-rules-list');
-      if (list.children.length < 64) {
-        list.appendChild(createRuleRow());
-      }
-    });
+    function bindAddRule(buttonId, listId, createRow) {
+      byId(buttonId).addEventListener('click', function () {
+        const list = byId(listId);
+        if (list.children.length < 64) {
+          list.appendChild(createRow());
+        }
+      });
+    }
+
+    bindAddRule('jellysin-add-rule', 'jellysin-rules-list', createRuleRow);
+    bindAddRule('jellysin-add-block-rule', 'jellysin-block-rules-list', createBlockRuleRow);
 
     byId('jellysin-settings').addEventListener('submit', async function (event) {
       event.preventDefault();
@@ -356,6 +387,18 @@
           });
         }
         config.MetadataRules = rules;
+        const blockRows = byId('jellysin-block-rules-list').querySelectorAll('.jellysin-block-rule-row');
+        const blockRules = [];
+        for (let i = 0; i < Math.min(blockRows.length, 64); i++) {
+          const row = blockRows[i];
+          const value = row.querySelector('.jellysin-block-rule-value').value;
+          if (!value.trim()) continue;
+          blockRules.push({
+            Field: Number(row.querySelector('.jellysin-block-rule-field').value),
+            Value: value
+          });
+        }
+        config.BlockRules = blockRules;
         await ApiClient.updatePluginConfiguration(id, config);
         document.getElementById('jellysin-settings-status').textContent = 'Settings saved.';
       } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be saved.'; }
