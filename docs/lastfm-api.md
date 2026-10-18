@@ -8,7 +8,7 @@ album, track, user, tag, chart, geo, library and authentication families.
 
 | Capability | Official methods and constraints |
 | --- | --- |
-| Listening | [`track.scrobble`](https://www.last.fm/api/show/track.scrobble), `track.updateNowPlaying`; signed writes, at most 50 scrobbles per batch and individual acknowledgement results; each play carries artist, title and duration, and when known the album, the MusicBrainz track id and the album artist, which Last.fm takes only when it differs from the track artist (read 2026-10-13); the artist is the track's first artist, or with "Send every credited artist" on the settings page all of them as "A, B & C" (`ArtistCredit.cs`), falling back to the first artist when the credit would exceed 1024 characters or 16 artists; track metadata (artist, title, album, album artist) can be rewritten before scrobbling and now playing via ordered server metadata cleanup rules (`MetadataCleanup.cs`, correction or non-backtracking pattern) |
+| Listening | [`track.scrobble`](https://www.last.fm/api/show/track.scrobble), `track.updateNowPlaying`; signed writes, at most 50 scrobbles per batch and individual acknowledgement results; each play carries artist, title and duration, and when known the album, the MusicBrainz track id and the album artist, which Last.fm takes only when it differs from the track artist (read 2026-10-13); the artist is the track's first artist, or with "Send every credited artist" on the settings page all of them as "A, B & C" (`ArtistCredit.cs`), falling back to the first artist when the credit would exceed 1024 characters or 16 artists; with "Remove featured artists" trailing featured credits ("feat.", "ft.", "featuring") are stripped from title and artist (`FeaturedCredit.cs`); track metadata (artist, title, album, album artist) can be rewritten before scrobbling and now playing via ordered server metadata cleanup rules (`MetadataCleanup.cs`, correction or non-backtracking pattern) |
 | Favourites | [`track.love`](https://www.last.fm/api/show/track.love), `track.unlove`, `user.getLovedTracks`; paginated snapshots, no atomic two-way synchronization or deletion feed |
 | History | [`user.getRecentTracks`](https://www.last.fm/api/show/user.getRecentTracks); paginated UTC windows, up to 200 entries per page, with a now-playing entry that is not a completed listen |
 | Listening charts | [`user.getTopTracks`](https://www.last.fm/api/show/user.getTopTracks), `user.getTopArtists`, `user.getTopAlbums`, weekly-chart families; fixed supported periods, not arbitrary private listening reports |
@@ -91,7 +91,13 @@ reports only as a last-played date carry no start time and are not scrobbled
 Retried scrobbles retain the original UTC start time.
 Now-playing describes the present and is not retried after failure.
 Track metadata can be rewritten before scrobbling and now playing via ordered
-server metadata cleanup rules (`MetadataCleanup.cs`). Each rule targets artist,
+server metadata cleanup rules (`MetadataCleanup.cs`). With "Remove featured artists"
+(`RemoveFeaturedArtists`) on the settings page, trailing featured credits in forms
+such as `(feat. B)`, `[feat. B]`, `feat. B` or `- feat. B` (keywords `feat.`,
+`feat`, `ft.`, `ft`, `featuring`) are stripped from title and artist
+(`FeaturedCredit.cs`) before cleanup rules run, so rules operate on the
+shortened values. If stripping would leave a field empty or whitespace, its
+original value is kept. Each rule targets artist,
 title, album or album artist as either a case-insensitive whole-field correction
 or a non-backtracking regular expression with replacement. Rules compile with
 `RegexOptions.NonBacktracking` and a 50 ms timeout; invalid patterns or timeouts
