@@ -10,9 +10,13 @@ permissions:
 env:
   # Engine the local Praetor hooks install and run (.config/lefthook/engine.sh).
   PRAETOR_REF: "8c99fd771eaaa889c81a8e0eb4965b5e26e18784"
+# A newer push replaces an older run only on a pull request. Main pushes,
+# dispatches and calls get a group of their own (the run id), so neither a
+# newer merge nor a queued third run cancels them and every merge keeps its
+# own result.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   checks:
     name: CI
