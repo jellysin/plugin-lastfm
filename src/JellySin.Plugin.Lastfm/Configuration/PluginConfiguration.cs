@@ -28,6 +28,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 
     public bool ScrobbleMusicVideos { get; set; }
 
+    // Off by default: Last.fm files a joined credit as an artist of its own, apart from each artist's page.
+    public bool ScrobbleAllArtists { get; set; }
+
     public Guid[] LibraryIds
     {
         get => _libraryIds;
