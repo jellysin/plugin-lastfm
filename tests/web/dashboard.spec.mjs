@@ -118,7 +118,7 @@ test('favourite synchronization reports running server state', async ({ page }) 
 const sections = ['overview', 'history', 'favourites', 'discovery', 'playlists'];
 const needsConnection = [
   ...sections.map(id => `#${id}`), ...sections.map(id => `nav.section-nav a[href="#${id}"]`),
-  '#disconnect-lastfm', 'label:has(#scrobbling)', '#library-exclusions', '#device-exclusions', '#media-type-exclusions', 'details:has(#delivery-status)',
+  '#disconnect-lastfm', 'label:has(#scrobbling)', '#library-exclusions', '#device-exclusions', '#media-type-exclusions', '#scrobble-log', 'details:has(#delivery-status)',
 ];
 
 async function expectOffered(page, offered) {
@@ -830,3 +830,21 @@ test('saving media types does not exclude a type the administrator turned off th
   await expect(page.locator('#status')).toHaveText('Media type scrobbling rules updated.');
   expect(state.excludedMediaTypes).toEqual(['MusicVideos']);
 });
+
+test('scrobble log toggle on saves preference and reload shows on', async ({ page }) => {
+  const state = await installServer(page);
+  await passwordLogin(page);
+
+  const checkbox = page.locator('#scrobble-log-enabled');
+  await expect(checkbox).not.toBeChecked();
+  await expect(page.locator('#scrobble-log-count')).toHaveText('0 entries logged.');
+
+  await checkbox.check();
+  await expect(page.locator('#status')).toHaveText('Scrobble log enabled.');
+  expect(state.scrobbleLogEnabled).toBe(true);
+
+  await page.reload();
+  await expect(page.locator('#signed-in')).toBeVisible();
+  await expect(page.locator('#scrobble-log-enabled')).toBeChecked();
+});
+

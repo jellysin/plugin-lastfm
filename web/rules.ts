@@ -129,3 +129,58 @@ async function onMediaTypeToggle(client: Client, list: HTMLElement): Promise<voi
     message('Media type scrobbling rules updated.');
   });
 }
+
+export interface ScrobbleLogSettings {
+  enabled: boolean;
+  count: number;
+}
+
+export async function refreshScrobbleLog(client: Client): Promise<void> {
+  const container = document.getElementById('scrobble-log');
+  if (!container || container.hidden) return;
+  try {
+    const data = await client.api<ScrobbleLogSettings>('Me/ScrobbleLog/Settings');
+    renderScrobbleLog(data);
+  } catch {
+    const countEl = document.getElementById('scrobble-log-count');
+    if (countEl) countEl.textContent = 'Could not load scrobble log settings.';
+  }
+}
+
+function renderScrobbleLog(data: ScrobbleLogSettings): void {
+  const checkbox = document.getElementById('scrobble-log-enabled') as HTMLInputElement | null;
+  const countEl = document.getElementById('scrobble-log-count');
+  if (checkbox) checkbox.checked = Boolean(data.enabled);
+  if (countEl) countEl.textContent = `${data.count ?? 0} entries logged.`;
+}
+
+export function setupScrobbleLog(client: Client): void {
+  const checkbox = document.getElementById('scrobble-log-enabled') as HTMLInputElement | null;
+  if (checkbox) {
+    checkbox.addEventListener('change', () => {
+      void run(null, async () => {
+        const res = await client.api<ScrobbleLogSettings>('Me/ScrobbleLog/Settings', 'PUT', { enabled: checkbox.checked });
+        renderScrobbleLog(res);
+        message(checkbox.checked ? 'Scrobble log enabled.' : 'Scrobble log disabled and cleared.');
+      });
+    });
+  }
+
+  const jsonBtn = document.getElementById('scrobble-log-download-json');
+  if (jsonBtn) {
+    jsonBtn.addEventListener('click', () => {
+      void run(null, async () => {
+        await client.download('Me/ScrobbleLog/Export?format=json', 'scrobbles.json');
+      });
+    });
+  }
+
+  const csvBtn = document.getElementById('scrobble-log-download-csv');
+  if (csvBtn) {
+    csvBtn.addEventListener('click', () => {
+      void run(null, async () => {
+        await client.download('Me/ScrobbleLog/Export?format=csv', 'scrobbles.csv');
+      });
+    });
+  }
+}

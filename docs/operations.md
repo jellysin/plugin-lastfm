@@ -284,6 +284,24 @@ devices of other users are never listed, even for users allowed on all devices. 
 exclusions are stored with the library exclusions in the user's plugin state and
 checked from memory while playback is captured.
 
+## Local scrobble export
+
+Users can optionally keep a local log of delivered scrobbles on the dashboard
+under "Scrobble log". The log is off by default and requires per-user opt-in.
+When enabled, each scrobble answered by Last.fm (result codes 0–3) is appended to
+`scrobble-log.json` in the user's state directory under the plugin data directory
+(`<DataPath>/jellysin-lastfm/state/<UserId>/`).
+
+The log is capped at 10,000 entries per user (`MaxLogEntries`), trimming the oldest
+entries once the limit is reached. Each record stores occurrence ID, completed-at
+timestamp (UTC), started-at timestamp, artist, title, album, album artist,
+MusicBrainz ID, and Last.fm result code. It stores no usernames, session keys, or URLs.
+Turning the setting off immediately deletes the log file from disk. Disconnecting
+the account or deleting the user in Jellyfin deletes all per-user state, including
+the log. Stored in the plugin data directory, the log is included in server backups.
+Users can download their history as JSON or RFC 4180 CSV (with formula-injection
+defense prefixes) directly from the dashboard.
+
 A play that is running while its user connects again, also to the same Last.fm
 account, is not submitted: connecting starts a new capture, and the tracker drops a
 play begun under the previous one and ignores its remaining progress. The next

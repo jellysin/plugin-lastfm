@@ -21,7 +21,8 @@ export async function installServer(page, { prefix = '', administrator = false, 
     ],
     excludedDevices: [], deviceFail: false,
     adminMediaTypes: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true },
-    excludedMediaTypes: [], mediaTypesFail: false };
+    excludedMediaTypes: [], mediaTypesFail: false,
+    scrobbleLogEnabled: false, scrobbleLogCount: 0 };
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -105,6 +106,24 @@ function respond(path, method, body, url, state) {
   if (endpoint.startsWith('Me/Playlists')) return playlists(endpoint, method, body, state);
   if (endpoint === 'Me/Devices') return devicesResponse(method, body, state);
   if (endpoint === 'Me/MediaTypes') return mediaTypesResponse(method, body, state);
+  if (endpoint.startsWith('Me/ScrobbleLog')) return scrobbleLogResponse(endpoint, method, body, url, state);
+  return { status: 404, body: 'No fixture response' };
+}
+
+function scrobbleLogResponse(endpoint, method, body, url, state) {
+  if (endpoint === 'Me/ScrobbleLog/Settings') {
+    if (method === 'PUT' || method === 'POST') {
+      state.scrobbleLogEnabled = Boolean(body?.enabled);
+      if (!state.scrobbleLogEnabled) state.scrobbleLogCount = 0;
+    }
+    return json({ Enabled: state.scrobbleLogEnabled, Count: state.scrobbleLogCount });
+  }
+  if (endpoint.startsWith('Me/ScrobbleLog/Export')) {
+    const format = url.searchParams.get('format');
+    if (format === 'csv') return { status: 200, contentType: 'text/csv', body: 'OccurrenceId,CompletedAt,StartedAt,Artist,Title,Album,AlbumArtist,MusicBrainzId,ResultCode\r\n' };
+    if (format === 'json') return json([]);
+    return { status: 400, body: 'Invalid format' };
+  }
   return { status: 404, body: 'No fixture response' };
 }
 

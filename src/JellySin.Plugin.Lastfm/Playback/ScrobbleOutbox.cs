@@ -3,6 +3,8 @@ using System.Text.Json;
 using JellySin.Plugin.Lastfm.Configuration;
 using JellySin.Plugin.Lastfm.Storage;
 using JellySin.Plugin.Lastfm.Transport;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace JellySin.Plugin.Lastfm.Playback;
 
@@ -15,8 +17,17 @@ public sealed record FlushOutcome(int Submitted, int Accepted, IReadOnlyList<int
 public enum NowPlayingAnswer { NotSent, Accepted, Ignored, NoIgnoreCode }
 public readonly record struct NowPlayingOutcome(NowPlayingAnswer Answer, int IgnoreCode = 0);
 
-public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, ILastfmClient client, TimeProvider clock)
+public sealed class ScrobbleOutbox(
+    IStateStore store,
+    AccountService accounts,
+    ILastfmClient client,
+    TimeProvider clock,
+    LibraryRuleService? rules = null,
+    ILogger<ScrobbleOutbox>? logger = null)
 {
+    public const string LogStoreKey = "scrobble-log";
+    public const int MaxLogEntries = 10_000;
+    private readonly ILogger<ScrobbleOutbox> _logger = logger ?? NullLogger<ScrobbleOutbox>.Instance;
     private const int MaxPending = 10_000;
     private const int MaxReceipts = 2000;
     // Last.fm ignore code 4 (timestamp too new) usually means the clocks disagree; the item retries by itself after a delay.
@@ -86,6 +97,7 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
             using var response = await client.CallForApplicationAsync("track.scrobble", BuildBatch(batch), account.SessionKey, account.ApplicationIdentity, RequestPriority.Listening, token).ConfigureAwait(false);
             var codes = ReadResults(response.RootElement, batch.Length);
             await CompleteAsync(userId, batch, codes, token).ConfigureAwait(false);
+            await AppendLogAsync(userId, batch, codes, token).ConfigureAwait(false);
             var accepted = codes.Count(code => code == 0);
             var ignoredCodes = codes.Where(code => code != 0).Distinct().OrderBy(code => code).ToArray();
             return new FlushOutcome(batch.Length, accepted, ignoredCodes, null);
@@ -224,4 +236,66 @@ public sealed class ScrobbleOutbox(IStateStore store, AccountService accounts, I
                 } : item).ToList()
             };
         }, cancellationToken);
+
+    private async Task AppendLogAsync(Guid userId, PendingScrobble[] batch, int[] codes, CancellationToken cancellationToken)
+    {
+        if (rules is null) return;
+        try
+        {
+            if (!await rules.IsScrobbleLogEnabledAsync(userId, cancellationToken).ConfigureAwait(false)) return;
+            var entries = ExtractCompletedEntries(batch, codes);
+            if (entries.Count == 0) return;
+            await store.UpdateAsync<List<ScrobbleLogEntry>>(userId, LogStoreKey, current => MergeLogEntries(current, entries), cancellationToken).ConfigureAwait(false);
+            // Switching the log off between the check and the write must not leave a log behind.
+            if (!await rules.IsScrobbleLogEnabledAsync(userId, cancellationToken).ConfigureAwait(false))
+                await store.DeleteAsync(userId, LogStoreKey, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning("Failed to append scrobble log ({ErrorType}).", exception.GetType().Name);
+        }
+    }
+
+    private List<ScrobbleLogEntry> ExtractCompletedEntries(PendingScrobble[] batch, int[] codes)
+    {
+        var entries = new List<ScrobbleLogEntry>();
+        var now = clock.GetUtcNow();
+        for (var i = 0; i < batch.Length; i++)
+        {
+            var code = codes[i];
+            if (code is >= 0 and <= 3)
+            {
+                var track = batch[i].Listen.Track;
+                entries.Add(new ScrobbleLogEntry(
+                    batch[i].Listen.OccurrenceId,
+                    now,
+                    batch[i].Listen.StartedAt,
+                    track.Artist,
+                    track.Title,
+                    track.Album,
+                    track.AlbumArtist,
+                    track.MusicBrainzId,
+                    code));
+            }
+        }
+        return entries;
+    }
+
+    private static List<ScrobbleLogEntry> MergeLogEntries(List<ScrobbleLogEntry>? current, List<ScrobbleLogEntry> entries)
+    {
+        var log = current ?? [];
+        var existing = log.Select(e => e.OccurrenceId).ToHashSet();
+        foreach (var entry in entries)
+        {
+            if (existing.Add(entry.OccurrenceId))
+            {
+                log.Add(entry);
+            }
+        }
+        if (log.Count > MaxLogEntries)
+        {
+            log.RemoveRange(0, log.Count - MaxLogEntries);
+        }
+        return log;
+    }
 }
