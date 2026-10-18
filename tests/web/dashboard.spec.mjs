@@ -429,6 +429,11 @@ async function openSettings(page, options = {}) {
     };
   }, setup);
   const fragment = await readFile(new URL('../../src/JellySin.Plugin.Lastfm/Web/admin.html', import.meta.url), 'utf8');
+  await page.route('**/Assets/*', async route => {
+    const name = route.request().url().split('/').at(-1);
+    const body = await readFile(new URL(`../../src/JellySin.Plugin.Lastfm/Web/${name}`, import.meta.url), 'utf8');
+    return route.fulfill({ contentType: name.endsWith('.js') ? 'text/javascript' : 'text/css', body });
+  });
   await page.route('http://127.0.0.1:4177/native', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html lang="en"><title>Native settings test</title><body>' + fragment + '</body></html>' }));
   await page.route('https://www.last.fm/**', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Last.fm</title>' }));
   await page.goto('http://127.0.0.1:4177/native' + setup.hash);
@@ -864,5 +869,29 @@ test('scrobble log toggle on saves preference and reload shows on', async ({ pag
   await page.reload();
   await expect(page.locator('#signed-in')).toBeVisible();
   await expect(page.locator('#scrobble-log-enabled')).toBeChecked();
+});
+
+test('dashboard renders German UI when browser locale is de-DE', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'de-DE' });
+  const page = await context.newPage();
+  try {
+    await installServer(page);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+    await expect(page.locator('#quick-connect')).toHaveText('Quick Connect verwenden');
+  } finally {
+    await context.close();
+  }
+});
+
+test('dashboard falls back to English when browser locale is fr-FR', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'fr-FR' });
+  const page = await context.newPage();
+  try {
+    await installServer(page);
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.locator('#quick-connect')).toHaveText('Use Quick Connect');
+  } finally {
+    await context.close();
+  }
 });
 

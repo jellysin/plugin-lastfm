@@ -35,7 +35,7 @@ export async function installServer(page, { prefix = '', administrator = false, 
     if (path === '/JellySin/Lastfm/') return route.fulfill({ contentType: 'text/html', body: await readFile(new URL('index.html', webRoot), 'utf8') });
     if (path.startsWith('/JellySin/Lastfm/Assets/')) {
       const name = path.split('/').at(-1);
-      if (!/^[a-z-]+\.(js|css)$/.test(name)) return route.abort();
+      if (!/^[a-z0-9-]+\.(js|css)$/.test(name)) return route.abort();
       return route.fulfill({ contentType: name.endsWith('.js') ? 'text/javascript' : 'text/css', body: await readFile(new URL(name, webRoot), 'utf8') });
     }
     const response = respond(path, request.method(), request.postDataJSON(), url, state);

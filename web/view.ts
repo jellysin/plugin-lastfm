@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export function element<T extends HTMLElement = HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) throw new Error(`Missing interface element: ${id}`);
@@ -29,7 +31,7 @@ export async function run(control: HTMLButtonElement | null, action: () => Promi
   element('workspace').setAttribute('aria-busy', 'true');
   try { await action(); }
   catch (error: unknown) {
-    if (!(error instanceof DOMException && error.name === 'AbortError')) message(error instanceof Error ? error.message : 'The operation failed.', true);
+    if (!(error instanceof DOMException && error.name === 'AbortError')) message(error instanceof Error ? error.message : t('view_operation_failed'), true);
   }
   finally {
     if (control) { busyControls.delete(control); control.removeAttribute('aria-disabled'); }

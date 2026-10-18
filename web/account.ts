@@ -1,19 +1,19 @@
 import { Client } from './client.js';
 import { bind, element, link, message, run } from './view.js';
 import { refreshDevices, refreshMediaTypes, refreshScrobbleLog } from './rules.js';
+import { t } from './i18n.js';
 
 interface Connection { connected: boolean; username?: string; needsReconnect: boolean; scrobblingEnabled: boolean; approvalPending?: boolean }
 interface Me { userName: string; isAdministrator: boolean; connection: Connection }
 interface LibraryItem { id: string; name: string; isAdminAllowed: boolean; isUserExcluded: boolean; isScrobbled: boolean }
 interface UserLibrariesResponse { mode: string; libraries: LibraryItem[] }
 
-const unconfirmed = 'Last.fm did not confirm the connection. Start again.';
 let administrator = false;
 
 export async function refreshAccount(client: Client): Promise<void> {
   element('sign-in').hidden = client.signedIn;
   element('signed-in').hidden = !client.signedIn;
-  if (!client.signedIn) { element('account-label').textContent = 'Connect your music.'; return; }
+  if (!client.signedIn) { element('account-label').textContent = t('app_account_connect_prompt'); return; }
   const me = await client.api<Me>('Me');
   if (!me.connection.approvalPending) { show(client, me); return; }
   // The browser came back from Last.fm with an approval: complete it without a further step.
@@ -22,8 +22,8 @@ export async function refreshAccount(client: Client): Promise<void> {
   catch (error) { if (!client.signedIn) throw error; confirmed = false; }
   client.resetAccount();
   show(client, await client.api<Me>('Me'));
-  if (!confirmed) throw new Error(unconfirmed);
-  message('Last.fm connected.');
+  if (!confirmed) throw new Error(t('account_unconfirmed'));
+  message(t('account_connected_notice'));
 }
 
 /** Reads the outcome a refused return left in the address and removes it, so that a reload does not repeat the notice. */
@@ -35,7 +35,7 @@ export function takeRefusedReturn(): boolean {
   return true;
 }
 
-const notStarted = 'Last.fm sign-in could not start.';
+const notStarted = (): string => t('account_sign_in_not_started');
 
 /** A refusal the page decides on its own, after the server answered. Its kind is told to the server, which otherwise sees nothing of it. */
 export class StartRefusal extends Error {
@@ -45,15 +45,15 @@ export class StartRefusal extends Error {
 /** What a refused return address tells the reader: an administrator can correct the server, anyone else can only pass it on. */
 export function returnRefusal(named: string, expected: string, administrator: boolean): string {
   return administrator
-    ? `${notStarted} The server names ${named} as the return address, but this page expects ${expected}. Set the published server address (start option published-server-url) to the address users open, or add the proxy under Networking, Known proxies. Then restart Jellyfin.`
-    : `${notStarted} Ask the administrator of this server to check the server address setting.`;
+    ? t('account_refusal_admin', { named, expected })
+    : t('account_refusal_user');
 }
 
 /** The only address the page leaves for: the Last.fm approval page, asked to return to this server's own callback. */
 export function approvalAddress(value: string, root: string, administrator = false): string {
   let target: URL;
-  try { target = new URL(value); } catch { throw new StartRefusal(notStarted, 'approval-address'); }
-  if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new StartRefusal(notStarted, 'approval-address');
+  try { target = new URL(value); } catch { throw new StartRefusal(notStarted(), 'approval-address'); }
+  if (target.origin !== 'https://www.last.fm' || target.pathname !== '/api/auth/') throw new StartRefusal(notStarted(), 'approval-address');
   // A server that does not know its public address names a return elsewhere; the token from Last.fm must not go there.
   const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
   const path = `${root}/JellySin/Lastfm/Callback`;
@@ -64,17 +64,17 @@ export function approvalAddress(value: string, root: string, administrator = fal
 function show(client: Client, me: Me): void {
   administrator = me.isAdministrator;
   element('account-label').textContent = me.userName;
-  element('connect-lastfm').textContent = me.connection.connected ? 'Reconnect Last.fm' : 'Connect Last.fm';
+  element('connect-lastfm').textContent = me.connection.connected ? t('account_reconnect_lastfm') : t('account_connect_lastfm');
   element('connection-status').textContent = me.connection.connected
-    ? `Connected as ${me.connection.username ?? ''}${me.connection.needsReconnect ? ' · reconnect required' : ''}`
-    : 'Connect Last.fm to start.';
+    ? `${t('account_connected_as', { username: me.connection.username ?? '' })}${me.connection.needsReconnect ? t('account_reconnect_required') : ''}`
+    : t('account_connect_to_start');
   for (const el of document.querySelectorAll<HTMLElement>('[data-needs-connection]')) el.hidden = !me.connection.connected;
   element<HTMLInputElement>('scrobbling').checked = me.connection.scrobblingEnabled;
   element<HTMLInputElement>('scrobbling').disabled = !me.connection.connected;
   element('administrator').hidden = !me.isAdministrator;
   const profile = element('profile-link');
   profile.replaceChildren();
-  if (me.connection.username) link(profile, 'Your Last.fm profile ↗', `https://www.last.fm/user/${encodeURIComponent(me.connection.username)}`, true);
+  if (me.connection.username) link(profile, t('account_profile_link'), `https://www.last.fm/user/${encodeURIComponent(me.connection.username)}`, true);
   if (me.isAdministrator) element<HTMLAnchorElement>('server-settings-link').href = `${client.root}/web/index.html#/configurationpage?name=jellysin-lastfm`;
   if (me.connection.connected) {
     void refreshLibraries(client);
@@ -94,7 +94,7 @@ export function setupAccount(client: Client, refresh: () => Promise<void>): void
       if (error instanceof StartRefusal) await client.api('Me/Connection/Refusal', 'POST', { reason: error.reason }).catch(() => undefined);
       throw error;
     }
-    message('Opening Last.fm…');
+    message(t('account_opening_lastfm'));
     location.assign(target);
   });
   bind('disconnect-lastfm', async () => {
@@ -107,14 +107,14 @@ export function setupAccount(client: Client, refresh: () => Promise<void>): void
     client.resetAccount();
     element('disconnect-confirmation').hidden = true;
     await refresh();
-    message('Last.fm disconnected and private plugin data cleared.');
+    message(t('account_disconnected_notice'));
   });
   element<HTMLInputElement>('scrobbling').addEventListener('change', event => {
     const control = event.currentTarget as HTMLInputElement;
     const enabled = control.checked;
     control.disabled = true;
     void run(null, async () => {
-      try { await client.api('Me/Scrobbling', 'PUT', { enabled }); message(enabled ? 'Scrobbling enabled.' : 'Scrobbling paused.'); }
+      try { await client.api('Me/Scrobbling', 'PUT', { enabled }); message(enabled ? t('account_scrobbling_enabled') : t('account_scrobbling_paused')); }
       catch (error) { control.checked = !enabled; throw error; }
       finally { control.disabled = false; }
     });
@@ -129,7 +129,7 @@ export async function refreshLibraries(client: Client): Promise<void> {
     renderLibraries(client, data);
   } catch {
     const summary = document.getElementById('library-exclusions-summary');
-    if (summary) summary.textContent = 'Could not load library settings.';
+    if (summary) summary.textContent = t('account_load_libraries_failed');
   }
 }
 
@@ -138,14 +138,14 @@ function renderLibraries(client: Client, data: UserLibrariesResponse): void {
   const list = element('library-exclusions-list');
   list.replaceChildren();
   if (!data.libraries || data.libraries.length === 0) {
-    summary.textContent = 'No music libraries found on this server.';
+    summary.textContent = t('account_no_libraries');
     return;
   }
   summary.textContent = data.mode === 'AllowList'
-    ? 'The server allows scrobbling only from selected libraries. You may exclude additional libraries.'
+    ? t('account_libraries_allowlist')
     : data.mode === 'BlockList'
-    ? 'The server blocks scrobbling from certain libraries. You may exclude additional libraries.'
-    : 'Select which libraries scrobble to your Last.fm account:';
+    ? t('account_libraries_blocklist')
+    : t('account_libraries_select');
 
   for (const lib of data.libraries) {
     const label = document.createElement('label');
@@ -158,7 +158,7 @@ function renderLibraries(client: Client, data: UserLibrariesResponse): void {
     input.addEventListener('change', () => void onLibraryToggle(client, list));
     label.appendChild(input);
     const span = document.createElement('span');
-    span.textContent = lib.isAdminAllowed ? ` ${lib.name}` : ` ${lib.name} (excluded by administrator)`;
+    span.textContent = lib.isAdminAllowed ? ` ${lib.name}` : ` ${lib.name}${t('account_library_excluded_by_admin')}`;
     label.appendChild(span);
     list.appendChild(label);
   }
@@ -174,7 +174,7 @@ async function onLibraryToggle(client: Client, list: HTMLElement): Promise<void>
   }
   void run(null, async () => {
     await client.api('Me/Libraries', 'PUT', { excludedLibraries: excluded });
-    message('Library scrobbling rules updated.');
+    message(t('account_libraries_updated'));
   });
 }
 

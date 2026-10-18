@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export interface Bootstrap { basePath: string; serverId: string; version: string }
 export interface Session { accessToken: string; user: { name: string }; serverId: string }
 
@@ -14,7 +16,7 @@ const maxValues = 4_000_000;
 /** Stop reading as soon as the byte budget is exhausted, including chunked responses. */
 export async function readJson(response: Response, limit = 4_000_000): Promise<unknown> {
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('The server returned an empty response.');
+  if (!reader) throw new Error(t('client_empty_response'));
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const parts: string[] = [];
   let bytes = 0;
@@ -25,10 +27,10 @@ export async function readJson(response: Response, limit = 4_000_000): Promise<u
       done = chunk.done;
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
-      if (bytes > limit) throw new Error('The server response is too large.');
+      if (bytes > limit) throw new Error(t('client_response_too_large'));
       parts.push(decoder.decode(chunk.value, { stream: true }));
     }
-    if (!done) throw new Error('The server response is too large.');
+    if (!done) throw new Error(t('client_response_too_large'));
     parts.push(decoder.decode());
     return normalize(JSON.parse(parts.join('')) as unknown);
   } finally { await reader.cancel(); reader.releaseLock(); }
@@ -44,15 +46,15 @@ export function normalize(value: unknown): unknown {
     const next = pending.pop();
     if (next) next.place(shallow(next.source, next.depth, pending));
   }
-  if (pending.length > 0) throw new Error('The server response is too large.');
+  if (pending.length > 0) throw new Error(t('client_response_too_large'));
   return result;
 }
 
 /** One level of the walk: containers are created here and their entries are queued for the next steps. */
 function shallow(value: unknown, depth: number, pending: Pending[]): unknown {
-  if (depth > 16) throw new Error('The server response is too deeply nested.');
+  if (depth > 16) throw new Error(t('client_response_too_deep'));
   if (Array.isArray(value)) {
-    if (value.length > 20_000) throw new Error('The server response is too large.');
+    if (value.length > 20_000) throw new Error(t('client_response_too_large'));
     const list: unknown[] = new Array<unknown>(value.length);
     value.forEach((entry: unknown, index: number) => pending.push({ source: entry, depth: depth + 1, place: normalized => { list[index] = normalized; } }));
     return list;
@@ -92,7 +94,7 @@ export class Client extends EventTarget {
   constructor(readonly config: Bootstrap, private readonly storage: Storage | undefined) {
     super();
     if (!/^\/(?:[^?#\\\r\n]*)$/.test(config.basePath || '/') || config.basePath.startsWith('//')) {
-      throw new Error('The server base path is invalid.');
+      throw new Error(t('client_base_path_invalid'));
     }
     this.root = config.basePath.replace(/\/$/, '');
     this.storageKey = `jellysin:${config.serverId}:${this.root}`;
@@ -104,7 +106,7 @@ export class Client extends EventTarget {
 
   acceptSession(session: Session): void {
     if (!/^[a-f0-9]{32,128}$/i.test(session.accessToken) || session.serverId !== this.config.serverId) {
-      throw new Error('The server returned an invalid sign-in session.');
+      throw new Error(t('client_invalid_session'));
     }
     if (this.token) this.clearSession();
     this.sessionRequests.abort();
@@ -134,9 +136,9 @@ export class Client extends EventTarget {
         method: 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store',
         headers: { Authorization: authorization }, signal: AbortSignal.timeout(15_000),
       });
-      if (!response.ok && response.status !== 401) throw new Error('Revocation failed.');
+      if (!response.ok && response.status !== 401) throw new Error(t('client_revocation_failed'));
     } catch {
-      if (!this.signedIn) throw new Error('Signed out of this page. Jellyfin could not confirm server-session revocation.');
+      if (!this.signedIn) throw new Error(t('client_signed_out_unconfirmed'));
     }
   }
 
@@ -161,12 +163,12 @@ export class Client extends EventTarget {
       signal: requestSignal,
     });
     requestSignal.throwIfAborted();
-    if (response.status === 401) { this.clearSession(); throw new Error('Your Jellyfin session expired. Sign in again.'); }
-    if (!response.ok) throw new Error(response.status === 403 ? 'Your account cannot perform this action.'
-      : response.status === 507 ? 'JellySin reached its data storage limit. Any saved progress is retained; check storage before retrying.'
-      : response.status === 409 ? await marked(response, notConnectedType) ? 'Connect Last.fm first.' : 'This action is unavailable or its preview expired. Refresh and try again.'
-      : response.status === 503 && await marked(response, applicationMissingType) ? 'This server has no usable Last.fm application. Ask a server administrator.'
-      : `The request could not be completed (HTTP ${response.status}).`);
+    if (response.status === 401) { this.clearSession(); throw new Error(t('client_session_expired')); }
+    if (!response.ok) throw new Error(response.status === 403 ? t('client_forbidden')
+      : response.status === 507 ? t('client_storage_full')
+      : response.status === 409 ? await marked(response, notConnectedType) ? t('client_connect_first') : t('client_unavailable_or_expired')
+      : response.status === 503 && await marked(response, applicationMissingType) ? t('client_application_missing')
+      : t('client_request_failed', { status: response.status }));
     if (response.status === 204) return undefined as T;
     const result = await readJson(response) as T;
     requestSignal.throwIfAborted();
@@ -183,8 +185,8 @@ export class Client extends EventTarget {
       signal: requestSignal,
     });
     requestSignal.throwIfAborted();
-    if (response.status === 401) { this.clearSession(); throw new Error('Your Jellyfin session expired. Sign in again.'); }
-    if (!response.ok) throw new Error(`The download could not be completed (HTTP ${response.status}).`);
+    if (response.status === 401) { this.clearSession(); throw new Error(t('client_session_expired')); }
+    if (!response.ok) throw new Error(t('client_download_failed', { status: response.status }));
     const blob = await response.blob();
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       const url = URL.createObjectURL(blob);

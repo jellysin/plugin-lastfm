@@ -5,8 +5,8 @@
   "type": "module",
   "license": "EUPL-1.2",
   "scripts": {
-    "build": "tsc && node tools/web-budget.mjs",
-    "check": "tsc --noEmit && eslint src/JellySin.Plugin.Lastfm/Web/*.js tools/*.mjs tests/web",
+    "build": "node tools/bundle-catalogs.mjs && tsc && node tools/web-budget.mjs",
+    "check": "node tools/bundle-catalogs.mjs && tsc --noEmit && eslint src/JellySin.Plugin.Lastfm/Web/*.js tools/*.mjs tests/web",
     "test": "node --test tests/web/*.test.mjs",
     "test:e2e": "playwright test"
   },

@@ -14,6 +14,7 @@ TestResults/
 test-results/
 playwright-report/
 src/JellySin.Plugin.Lastfm/Web/*.js
+web/catalogs.ts
 
 # BEGIN praetor private artifacts (praetorctl adopt)
 .workingdir/
