@@ -42,7 +42,11 @@ FIRST_PARTY = (
 )
 # Split, so that reuse lint does not read this file as declaring a licence expression.
 SPDX_HEADER = re.compile(rb"SPDX-License-" rb"Identifier:([^\r\n]*)")
-MIT_NOTICE = re.compile(rb"\(MIT\)|MIT [Ll]icen[cs]e|Permission is hereby " rb"granted, free of charge")
+# A notice is the provenance form, a licence title on a line of its own, or the grant text;
+# prose that only mentions the MIT licence, such as a changelog entry, is not one.
+MIT_NOTICE = re.compile(
+    rb"\(MIT\)|^[ \t#/*<!-]*MIT Licen[cs]e[ \t]*$|Permission is hereby " rb"granted, free of charge", re.MULTILINE
+)
 MIT_ID = re.compile(r"\bMIT\b")
 # REUSE ignores licence files wherever they are, so their MIT text needs no label.
 LICENCE_FILE = re.compile(r"(?:^|.*/)(?:LICEN[CS]E|COPYING)[^/]*|LICENSES/.*")

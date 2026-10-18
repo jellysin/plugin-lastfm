@@ -124,6 +124,14 @@ class MitLabelTests(PlantedRepository):
         self.write("src/Vendored.cs", "// " + MIT_NOTICE)
         self.assertEqual(mit_unlabelled(self.root), ["src/Vendored.cs"])
 
+    def test_mit_licence_title_line_labelled_eupl_only_is_refused(self):
+        self.write("src/Vendored.cs", "// MIT License\n//\n// Copyright (c) Upstream\n")
+        self.assertEqual(mit_unlabelled(self.root), ["src/Vendored.cs"])
+
+    def test_changelog_prose_naming_the_mit_licence_is_not_a_notice(self):
+        self.write("CHANGELOG.md", "* label the adapted register skills with their upstream MIT licence ([#170](x))\n")
+        self.assertEqual(mit_unlabelled(self.root), [])
+
     def test_mit_table_accepts_the_file(self):
         self.write(SKILL, MIT_PROVENANCE)
         self.write("REUSE.toml", REUSE_TOML + mit_table(".agents/skills/upstream/**"))
