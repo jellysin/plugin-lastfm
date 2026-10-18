@@ -6,9 +6,10 @@
 # matched by more than one table (REUSE specification 3.3). Full licence texts
 # live under LICENSES/; the root LICENSE is the EUPL-1.2 text shipped in the
 # plugin package. Last.fm data and third-party dependencies are not part of this
-# repository and keep their own terms. The vendored register skills under
-# .agents/skills and .claude/skills carry their upstream MIT notices in their
-# own LICENSE files. Run `reuse lint` to verify.
+# repository and keep their own terms. The register skills under
+# .agents/skills and .claude/skills adapt MIT-licensed upstream work; the last
+# tables add that licence and its copyright holders to the EUPL-1.2 adaptation.
+# Run `reuse lint` to verify.
 version = 1
 SPDX-PackageName = "jellysin-plugin-lastfm"
 SPDX-PackageSupplier = "lusoris <lusoris@pm.me>"
@@ -39,3 +40,16 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 lusoris <lusoris@pm.me>"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
 
+# ── Register skills adapted from MIT-licensed upstream work ─────────────────
+# The upstream notices are the LICENSE file in each skill directory.
+[[annotations]]
+path = [".agents/skills/adhd-format/**", ".claude/skills/adhd-format/**", ".agents/skills/social-text/**", ".claude/skills/social-text/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Ayoub Ghriss"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [".agents/skills/caveman/**", ".claude/skills/caveman/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Julius Brussee"
+SPDX-License-Identifier = "MIT"

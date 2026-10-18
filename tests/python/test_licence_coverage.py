@@ -1,4 +1,5 @@
-"""A file the whole-tree REUSE table would license without a declaration fails the licence coverage check."""
+"""A file the whole-tree REUSE table would license without a declaration, or would label
+EUPL-1.2 only although it names an MIT origin, fails the licence coverage check."""
 
 import contextlib
 import io
@@ -7,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.licence_coverage import CoverageError, main, pattern, undeclared
+from tools.licence_coverage import CoverageError, main, mit_unlabelled, pattern, undeclared
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 REUSE_TOML = """version = 1
@@ -19,6 +20,19 @@ SPDX-License-Identifier = "EUPL-1.2"
 path = ["docs/**"]
 SPDX-FileCopyrightText = "2026 Test"
 SPDX-License-Identifier = "CC-BY-SA-4.0"
+"""
+# Split, so that the coverage check does not read this file as naming an MIT origin.
+MIT_PROVENANCE = "derived_from: \"https://example.org/upstream (" "MIT)\"\n"
+MIT_NOTICE = "Permission is hereby " "granted, free of charge, to any person\n"
+SKILL = ".agents/skills/upstream/SKILL.md"
+
+
+def mit_table(path, licence="MIT"):
+    return f"""[[annotations]]
+path = ["{path}"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Upstream"
+SPDX-License-Identifier = "{licence}"
 """
 
 
@@ -33,8 +47,13 @@ class RepositoryTests(unittest.TestCase):
     def test_repository_has_no_undeclared_file(self):
         self.assertEqual(undeclared(REPOSITORY), [])
 
+    def test_repository_labels_every_mit_origin_mit(self):
+        self.assertEqual(mit_unlabelled(REPOSITORY), [])
 
-class PlantedTests(unittest.TestCase):
+
+class PlantedRepository(unittest.TestCase):
+    """A temporary git repository with a declared tree; holds no tests itself."""
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
@@ -52,6 +71,8 @@ class PlantedTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
 
+
+class PlantedTests(PlantedRepository):
     def test_declared_tree_passes(self):
         code, output, errors = run(["--root", str(self.root)])
         self.assertEqual((code, errors), (0, ""))
@@ -90,6 +111,37 @@ class PlantedTests(unittest.TestCase):
     def test_missing_repository_fails_closed(self):
         with self.assertRaises(CoverageError):
             undeclared(self.root / "absent")
+
+
+class MitLabelTests(PlantedRepository):
+    def test_mit_provenance_labelled_eupl_only_is_refused(self):
+        self.write(SKILL, MIT_PROVENANCE)
+        code, _, errors = run(["--root", str(self.root)])
+        self.assertEqual(code, 1)
+        self.assertIn(f"{SKILL}: names an MIT origin but is not labelled MIT", errors)
+
+    def test_mit_notice_text_labelled_eupl_only_is_refused(self):
+        self.write("src/Vendored.cs", "// " + MIT_NOTICE)
+        self.assertEqual(mit_unlabelled(self.root), ["src/Vendored.cs"])
+
+    def test_mit_table_accepts_the_file(self):
+        self.write(SKILL, MIT_PROVENANCE)
+        self.write("REUSE.toml", REUSE_TOML + mit_table(".agents/skills/upstream/**"))
+        self.assertEqual(mit_unlabelled(self.root), [])
+
+    def test_table_with_another_licence_does_not_accept_the_file(self):
+        self.write(SKILL, MIT_PROVENANCE)
+        self.write("REUSE.toml", REUSE_TOML + mit_table(".agents/skills/upstream/**", "Apache-2.0"))
+        self.assertEqual(mit_unlabelled(self.root), [SKILL])
+
+    def test_own_mit_header_accepts_the_file(self):
+        self.write("src/Vendored.cs", "// SPDX-License-" "Identifier: EUPL-1.2 AND MIT\n// " + MIT_NOTICE)
+        self.assertEqual(mit_unlabelled(self.root), [])
+
+    def test_licence_files_need_no_label(self):
+        self.write(".agents/skills/upstream/LICENSE", "MIT License\n\n" + MIT_NOTICE)
+        self.write("LICENSES/MIT.txt", MIT_NOTICE)
+        self.assertEqual(mit_unlabelled(self.root), [])
 
 
 class PatternTests(unittest.TestCase):
