@@ -265,6 +265,12 @@ Any item matching an active block rule is rejected in memory when playback is
 captured, before per-user scrobble rules are evaluated and without database or
 network operations.
 
+An administrator can also turn on "Scrobble only tracks with a MusicBrainz
+recording ID" (`RequireMusicBrainzId`). When enabled, plays whose item has no
+valid MusicBrainz track ID (absent, empty, or not a parseable GUID) are dropped
+in memory during capture, before per-user scrobble rules run, and are neither
+scrobbled nor sent as now playing.
+
 Each user can narrow these rules for their own account on the dashboard, under
 "Library scrobbling", "Devices that scrobble" and "Media types that scrobble". A
 user can exclude more libraries, devices or media types, but never turn on what an

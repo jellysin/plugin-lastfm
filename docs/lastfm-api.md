@@ -108,6 +108,11 @@ Empty album or album artist fields are omitted. The settings page keeps at most
 64 rules; a rule without a match, with a match over 512 characters or with a
 replacement over 1024 characters is dropped when the settings are saved.
 
+With "Scrobble only tracks with a MusicBrainz recording ID" (`RequireMusicBrainzId`)
+on the settings page, a play whose item has no valid MusicBrainz recording id
+(provider id `MusicBrainzTrack` absent, empty or not a valid GUID) is dropped
+during capture and is neither scrobbled nor sent as now playing.
+
 Tracks matching server-wide block rules (`BlockRules.cs`) are dropped during
 capture and are never scrobbled or sent as now playing. Each rule targets genre,
 artist, title or rating as a case-insensitive, trimmed whole-field match without

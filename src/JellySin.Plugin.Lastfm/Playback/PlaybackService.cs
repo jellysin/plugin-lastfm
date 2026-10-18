@@ -152,16 +152,17 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
             var item = args.Item;
             var config = libraryRules.GetConfiguration();
             if (BlockRules.IsBlocked(item, config.BlockRules)) return;
+            var musicBrainzId = ResolveMusicBrainzId(item);
+            if (config.RequireMusicBrainzId && musicBrainzId is null) return;
             var artist = ArtistCredit.Format(performed.Artists, config.ScrobbleAllArtists);
             if (artist is null || string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 1024) return;
             var sessionId = args.PlaySessionId ?? args.Session?.Id ?? args.DeviceId;
             if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > 256) return;
-            item.ProviderIds.TryGetValue("MusicBrainzTrack", out var mbid);
             var duration = (item.RunTimeTicks ?? 0) / (double)TimeSpan.TicksPerSecond;
             var threshold = Plugin.Instance?.Configuration.Threshold() ?? ScrobbleThreshold.Lastfm;
             if (!threshold.Counts(duration) || duration > int.MaxValue) return;
             var track = new MusicTrack(item.Id, artist, item.Name, item.Album?.Length <= 4096 ? item.Album : null,
-                Guid.TryParse(mbid, out var identifier) ? identifier.ToString() : null, duration,
+                musicBrainzId, duration,
                 (item as IHasAlbumArtist)?.AlbumArtists.FirstOrDefault() is { Length: <= 1024 } albumArtist ? albumArtist : null);
             var timestamp = clock.GetTimestamp();
             var utc = clock.GetUtcNow();
@@ -176,6 +177,11 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
         }
         catch (Exception) { Interlocked.Increment(ref _dropped); }
     }
+
+    private static string? ResolveMusicBrainzId(BaseItem item)
+        => item.ProviderIds.TryGetValue("MusicBrainzTrack", out var mbid) && Guid.TryParse(mbid, out var identifier)
+            ? identifier.ToString()
+            : null;
 
     private void Detach()
     {
