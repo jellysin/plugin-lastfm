@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/jellysin/plugin-lastfm/compare/v0.2.0...v0.3.0) (2026-10-18)
+
+
+### Features
+
+* clean track metadata with server rules before sending it ([#171](https://github.com/jellysin/plugin-lastfm/issues/171)) ([f89c405](https://github.com/jellysin/plugin-lastfm/commit/f89c405156ee6233b1d26ac267f9d920d822f1ac))
+* let administrators make the scrobble threshold stricter ([#156](https://github.com/jellysin/plugin-lastfm/issues/156)) ([55d7960](https://github.com/jellysin/plugin-lastfm/commit/55d796046fcd04e0fd91242eacf702f52c5cedce))
+* send the joined artist credit as an option ([#163](https://github.com/jellysin/plugin-lastfm/issues/163)) ([11c92a1](https://github.com/jellysin/plugin-lastfm/commit/11c92a17a39f18bc5fc2ed1b63a39b98418df0df))
+
+
+### Bug Fixes
+
+* label the adapted register skills with their upstream MIT licence ([#170](https://github.com/jellysin/plugin-lastfm/issues/170)) ([4eb575c](https://github.com/jellysin/plugin-lastfm/commit/4eb575c6a7d459ee157efa99c4af4338adc1cd67))
+* stop reading changelog prose as an MIT notice ([#172](https://github.com/jellysin/plugin-lastfm/issues/172)) ([123f243](https://github.com/jellysin/plugin-lastfm/commit/123f24342dd172997d783e6e47e567f975a9b979))
+
 ## [0.2.0](https://github.com/jellysin/plugin-lastfm/compare/v0.1.0...v0.2.0) (2026-10-17)
 
 
