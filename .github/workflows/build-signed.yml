@@ -75,7 +75,7 @@ jobs:
           dotnet restore --locked-mode
           dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
       - name: Package the plugin, release metadata, checksums and SPDX SBOM
-        uses: jellysin/release-helper/actions/package@043c6288642b0734ba53e46603a02cfdb3ca0014 # v1.2.2
+        uses: jellysin/release-helper/actions/package@f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
           tag: ${{ inputs.tag }}
@@ -88,7 +88,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jellysin/release-helper
-          ref: 043c6288642b0734ba53e46603a02cfdb3ca0014 # v1.2.2
+          ref: f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
           path: build/repro-tooling
           persist-credentials: false
       - name: Verify production artifact reproducibility with the embedded application
