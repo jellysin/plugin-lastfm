@@ -36,7 +36,7 @@ public sealed class PlaylistsController(PlaylistService playlists) : PrivateCont
     [HttpPost]
     public Task<PlaylistRecipe> Generate(PlaylistInput input, CancellationToken cancellationToken) =>
         playlists.GenerateAsync(CallerId, new(input.Id, input.Name, input.Source, input.Period,
-            input.SeedItemId, input.Limit, input.DailyRefresh), cancellationToken);
+            input.SeedItemId, input.Limit, input.DailyRefresh, RetentionDays: input.RetentionDays), cancellationToken);
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> StopManaging(Guid id, CancellationToken cancellationToken)
@@ -53,4 +53,5 @@ public sealed record PlaylistInput(
     [Required, StringLength(16)] string Period = "1month",
     Guid? SeedItemId = null,
     [Range(1, 200)] int Limit = 50,
-    bool DailyRefresh = false);
+    bool DailyRefresh = false,
+    [Range(0, 90)] int RetentionDays = 0);

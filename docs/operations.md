@@ -471,6 +471,12 @@ update appears in the page for review. Cancelling it pauses daily refresh and ke
 the possibly partial playlist; subsequent cancellation recovery completes that
 intent instead of resuming the old update.
 
+Similarity and discovery recipes also support rotation with a retention period
+between 1 and 90 days. When enabled, tracks included in recent generations within
+the retention window are excluded on subsequent daily refreshes in favor of fresh
+candidates. If fewer unplayed candidates remain than the requested limit, the
+oldest previously used tracks fill the remainder so the playlist never shrinks.
+
 ## Library and clients
 
 The plugin writes no Last.fm metadata, tags or artwork into the Jellyfin library and
