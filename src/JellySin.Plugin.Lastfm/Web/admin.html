@@ -14,6 +14,10 @@
         <div class="checkboxContainer"><label><input id="jellysin-media-audiobooks" is="emby-checkbox" type="checkbox"><span>Audiobook chapters</span></label></div>
         <div class="checkboxContainer"><label><input id="jellysin-media-music-videos" is="emby-checkbox" type="checkbox"><span>Music videos</span></label></div>
       </fieldset>
+      <div class="checkboxContainer checkboxContainer-withDescription" style="margin-top:1rem;">
+        <label><input id="jellysin-all-artists" is="emby-checkbox" type="checkbox"><span>Send every credited artist</span></label>
+        <div class="fieldDescription checkboxFieldDescription">A track with several artists is sent as "A, B &amp; C" instead of under its first artist. Last.fm keeps that credit as an artist of its own.</div>
+      </div>
       <fieldset id="jellysin-threshold" style="margin-top:1rem;">
         <legend>When a play counts</legend>
         <p>Last.fm counts a track longer than 30 seconds once half of it or 4 minutes, whichever comes first, has been heard. These settings can only make that stricter.</p>
@@ -166,6 +170,7 @@
         byId('jellysin-media-music').checked = config.ScrobbleMusic !== false;
         byId('jellysin-media-audiobooks').checked = config.ScrobbleAudiobooks === true;
         byId('jellysin-media-music-videos').checked = config.ScrobbleMusicVideos === true;
+        byId('jellysin-all-artists').checked = config.ScrobbleAllArtists === true;
         for (const field of thresholdFields) byId(field.id).value = String(thresholdValue(config[field.key], field));
         const mode = config.LibraryMode === 1 || String(config.LibraryMode).toLowerCase() === 'allowlist' ? 'AllowList'
           : config.LibraryMode === 2 || String(config.LibraryMode).toLowerCase() === 'blocklist' ? 'BlockList' : 'All';
@@ -253,6 +258,7 @@
         config.ScrobbleMusic = byId('jellysin-media-music').checked;
         config.ScrobbleAudiobooks = byId('jellysin-media-audiobooks').checked;
         config.ScrobbleMusicVideos = byId('jellysin-media-music-videos').checked;
+        config.ScrobbleAllArtists = byId('jellysin-all-artists').checked;
         for (const field of thresholdFields) config[field.key] = thresholdValue(Number(byId(field.id).value), field);
         if (librariesListed) {
           const mode = byId('jellysin-library-mode').value;

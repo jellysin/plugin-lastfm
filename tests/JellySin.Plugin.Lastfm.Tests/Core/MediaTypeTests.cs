@@ -72,7 +72,7 @@ public sealed class MediaTypeTests
         return (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending;
     }
 
-    private static async Task PlayAsync(CoreFixture fixture, LibraryRuleService rules, ScrobbleOutbox outbox, BaseItem item)
+    internal static async Task PlayAsync(CoreFixture fixture, LibraryRuleService rules, ScrobbleOutbox outbox, BaseItem item)
     {
         var sessions = new Mock<ISessionManager>();
         var plugins = new Mock<IPluginManager>();
