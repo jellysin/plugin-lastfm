@@ -13,6 +13,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public const int MaxConfiguredLibraries = 256;
     private Guid[] _libraryIds = [];
+    private int _scrobblePercent = ScrobbleThreshold.LastfmPercent;
+    private int _scrobbleCeilingSeconds = ScrobbleThreshold.LastfmCeilingSeconds;
+    private int _scrobbleMinimumLengthSeconds = ScrobbleThreshold.LastfmMinimumLengthSeconds;
 
     public bool Enabled { get; set; } = true;
 
@@ -30,6 +33,45 @@ public sealed class PluginConfiguration : BasePluginConfiguration
         get => _libraryIds;
         set => _libraryIds = value is null ? [] : value.Distinct().Take(MaxConfiguredLibraries).ToArray();
     }
+
+    // Last.fm's values are the minimum it accepts, so each setting can only make the threshold stricter.
+    public int ScrobblePercent
+    {
+        get => _scrobblePercent;
+        set => _scrobblePercent = Math.Clamp(value, ScrobbleThreshold.LastfmPercent, ScrobbleThreshold.MaxPercent);
+    }
+
+    public int ScrobbleCeilingSeconds
+    {
+        get => _scrobbleCeilingSeconds;
+        set => _scrobbleCeilingSeconds = Math.Clamp(value, ScrobbleThreshold.LastfmCeilingSeconds, ScrobbleThreshold.MaxCeilingSeconds);
+    }
+
+    public int ScrobbleMinimumLengthSeconds
+    {
+        get => _scrobbleMinimumLengthSeconds;
+        set => _scrobbleMinimumLengthSeconds = Math.Clamp(value, ScrobbleThreshold.LastfmMinimumLengthSeconds, ScrobbleThreshold.MaxMinimumLengthSeconds);
+    }
+
+    public ScrobbleThreshold Threshold() => new(ScrobblePercent, ScrobbleCeilingSeconds, ScrobbleMinimumLengthSeconds);
+}
+
+/// <summary>How much of a track must be heard before it counts as a listen.</summary>
+/// <remarks>Last.fm counts a track longer than 30 seconds once half of it or 4 minutes, whichever is earlier, has been heard.</remarks>
+public sealed record ScrobbleThreshold(int Percent, int CeilingSeconds, int MinimumLengthSeconds)
+{
+    public const int LastfmPercent = 50;
+    public const int MaxPercent = 100;
+    public const int LastfmCeilingSeconds = 240;
+    public const int MaxCeilingSeconds = 7200;
+    public const int LastfmMinimumLengthSeconds = 30;
+    public const int MaxMinimumLengthSeconds = 600;
+
+    public static ScrobbleThreshold Lastfm { get; } = new(LastfmPercent, LastfmCeilingSeconds, LastfmMinimumLengthSeconds);
+
+    public bool Counts(double durationSeconds) => durationSeconds > MinimumLengthSeconds;
+
+    public double RequiredSeconds(double durationSeconds) => Math.Min(durationSeconds * (Percent / 100.0), CeilingSeconds);
 }
 
 public sealed record ApplicationCredentials(string ApiKey, string Secret)
