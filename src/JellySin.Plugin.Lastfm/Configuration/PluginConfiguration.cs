@@ -12,7 +12,9 @@ public enum LibraryFilterMode
 public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public const int MaxConfiguredLibraries = 256;
+    public const int MaxMetadataRules = 64;
     private Guid[] _libraryIds = [];
+    private MetadataRule[] _metadataRules = [];
     private int _scrobblePercent = ScrobbleThreshold.LastfmPercent;
     private int _scrobbleCeilingSeconds = ScrobbleThreshold.LastfmCeilingSeconds;
     private int _scrobbleMinimumLengthSeconds = ScrobbleThreshold.LastfmMinimumLengthSeconds;
@@ -35,6 +37,18 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     {
         get => _libraryIds;
         set => _libraryIds = value is null ? [] : value.Distinct().Take(MaxConfiguredLibraries).ToArray();
+    }
+
+    public MetadataRule[] MetadataRules
+    {
+        get => _metadataRules;
+        set => _metadataRules = value is null ? [] : value
+            // An empty match would correct nothing or let a pattern insert its replacement between every character.
+            .Where(rule => rule is not null && !string.IsNullOrEmpty(rule.Match)
+                && rule.Match.Length <= MetadataRule.MaxMatchLength
+                && (rule.Replacement?.Length ?? 0) <= MetadataRule.MaxReplacementLength)
+            .Take(MaxMetadataRules)
+            .ToArray();
     }
 
     // Last.fm's values are the minimum it accepts, so each setting can only make the threshold stricter.

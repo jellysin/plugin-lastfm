@@ -427,7 +427,7 @@ test('native admin settings save the library rule only when the libraries could 
   await page.locator('#jellysin-library-mode').selectOption('AllowList');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 1, LibraryIds: [music, books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 1, LibraryIds: [music, books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, MetadataRules: [] });
 });
 
 test('native admin settings keep the library rule when the libraries could not be listed', async ({ page }) => {
@@ -436,7 +436,7 @@ test('native admin settings keep the library rule when the libraries could not b
   await expect(page.locator('#jellysin-libraries-list')).toHaveText('Could not load libraries.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 2, LibraryIds: [books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 2, LibraryIds: [books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, MetadataRules: [] });
 });
 
 test('native admin settings save the media types to scrobble', async ({ page }) => {
@@ -449,7 +449,7 @@ test('native admin settings save the media types to scrobble', async ({ page }) 
   await page.getByLabel('Music videos').check();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: false, ScrobbleAudiobooks: true, ScrobbleMusicVideos: true , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: false, ScrobbleAudiobooks: true, ScrobbleMusicVideos: true , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, MetadataRules: [] });
 });
 
 test('native admin settings show the media type defaults for a configuration saved before they existed', async ({ page }) => {
@@ -501,6 +501,43 @@ test('native admin settings show a stored joined artist credit option', async ({
   await expect(page.getByLabel('Send every credited artist')).toBeChecked();
 });
 
+test('native admin settings list, add, remove and save metadata cleanup rules', async ({ page }) => {
+  // Jellyfin may send an enum by name or by number; the page saves numbers.
+  await openSettings(page, {
+    config: {
+      MetadataRules: [
+        { Field: 'AlbumArtist', Kind: 'Correction', Match: 'Beatles', Replacement: 'The Beatles' },
+        { Field: 0, Kind: 0, Match: 'Old', Replacement: 'Gone' }
+      ]
+    }
+  });
+  const rows = page.locator('.jellysin-rule-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0).locator('.jellysin-rule-field')).toHaveValue('3');
+  await expect(rows.nth(0).locator('.jellysin-rule-match')).toHaveValue('Beatles');
+  await expect(rows.nth(0).locator('.jellysin-rule-replacement')).toHaveValue('The Beatles');
+
+  await rows.nth(1).locator('.jellysin-remove-rule').click();
+  await expect(rows).toHaveCount(1);
+
+  await page.locator('#jellysin-add-rule').click();
+  const added = rows.nth(1);
+  await added.locator('.jellysin-rule-field').selectOption('Title');
+  await added.locator('.jellysin-rule-kind').selectOption('Pattern');
+  await added.locator('.jellysin-rule-match').fill(' \\(Remastered\\)$');
+  // A row left without a match is not saved.
+  await page.locator('#jellysin-add-rule').click();
+  await expect(rows).toHaveCount(3);
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
+
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig.MetadataRules)).toEqual([
+    { Field: 3, Kind: 0, Match: 'Beatles', Replacement: 'The Beatles' },
+    { Field: 1, Kind: 1, Match: ' \\(Remastered\\)$', Replacement: '' }
+  ]);
+});
+
 const calls = (page, path) => page.evaluate(wanted => globalThis.fixture.calls.filter(call => call.path === wanted), path);
 
 test('native admin settings preserve host configuration and clear application secrets', async ({ page }) => {
@@ -510,7 +547,7 @@ test('native admin settings preserve host configuration and clear application se
   await page.locator('#jellysin-enabled').uncheck();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, MetadataRules: [] });
   // The application fields are for the rare server with its own application: closed until asked for.
   await expect(page.locator('#jellysin-advanced')).not.toHaveAttribute('open');
   await expect(page.getByLabel('Application API key', { exact: true })).toBeHidden();

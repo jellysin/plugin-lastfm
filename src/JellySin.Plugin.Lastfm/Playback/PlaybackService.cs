@@ -19,6 +19,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     // while its catalog entry, and so a manifest Jellyfin has not rewritten yet, names 5e7fe7f0-....
     public static readonly IReadOnlyList<Guid> LegacyPluginIds =
         [new("de7fe7f0-b048-439e-a431-b1a7e99c930d"), new("5e7fe7f0-b048-429e-a431-b1a7e69c930d")];
+    private readonly MetadataCleanup _cleanup = new(() => libraryRules.GetConfiguration().MetadataRules, logger);
     private readonly Channel<PlaybackSnapshot?> _snapshots = Channel.CreateBounded<PlaybackSnapshot?>(new BoundedChannelOptions(4096) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     private readonly Channel<EligibleListen> _nowPlaying = Channel.CreateBounded<EligibleListen>(new BoundedChannelOptions(64) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     // Users with something new to send. A full queue drops the request; the delivery task's next run sends it.
@@ -88,7 +89,11 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
                         || snapshot.PluginGeneration != (Plugin.Instance?.ListeningGeneration ?? 0)) continue;
                     var update = tracker.Observe(snapshot);
                     if (update.Scrobble is not null) await PersistAsync(update.Scrobble, stoppingToken).ConfigureAwait(false);
-                    if (update.NowPlaying is not null && _nowPlaying.Writer.TryWrite(update.NowPlaying)) RequestDelivery(update.NowPlaying.UserId);
+                    if (update.NowPlaying is not null)
+                    {
+                        var nowPlaying = update.NowPlaying with { Track = _cleanup.Apply(update.NowPlaying.Track) };
+                        if (_nowPlaying.Writer.TryWrite(nowPlaying)) RequestDelivery(nowPlaying.UserId);
+                    }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception exception)
@@ -106,7 +111,8 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
     {
         if (accounts.GetCaptureBinding(listen.UserId) is { } binding && binding.AccountGeneration != listen.AccountGeneration)
         { tracker.Acknowledge(listen.OccurrenceId); return; }
-        await outbox.EnqueueAsync(listen, cancellationToken).ConfigureAwait(false);
+        var cleaned = listen with { Track = _cleanup.Apply(listen.Track) };
+        await outbox.EnqueueAsync(cleaned, cancellationToken).ConfigureAwait(false);
         tracker.Acknowledge(listen.OccurrenceId);
         RequestDelivery(listen.UserId);
     }
