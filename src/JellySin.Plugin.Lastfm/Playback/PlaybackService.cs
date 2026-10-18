@@ -147,7 +147,8 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
             if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Length > 256) return;
             item.ProviderIds.TryGetValue("MusicBrainzTrack", out var mbid);
             var duration = (item.RunTimeTicks ?? 0) / (double)TimeSpan.TicksPerSecond;
-            if (duration is <= 30 or > int.MaxValue) return;
+            var threshold = Plugin.Instance?.Configuration.Threshold() ?? ScrobbleThreshold.Lastfm;
+            if (!threshold.Counts(duration) || duration > int.MaxValue) return;
             var track = new MusicTrack(item.Id, artist, item.Name, item.Album?.Length <= 4096 ? item.Album : null,
                 Guid.TryParse(mbid, out var identifier) ? identifier.ToString() : null, duration,
                 (item as IHasAlbumArtist)?.AlbumArtists.FirstOrDefault() is { Length: <= 1024 } albumArtist ? albumArtist : null);
@@ -158,7 +159,7 @@ public sealed class PlaybackService(ISessionManager sessions, IPluginManager plu
                 var binding = accounts.GetCaptureBinding(user.Id);
                 if (binding is null) continue;
                 if (!libraryRules.IsScrobblingAllowed(user.Id, item, args.DeviceId)) continue;
-                var snapshot = new PlaybackSnapshot(sessionId, user.Id, track, signal, args.PlaybackPositionTicks ?? 0, args.IsPaused, signal == PlaybackSignal.Progress && args.IsAutomated, timestamp, utc, binding.AccountGeneration, binding.CaptureGeneration, Plugin.Instance?.ListeningGeneration ?? 0);
+                var snapshot = new PlaybackSnapshot(sessionId, user.Id, track, signal, args.PlaybackPositionTicks ?? 0, args.IsPaused, signal == PlaybackSignal.Progress && args.IsAutomated, timestamp, utc, binding.AccountGeneration, binding.CaptureGeneration, Plugin.Instance?.ListeningGeneration ?? 0, threshold);
                 if (!_snapshots.Writer.TryWrite(snapshot)) Interlocked.Increment(ref _dropped);
             }
         }

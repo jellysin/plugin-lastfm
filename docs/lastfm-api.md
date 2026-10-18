@@ -75,8 +75,13 @@ separate credentials protected in server-side state.
 ## Delivery and errors
 
 The [scrobbling guide](https://www.last.fm/api/scrobbling) requires tracks longer
-than 30 seconds and listening for half the track or four minutes. Pauses and seeks
-must not count as listening. Jellyfin also raises position updates of its own every
+than 30 seconds and listening for half the track or four minutes. An administrator
+can make this stricter, never looser, under "When a play counts" on the plugin's
+settings page: the share of the track to hear (50 to 100 percent), the time after
+which any track counts (240 to 7200 seconds) and the length up to which tracks are
+ignored (30 to 600 seconds). Stored values outside these ranges load as the nearest
+allowed value (`ScrobbleThreshold` in `PluginConfiguration.cs`), and a play keeps the
+threshold in force when it started. Pauses and seeks must not count as listening. Jellyfin also raises position updates of its own every
 second between a client's reports. These count only for a session whose client sent
 no progress report since the start other than pausing or resuming, are capped at the distance between the start
 and the position the client's stop reports, and create a listen only when that stop

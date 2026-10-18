@@ -14,6 +14,13 @@
         <div class="checkboxContainer"><label><input id="jellysin-media-audiobooks" is="emby-checkbox" type="checkbox"><span>Audiobook chapters</span></label></div>
         <div class="checkboxContainer"><label><input id="jellysin-media-music-videos" is="emby-checkbox" type="checkbox"><span>Music videos</span></label></div>
       </fieldset>
+      <fieldset id="jellysin-threshold" style="margin-top:1rem;">
+        <legend>When a play counts</legend>
+        <p>Last.fm counts a track longer than 30 seconds once half of it or 4 minutes, whichever comes first, has been heard. These settings can only make that stricter.</p>
+        <div class="inputContainer"><label for="jellysin-threshold-percent">Share of the track to hear (percent, 50 to 100)</label><input id="jellysin-threshold-percent" is="emby-input" type="number" min="50" max="100" step="1" required></div>
+        <div class="inputContainer"><label for="jellysin-threshold-ceiling">Count any track after (seconds, 240 to 7200)</label><input id="jellysin-threshold-ceiling" is="emby-input" type="number" min="240" max="7200" step="1" required></div>
+        <div class="inputContainer"><label for="jellysin-threshold-minimum">Ignore tracks up to (seconds, 30 to 600)</label><input id="jellysin-threshold-minimum" is="emby-input" type="number" min="30" max="600" step="1" required></div>
+      </fieldset>
       <div class="selectContainer" style="margin-top:1rem;">
         <label for="jellysin-library-mode">Library scrobble filter</label>
         <select id="jellysin-library-mode" is="emby-select">
@@ -49,6 +56,15 @@
   <script type="text/javascript">
   (function () {
     const byId = function (id) { return document.getElementById(id); };
+    // The server clamps the same way; a value it would not accept is shown as the nearest one it does.
+    const thresholdFields = [
+      { id: 'jellysin-threshold-percent', key: 'ScrobblePercent', min: 50, max: 100, fallback: 50 },
+      { id: 'jellysin-threshold-ceiling', key: 'ScrobbleCeilingSeconds', min: 240, max: 7200, fallback: 240 },
+      { id: 'jellysin-threshold-minimum', key: 'ScrobbleMinimumLengthSeconds', min: 30, max: 600, fallback: 30 }
+    ];
+    const thresholdValue = function (value, field) {
+      return Number.isFinite(value) ? Math.min(field.max, Math.max(field.min, Math.round(value))) : field.fallback;
+    };
     const api = function (path) { return ApiClient.getUrl('JellySin/Lastfm/' + path); };
     // The host answers in either letter case, depending on the client's serializer profile.
     const read = function (value, name) { return value[name] ?? value[name.charAt(0).toLowerCase() + name.slice(1)]; };
@@ -150,6 +166,7 @@
         byId('jellysin-media-music').checked = config.ScrobbleMusic !== false;
         byId('jellysin-media-audiobooks').checked = config.ScrobbleAudiobooks === true;
         byId('jellysin-media-music-videos').checked = config.ScrobbleMusicVideos === true;
+        for (const field of thresholdFields) byId(field.id).value = String(thresholdValue(config[field.key], field));
         const mode = config.LibraryMode === 1 || String(config.LibraryMode).toLowerCase() === 'allowlist' ? 'AllowList'
           : config.LibraryMode === 2 || String(config.LibraryMode).toLowerCase() === 'blocklist' ? 'BlockList' : 'All';
         byId('jellysin-library-mode').value = mode;
@@ -236,6 +253,7 @@
         config.ScrobbleMusic = byId('jellysin-media-music').checked;
         config.ScrobbleAudiobooks = byId('jellysin-media-audiobooks').checked;
         config.ScrobbleMusicVideos = byId('jellysin-media-music-videos').checked;
+        for (const field of thresholdFields) config[field.key] = thresholdValue(Number(byId(field.id).value), field);
         if (librariesListed) {
           const mode = byId('jellysin-library-mode').value;
           config.LibraryMode = mode === 'AllowList' ? 1 : mode === 'BlockList' ? 2 : 0;

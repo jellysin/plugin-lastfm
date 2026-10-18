@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using JellySin.Plugin.Lastfm.Configuration;
 
 namespace JellySin.Plugin.Lastfm.Playback;
 
@@ -7,7 +8,8 @@ public enum PlaybackSignal { Start, Progress, Stop }
 public sealed record MusicTrack(Guid ItemId, string Artist, string Title, string? Album, string? MusicBrainzId, double DurationSeconds,
     string? AlbumArtist = null);
 
-public sealed record PlaybackSnapshot(string SessionId, Guid UserId, MusicTrack Track, PlaybackSignal Signal, long PositionTicks, bool Paused, bool Automated, long MonotonicTimestamp, DateTimeOffset UtcTimestamp, Guid AccountGeneration = default, Guid CaptureGeneration = default, long PluginGeneration = default);
+public sealed record PlaybackSnapshot(string SessionId, Guid UserId, MusicTrack Track, PlaybackSignal Signal, long PositionTicks, bool Paused, bool Automated, long MonotonicTimestamp, DateTimeOffset UtcTimestamp, Guid AccountGeneration = default, Guid CaptureGeneration = default, long PluginGeneration = default,
+    ScrobbleThreshold? Threshold = null);
 
 public sealed record EligibleListen(Guid OccurrenceId, Guid UserId, MusicTrack Track, DateTimeOffset StartedAt, Guid AccountGeneration = default, Guid CaptureGeneration = default, long PluginGeneration = default);
 
@@ -33,7 +35,7 @@ public sealed class PlaybackTracker(TimeProvider clock)
 
     public PlaybackUpdate Observe(PlaybackSnapshot value)
     {
-        if (value.UserId == Guid.Empty || value.Track.DurationSeconds <= 30
+        if (value.UserId == Guid.Empty || !(value.Threshold ?? ScrobbleThreshold.Lastfm).Counts(value.Track.DurationSeconds)
             || string.IsNullOrWhiteSpace(value.Track.Artist) || string.IsNullOrWhiteSpace(value.Track.Title)) return new(null, null);
         var key = (value.SessionId, value.UserId);
         if (value.Automated) { ObserveAutomated(key, value); return new(null, null); }
@@ -57,7 +59,7 @@ public sealed class PlaybackTracker(TimeProvider clock)
         observation.PositionTicks = value.PositionTicks;
         observation.Paused = value.Paused;
         EligibleListen? eligible = null;
-        if (!observation.Submitted && observation.HeardSeconds >= Math.Min(observation.Listen.Track.DurationSeconds / 2, 240))
+        if (!observation.Submitted && observation.HeardSeconds >= observation.Threshold.RequiredSeconds(observation.Listen.Track.DurationSeconds))
         {
             if (_pending.Count >= MaxSessions) throw new InvalidOperationException("Pending listening recovery capacity reached.");
             _pending.TryAdd(observation.Listen.OccurrenceId, observation.Listen);
@@ -84,7 +86,7 @@ public sealed class PlaybackTracker(TimeProvider clock)
         if (_active.Count >= MaxSessions && observation is null) RemoveStale(value.MonotonicTimestamp);
         if (_active.Count >= MaxSessions && observation is null) throw new InvalidOperationException("Playback tracking capacity reached.");
         var listen = new EligibleListen(Guid.NewGuid(), value.UserId, value.Track, value.UtcTimestamp, value.AccountGeneration, value.CaptureGeneration, value.PluginGeneration);
-        _active[key] = new Observation(listen, value.MonotonicTimestamp, value.PositionTicks, value.Paused);
+        _active[key] = new Observation(listen, value.MonotonicTimestamp, value.PositionTicks, value.Paused, value.Threshold ?? ScrobbleThreshold.Lastfm);
         return new(value.Paused ? null : listen, null);
     }
 
@@ -116,9 +118,11 @@ public sealed class PlaybackTracker(TimeProvider clock)
             _active.TryRemove(key, out _);
     }
 
-    private sealed class Observation(EligibleListen listen, long timestamp, long positionTicks, bool paused)
+    // The threshold in force when the track started applies to the whole play, even when an administrator changes it meanwhile.
+    private sealed class Observation(EligibleListen listen, long timestamp, long positionTicks, bool paused, ScrobbleThreshold threshold)
     {
         public EligibleListen Listen { get; } = listen;
+        public ScrobbleThreshold Threshold { get; } = threshold;
         public long Timestamp { get; set; } = timestamp;
         public long PositionTicks { get; set; } = positionTicks;
         public bool Paused { get; set; } = paused;
