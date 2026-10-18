@@ -43,6 +43,7 @@ checked at the API boundary.
 | Route group | Purpose |
 | --- | --- |
 | `Me/Connection`, `Me/Scrobbling` | User connection lifecycle and listening preference |
+| `Me/ScrobbleLog` | Opt-in local scrobble log settings and JSON/CSV export |
 | `Callback` | Anonymous return address of the Last.fm sign-in; keeps the approval for the user and browser that began it and makes no outbound request |
 | `Me/History`, `Me/Overview`, `Me/Charts` | Private history and listening insights |
 | `Me/History/Preview`, `Continue`, `Import` | Resumable preview and explicit aggregate import |

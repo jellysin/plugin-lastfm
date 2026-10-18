@@ -1,6 +1,6 @@
 import { Client } from './client.js';
 import { bind, element, link, message, run } from './view.js';
-import { refreshDevices, refreshMediaTypes } from './rules.js';
+import { refreshDevices, refreshMediaTypes, refreshScrobbleLog } from './rules.js';
 
 interface Connection { connected: boolean; username?: string; needsReconnect: boolean; scrobblingEnabled: boolean; approvalPending?: boolean }
 interface Me { userName: string; isAdministrator: boolean; connection: Connection }
@@ -80,6 +80,7 @@ function show(client: Client, me: Me): void {
     void refreshLibraries(client);
     void refreshDevices(client);
     void refreshMediaTypes(client);
+    void refreshScrobbleLog(client);
   }
 }
 

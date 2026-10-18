@@ -4,6 +4,7 @@ import { refreshAccount, setupAccount, takeRefusedReturn } from './account.js';
 import { setupMusic } from './music.js';
 import { setupFavourites } from './favourites.js';
 import { setupPlaylists } from './playlists.js';
+import { setupScrobbleLog } from './rules.js';
 import { bind, element, message } from './view.js';
 
 async function start(): Promise<void> {
@@ -27,6 +28,7 @@ async function start(): Promise<void> {
   setupMusic(client);
   setupFavourites(client);
   setupPlaylists(client);
+  setupScrobbleLog(client);
   for (const prefix of ['discovery', 'playlist']) bind(`${prefix}-search-button`, async () => {
     const query = element<HTMLInputElement>(`${prefix}-search`).value.trim();
     if (query.length < 2) throw new Error('Enter at least two characters to search.');

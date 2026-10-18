@@ -51,6 +51,16 @@
           <p id="media-type-exclusions-summary" class="muted">Loading media types…</p>
           <div id="media-type-exclusions-list"></div>
         </div>
+        <div id="scrobble-log" data-needs-connection hidden>
+          <h3>Scrobble log</h3>
+          <p class="muted">Local export of your scrobbles as JSON or CSV.</p>
+          <label class="check"><input id="scrobble-log-enabled" type="checkbox"> Keep local scrobble log</label>
+          <p id="scrobble-log-count" class="muted">0 entries logged.</p>
+          <div class="actions">
+            <button id="scrobble-log-download-json" type="button">Download JSON</button>
+            <button id="scrobble-log-download-csv" type="button">Download CSV</button>
+          </div>
+        </div>
         <details data-needs-connection hidden><summary>Delivery status</summary><p id="delivery-status">Refresh to inspect pending submissions.</p><button id="delivery-refresh" type="button">Refresh status</button><button id="delivery-retry" type="button">Retry retained submissions</button></details>
       </section>
       <section id="overview" class="card" aria-labelledby="overview-heading" data-needs-connection hidden>

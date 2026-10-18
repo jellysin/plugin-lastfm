@@ -12,7 +12,8 @@ namespace JellySin.Plugin.Lastfm.Playback;
 public sealed record UserLibraryRules(
     IReadOnlyList<Guid>? ExcludedLibraries = null,
     IReadOnlyList<string>? ExcludedDevices = null,
-    IReadOnlyList<string>? ExcludedMediaTypes = null);
+    IReadOnlyList<string>? ExcludedMediaTypes = null,
+    bool ScrobbleLogEnabled = false);
 
 public sealed class LibraryRuleService : IDisposable
 {
@@ -150,7 +151,8 @@ public sealed class LibraryRuleService : IDisposable
             new UserLibraryRules(
                 ExcludedLibraries: bounded,
                 ExcludedDevices: current?.ExcludedDevices,
-                ExcludedMediaTypes: current?.ExcludedMediaTypes),
+                ExcludedMediaTypes: current?.ExcludedMediaTypes,
+                ScrobbleLogEnabled: current?.ScrobbleLogEnabled ?? false),
             cancellationToken).ConfigureAwait(false);
         _userExcluded[userId] = new HashSet<Guid>(bounded);
     }
@@ -166,7 +168,8 @@ public sealed class LibraryRuleService : IDisposable
             new UserLibraryRules(
                 ExcludedLibraries: current?.ExcludedLibraries,
                 ExcludedDevices: bounded,
-                ExcludedMediaTypes: current?.ExcludedMediaTypes),
+                ExcludedMediaTypes: current?.ExcludedMediaTypes,
+                ScrobbleLogEnabled: current?.ScrobbleLogEnabled ?? false),
             cancellationToken).ConfigureAwait(false);
         _userExcludedDevices[userId] = new HashSet<string>(bounded, StringComparer.Ordinal);
     }
@@ -181,9 +184,26 @@ public sealed class LibraryRuleService : IDisposable
             new UserLibraryRules(
                 ExcludedLibraries: current?.ExcludedLibraries,
                 ExcludedDevices: current?.ExcludedDevices,
-                ExcludedMediaTypes: bounded),
+                ExcludedMediaTypes: bounded,
+                ScrobbleLogEnabled: current?.ScrobbleLogEnabled ?? false),
             cancellationToken).ConfigureAwait(false);
         _userExcludedMediaTypes[userId] = new HashSet<string>(bounded, StringComparer.Ordinal);
+    }
+
+    // Read from the store every time: an in-memory flag would survive a disconnect and resume logging without a new opt-in.
+    public async Task<bool> IsScrobbleLogEnabledAsync(Guid userId, CancellationToken cancellationToken)
+        => (await _store.ReadAsync<UserLibraryRules>(userId, StoreKey, cancellationToken).ConfigureAwait(false))?.ScrobbleLogEnabled ?? false;
+
+    public async Task SetScrobbleLogEnabledAsync(Guid userId, bool enabled, CancellationToken cancellationToken)
+    {
+        await _store.UpdateAsync<UserLibraryRules>(userId, StoreKey, current =>
+            new UserLibraryRules(
+                ExcludedLibraries: current?.ExcludedLibraries,
+                ExcludedDevices: current?.ExcludedDevices,
+                ExcludedMediaTypes: current?.ExcludedMediaTypes,
+                ScrobbleLogEnabled: enabled),
+            cancellationToken).ConfigureAwait(false);
+        if (!enabled) await _store.DeleteAsync(userId, ScrobbleOutbox.LogStoreKey, cancellationToken).ConfigureAwait(false);
     }
 
     private void PopulateCache(Guid userId, UserLibraryRules? rules)

@@ -172,4 +172,29 @@ export class Client extends EventTarget {
     requestSignal.throwIfAborted();
     return result;
   }
+
+  async download(path: string, fallbackFilename: string, signal?: AbortSignal): Promise<void> {
+    const fullPath = `/JellySin/Lastfm/${path}`;
+    if (!fullPath.startsWith('/') || fullPath.startsWith('//') || /[\r\n\\]/.test(fullPath)) throw new Error('Invalid API path.');
+    const requestSignal = AbortSignal.any([this.sessionRequests.signal, AbortSignal.timeout(90_000), ...(signal ? [signal] : [])]);
+    const response = await fetch(this.root + fullPath, {
+      method: 'GET', credentials: 'omit', redirect: 'error', cache: 'no-store',
+      headers: { Authorization: this.authorizationHeader() },
+      signal: requestSignal,
+    });
+    requestSignal.throwIfAborted();
+    if (response.status === 401) { this.clearSession(); throw new Error('Your Jellyfin session expired. Sign in again.'); }
+    if (!response.ok) throw new Error(`The download could not be completed (HTTP ${response.status}).`);
+    const blob = await response.blob();
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fallbackFilename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+  }
 }
