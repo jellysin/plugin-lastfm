@@ -189,7 +189,7 @@ public sealed class ConnectionCallbackTests
     {
         using var fixture = new CoreFixture();
         await fixture.ConfigureApplicationAsync();
-        var warnings = new Warnings();
+        var warnings = new FakeLogger<ServerAddress>();
         var server = new ServerAddress(published, warnings);
         var http = Request("POST", "https", "", "jellyfin.example");
         http.Items[typeof(CallerFilter)] = CallerSecurityTests.Identity(fixture.UserId);
@@ -198,7 +198,7 @@ public sealed class ConnectionCallbackTests
         await Assert.ThrowsAsync<ArgumentException>(() => account.Begin(new ConnectionBegin(false), TestContext.Current.CancellationToken));
         Assert.False(account.Response.Headers.ContainsKey("Set-Cookie"));
         Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
-        var line = Assert.Single(warnings.Lines);
+        var line = Assert.Single(warnings.Lines, l => l.Level == LogLevel.Warning).Text;
         Assert.Contains("published-server-url", line, StringComparison.Ordinal);
         Assert.DoesNotContain("media.example", line, StringComparison.Ordinal);
         // The anonymous return answers as for any attempt that never began.
@@ -210,7 +210,7 @@ public sealed class ConnectionCallbackTests
     [Fact]
     public void AUsablePublishedAddressLeavesTheLogQuiet()
     {
-        var warnings = new Warnings();
+        var warnings = new FakeLogger<ServerAddress>();
         _ = new ServerAddress("https://media.example", warnings);
         _ = new ServerAddress(null, warnings);
         Assert.Empty(warnings.Lines);
@@ -406,19 +406,5 @@ public sealed class ConnectionCallbackTests
         http.Request.Host = new HostString(host);
         http.Request.PathBase = prefix;
         return http;
-    }
-
-    private sealed class Warnings : ILogger<ServerAddress>
-    {
-        public List<string> Lines { get; } = [];
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel == LogLevel.Warning) Lines.Add(formatter(state, exception));
-        }
     }
 }

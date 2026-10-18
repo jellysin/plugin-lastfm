@@ -9,6 +9,7 @@ using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Features;
@@ -28,7 +29,7 @@ public sealed class FeatureWorkerLogTests
         var data = new Mock<IUserDataManager>();
         data.SetupAdd(d => d.UserDataSaved += It.IsAny<EventHandler<UserDataSaveEventArgs>>())
             .Callback<EventHandler<UserDataSaveEventArgs>>(value => handler += value);
-        var log = new WorkerLog();
+        using var log = new FakeLoggerProvider();
         using var provider = Build(f, accounts, Mock.Of<ILibraryManager>(), Mock.Of<IPlaylistManager>(), data.Object, log);
         var worker = Assert.Single(provider.GetServices<IHostedService>());
         await worker.StartAsync(ct);
@@ -50,7 +51,7 @@ public sealed class FeatureWorkerLogTests
         var data = new Mock<IUserDataManager>();
         data.SetupAdd(d => d.UserDataSaved += It.IsAny<EventHandler<UserDataSaveEventArgs>>())
             .Callback<EventHandler<UserDataSaveEventArgs>>(value => handler += value);
-        var log = new WorkerLog();
+        using var log = new FakeLoggerProvider();
         using var provider = Build(f, f.Core.Accounts, Mock.Of<ILibraryManager>(), Mock.Of<IPlaylistManager>(), data.Object, log);
         var worker = Assert.Single(provider.GetServices<IHostedService>());
         await worker.StartAsync(ct);
@@ -64,10 +65,10 @@ public sealed class FeatureWorkerLogTests
     }
 
     private static ServiceProvider Build(FeatureFixture f, AccountService accounts, ILibraryManager library,
-        IPlaylistManager playlists, IUserDataManager data, WorkerLog log)
+        IPlaylistManager playlists, IUserDataManager data, FakeLoggerProvider provider)
     {
         var services = new ServiceCollection();
-        services.AddLogging(logging => logging.AddProvider(log));
+        services.AddLogging(logging => logging.AddProvider(provider));
         services.AddLastfmFeatures();
         services.AddSingleton(accounts);
         services.AddSingleton<IStateStore>(f.Core.Store);
@@ -90,43 +91,24 @@ public sealed class FeatureWorkerLogTests
         Assert.True(condition(), "The worker did not reach the expected state within five seconds.");
     }
 
-    private static async Task<string> WarningAsync(WorkerLog log, string start, CancellationToken ct)
+    private static async Task<string> WarningAsync(FakeLoggerProvider log, string start, CancellationToken ct)
     {
-        await WaitForAsync(() => log.Warning(start) is not null, ct);
-        return log.Warning(start)!;
+        await WaitForAsync(() => Warning(log, start) is not null, ct);
+        return Warning(log, start)!;
     }
 
-    private static void AssertNoRawId(WorkerLog log, Guid userId) =>
-        Assert.DoesNotContain(log.Texts(), t => t.Contains(userId.ToString(), StringComparison.OrdinalIgnoreCase)
+    private static void AssertNoRawId(FakeLoggerProvider log, Guid userId) =>
+        Assert.DoesNotContain(Texts(log), t => t.Contains(userId.ToString(), StringComparison.OrdinalIgnoreCase)
             || t.Contains(userId.ToString("N"), StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Keeps the lines the background worker writes; the worker class itself is not visible to tests.</summary>
-    private sealed class WorkerLog : ILoggerProvider, ILogger
-    {
-        private readonly List<(LogLevel Level, string Text)> _lines = [];
+    private static string? Warning(FakeLoggerProvider provider, string start) =>
+        provider.Collector.GetSnapshot()
+            .Where(r => r.Category is not null && r.Category.EndsWith(".FeatureWorker", StringComparison.Ordinal) && r.Level == LogLevel.Warning)
+            .Select(r => r.Message)
+            .FirstOrDefault(t => t.StartsWith(start, StringComparison.Ordinal));
 
-        public ILogger CreateLogger(string categoryName) =>
-            categoryName.EndsWith(".FeatureWorker", StringComparison.Ordinal) ? this : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-
-        public string? Warning(string start)
-        {
-            lock (_lines) return _lines.Where(l => l.Level == LogLevel.Warning).Select(l => l.Text).FirstOrDefault(t => t.StartsWith(start, StringComparison.Ordinal));
-        }
-
-        public string[] Texts()
-        {
-            lock (_lines) return _lines.Select(l => l.Text).ToArray();
-        }
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            lock (_lines) _lines.Add((logLevel, formatter(state, exception)));
-        }
-
-        public void Dispose() { }
-    }
+    private static string[] Texts(FakeLoggerProvider provider) =>
+        [.. provider.Collector.GetSnapshot()
+            .Where(r => r.Category is not null && r.Category.EndsWith(".FeatureWorker", StringComparison.Ordinal))
+            .Select(r => r.Message)];
 }
