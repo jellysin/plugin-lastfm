@@ -1,5 +1,6 @@
 import { Client } from './client.js';
 import { bind, delegate, element, line, link, message, rowButton, run } from './view.js';
+import { t } from './i18n.js';
 
 interface Recipe { id: string; name: string; source: number | string; period: string; seedItemId?: string; limit: number; dailyRefresh: boolean; playlistId?: string; retentionDays?: number }
 interface Pending { operationId: string; recipeId: string; name: string; playlistId?: string; itemCount: number; status: string }
@@ -15,14 +16,14 @@ export function setupPlaylists(client: Client): void {
     showPending(pending);
     shown.clear();
     const list = element('playlist-list'); list.replaceChildren();
-    if (!recipes.length) line(list, 'Create a playlist to get started.', 'muted');
+    if (!recipes.length) line(list, t('playlists_empty'), 'muted');
     for (const recipe of recipes.slice(0, 100)) {
       shown.set(recipe.id, recipe);
       const item = document.createElement('li');
       line(item, recipe.name);
-      line(item, `${recipe.limit} tracks${recipe.dailyRefresh ? ' · refreshes daily' : ''}${recipe.retentionDays ? ` · rotates ${recipe.retentionDays}d` : ''}`, 'muted');
-      if (recipe.playlistId) link(item, 'Open playlist', `${client.root}/web/index.html#/details?id=${encodeURIComponent(recipe.playlistId)}&serverId=${encodeURIComponent(client.config.serverId)}`);
-      item.append(rowButton('Regenerate', { action: 'regenerate', recipe: recipe.id }), rowButton('Stop managing', { action: 'stop', recipe: recipe.id }));
+      line(item, `${t('playlists_tracks_count', { limit: recipe.limit })}${recipe.dailyRefresh ? t('playlists_refreshes_daily') : ''}${recipe.retentionDays ? t('playlists_rotates_days', { days: recipe.retentionDays }) : ''}`, 'muted');
+      if (recipe.playlistId) link(item, t('playlists_open'), `${client.root}/web/index.html#/details?id=${encodeURIComponent(recipe.playlistId)}&serverId=${encodeURIComponent(client.config.serverId)}`);
+      item.append(rowButton(t('playlists_regenerate'), { action: 'regenerate', recipe: recipe.id }), rowButton(t('playlists_stop_managing'), { action: 'stop', recipe: recipe.id }));
       list.append(item);
     }
   };
@@ -31,7 +32,7 @@ export function setupPlaylists(client: Client): void {
     if (!recipe) return;
     if (control.dataset.action === 'stop') {
       await client.api(`Me/Playlists/${encodeURIComponent(recipe.id)}`, 'DELETE');
-      await refresh(); message('Automatic management stopped. The Jellyfin playlist was kept.');
+      await refresh(); message(t('playlists_stop_notice'));
       return;
     }
     try {
@@ -39,14 +40,14 @@ export function setupPlaylists(client: Client): void {
         period: recipe.period, seedItemId: recipe.seedItemId, limit: recipe.limit, dailyRefresh: recipe.dailyRefresh,
         retentionDays: recipe.retentionDays ?? 0 });
     } catch (error) { await refresh(); throw error; }
-    await refresh(); message('Playlist regenerated.');
+    await refresh(); message(t('playlists_regenerated'));
   });
   delegate(element('playlist-pending'), async control => {
     if (!pending) return;
     if (control.dataset.action === 'review') { confirmCancellation(); return; }
     if (control.dataset.action === 'keep') { showPending(pending); return; }
     await client.api(`Me/Playlists/Pending/${encodeURIComponent(pending.operationId)}`, 'DELETE');
-    await refresh(); message('Pending update cancelled. The playlist was kept and daily refresh paused.');
+    await refresh(); message(t('playlists_pending_cancelled'));
   });
   bind('playlists-refresh', refresh);
   bindPlaylistForm(client, refresh);
@@ -80,7 +81,7 @@ function bindPlaylistForm(client: Client, refresh: () => Promise<void>): void {
           retentionDays: isRotating ? Number(rotateInput.value) || 0 : 0,
         });
       } catch (error) { await refresh(); throw error; }
-      await refresh(); message('Private Jellyfin playlist created.');
+      await refresh(); message(t('playlists_created'));
     });
   });
 }
@@ -88,15 +89,15 @@ function bindPlaylistForm(client: Client, refresh: () => Promise<void>): void {
 function showPending(pending: Pending | undefined): void {
   const output = element('playlist-pending'); output.replaceChildren();
   if (!pending) return;
-  line(output, `Interrupted update: ${pending.name} · ${pending.itemCount} intended tracks`);
+  line(output, t('playlists_interrupted', { name: pending.name, count: pending.itemCount }));
   line(output, pending.status);
-  output.append(rowButton('Review cancellation', { action: 'review' }));
+  output.append(rowButton(t('playlists_review_cancellation'), { action: 'review' }));
 }
 
 function confirmCancellation(): void {
   const confirmation = document.createElement('div');
-  line(confirmation, 'Cancel this update and pause its daily refresh? The Jellyfin playlist will remain in its current, possibly partial state.');
-  const apply = rowButton('Cancel update and pause refresh', { action: 'cancel' });
-  confirmation.append(apply, rowButton('Keep waiting', { action: 'keep' }));
+  line(confirmation, t('playlists_cancellation_confirm'));
+  const apply = rowButton(t('playlists_cancel_and_pause'), { action: 'cancel' });
+  confirmation.append(apply, rowButton(t('playlists_keep_waiting'), { action: 'keep' }));
   element('playlist-pending').replaceChildren(confirmation); apply.focus();
 }

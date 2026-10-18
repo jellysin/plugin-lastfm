@@ -1,5 +1,6 @@
 import { Client } from './client.js';
 import { element, message, run } from './view.js';
+import { t } from './i18n.js';
 
 export interface UserDeviceView {
   id: string;
@@ -23,7 +24,7 @@ export async function refreshDevices(client: Client): Promise<void> {
     renderDevices(client, data);
   } catch {
     const summary = document.getElementById('device-exclusions-summary');
-    if (summary) summary.textContent = 'Could not load devices.';
+    if (summary) summary.textContent = t('rules_load_devices_failed');
   }
 }
 
@@ -32,10 +33,10 @@ function renderDevices(client: Client, devices: UserDeviceView[]): void {
   const list = element('device-exclusions-list');
   list.replaceChildren();
   if (!devices || devices.length === 0) {
-    summary.textContent = 'No devices found for your account.';
+    summary.textContent = t('rules_no_devices');
     return;
   }
-  summary.textContent = 'Select which devices scrobble to your Last.fm account:';
+  summary.textContent = t('rules_select_devices');
   for (const device of devices) {
     const label = document.createElement('label');
     label.className = 'check';
@@ -63,15 +64,15 @@ async function onDeviceToggle(client: Client, list: HTMLElement): Promise<void> 
   }
   void run(null, async () => {
     await client.api('Me/Devices', 'PUT', { excludedDevices: excluded });
-    message('Device scrobbling rules updated.');
+    message(t('rules_devices_updated'));
   });
 }
 
 function mediaTypeName(type: string): string {
   switch (type) {
-    case 'Music': return 'Music tracks';
-    case 'Audiobooks': return 'Audiobook chapters';
-    case 'MusicVideos': return 'Music videos';
+    case 'Music': return t('rules_type_music');
+    case 'Audiobooks': return t('rules_type_audiobooks');
+    case 'MusicVideos': return t('rules_type_music_videos');
     default: return type;
   }
 }
@@ -84,7 +85,7 @@ export async function refreshMediaTypes(client: Client): Promise<void> {
     renderMediaTypes(client, data);
   } catch {
     const summary = document.getElementById('media-type-exclusions-summary');
-    if (summary) summary.textContent = 'Could not load media type settings.';
+    if (summary) summary.textContent = t('rules_load_media_types_failed');
   }
 }
 
@@ -93,10 +94,10 @@ function renderMediaTypes(client: Client, mediaTypes: UserMediaTypeView[]): void
   const list = element('media-type-exclusions-list');
   list.replaceChildren();
   if (!mediaTypes || mediaTypes.length === 0) {
-    summary.textContent = 'No media types available.';
+    summary.textContent = t('rules_no_media_types');
     return;
   }
-  summary.textContent = 'Select which media types scrobble to your Last.fm account:';
+  summary.textContent = t('rules_select_media_types');
   for (const item of mediaTypes) {
     const label = document.createElement('label');
     label.className = 'check';
@@ -110,7 +111,7 @@ function renderMediaTypes(client: Client, mediaTypes: UserMediaTypeView[]): void
     label.appendChild(input);
     const span = document.createElement('span');
     const name = mediaTypeName(item.type);
-    span.textContent = item.isAdminAllowed ? ` ${name}` : ` ${name} (Turned off by the administrator)`;
+    span.textContent = item.isAdminAllowed ? ` ${name}` : ` ${name}${t('rules_turned_off_by_admin')}`;
     label.appendChild(span);
     list.appendChild(label);
   }
@@ -126,7 +127,7 @@ async function onMediaTypeToggle(client: Client, list: HTMLElement): Promise<voi
   }
   void run(null, async () => {
     await client.api('Me/MediaTypes', 'PUT', { excludedMediaTypes: excluded });
-    message('Media type scrobbling rules updated.');
+    message(t('rules_media_types_updated'));
   });
 }
 
@@ -143,7 +144,7 @@ export async function refreshScrobbleLog(client: Client): Promise<void> {
     renderScrobbleLog(data);
   } catch {
     const countEl = document.getElementById('scrobble-log-count');
-    if (countEl) countEl.textContent = 'Could not load scrobble log settings.';
+    if (countEl) countEl.textContent = t('rules_load_scrobble_log_failed');
   }
 }
 
@@ -151,7 +152,7 @@ function renderScrobbleLog(data: ScrobbleLogSettings): void {
   const checkbox = document.getElementById('scrobble-log-enabled') as HTMLInputElement | null;
   const countEl = document.getElementById('scrobble-log-count');
   if (checkbox) checkbox.checked = Boolean(data.enabled);
-  if (countEl) countEl.textContent = `${data.count ?? 0} entries logged.`;
+  if (countEl) countEl.textContent = t('rules_scrobble_log_count', { count: data.count ?? 0 });
 }
 
 export function setupScrobbleLog(client: Client): void {
@@ -161,7 +162,7 @@ export function setupScrobbleLog(client: Client): void {
       void run(null, async () => {
         const res = await client.api<ScrobbleLogSettings>('Me/ScrobbleLog/Settings', 'PUT', { enabled: checkbox.checked });
         renderScrobbleLog(res);
-        message(checkbox.checked ? 'Scrobble log enabled.' : 'Scrobble log disabled and cleared.');
+        message(checkbox.checked ? t('rules_scrobble_log_enabled') : t('rules_scrobble_log_disabled'));
       });
     });
   }

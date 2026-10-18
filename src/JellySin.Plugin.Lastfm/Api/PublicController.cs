@@ -15,7 +15,7 @@ public sealed class PublicController(IServerApplicationHost host, IQuickConnect 
 {
     private static readonly HashSet<string> Assets = new(StringComparer.Ordinal)
     {
-        "app.js", "client.js", "auth.js", "account.js", "music.js", "favourites.js", "playlists.js", "rules.js", "view.js", "style.css",
+        "app.js", "client.js", "auth.js", "account.js", "music.js", "favourites.js", "playlists.js", "rules.js", "view.js", "catalogs.js", "i18n.js", "style.css",
     };
 
     [HttpGet("")]

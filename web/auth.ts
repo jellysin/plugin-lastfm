@@ -1,5 +1,6 @@
 import { Client, type Session } from './client.js';
 import { bind, element, message, run } from './view.js';
+import { t } from './i18n.js';
 
 interface QuickAttempt { secret: string; code: string }
 
@@ -30,9 +31,9 @@ export function setupAuthentication(client: Client, refresh: () => Promise<void>
   });
   bind('quick-connect', async () => {
     const current = beginAttempt();
-    if (!await client.request<boolean>('/QuickConnect/Enabled', 'GET', undefined, current.signal)) throw new Error('Quick Connect is disabled on this server.');
+    if (!await client.request<boolean>('/QuickConnect/Enabled', 'GET', undefined, current.signal)) throw new Error(t('auth_quick_connect_disabled'));
     const attempt = await client.request<QuickAttempt>('/QuickConnect/Initiate', 'POST', undefined, current.signal);
-    if (!/^[A-Za-z0-9]{4,12}$/.test(attempt.code) || typeof attempt.secret !== 'string') throw new Error('Invalid Quick Connect response.');
+    if (!/^[A-Za-z0-9]{4,12}$/.test(attempt.code) || typeof attempt.secret !== 'string') throw new Error(t('auth_quick_connect_invalid'));
     element('quick-code').textContent = attempt.code;
     element('quick-instructions').hidden = false;
     try {
@@ -44,14 +45,14 @@ export function setupAuthentication(client: Client, refresh: () => Promise<void>
       if (pending === current) { pending = undefined; element('quick-instructions').hidden = true; }
     }
   });
-  bind('quick-cancel', async () => { pending?.abort(); message('Quick Connect cancelled.'); });
+  bind('quick-cancel', async () => { pending?.abort(); message(t('auth_quick_connect_cancelled')); });
   bind('logout', async () => {
     pending?.abort();
     void client.logout().catch((error: unknown) => {
-      if (!client.signedIn) message(error instanceof Error ? error.message : 'Jellyfin could not confirm server-session revocation.', true);
+      if (!client.signedIn) message(error instanceof Error ? error.message : t('auth_revocation_unconfirmed'), true);
     });
     await refresh();
-    message('Signed out of this page.');
+    message(t('auth_signed_out_notice'));
   });
   window.addEventListener('pagehide', () => pending?.abort());
 }
@@ -64,13 +65,13 @@ async function awaitApproval(client: Client, secret: string, signal: AbortSignal
     const status = await client.api<{ authenticated: boolean }>('Auth/QuickConnect/Status', 'POST', { secret }, signal);
     if (status.authenticated) return client.request<Session>('/Users/AuthenticateWithQuickConnect', 'POST', { Secret: secret }, signal);
   }
-  throw new Error('Quick Connect expired. Start a new request.');
+  throw new Error(t('auth_quick_connect_expired'));
 }
 
 function delay(signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (signal.aborted) { reject(new Error('Quick Connect cancelled.')); return; }
-    const cancel = (): void => { clearTimeout(timer); reject(new Error('Quick Connect cancelled.')); };
+    if (signal.aborted) { reject(new Error(t('auth_quick_connect_cancelled'))); return; }
+    const cancel = (): void => { clearTimeout(timer); reject(new Error(t('auth_quick_connect_cancelled'))); };
     const timer = setTimeout(() => { signal.removeEventListener('abort', cancel); resolve(); }, 3000);
     signal.addEventListener('abort', cancel, { once: true });
   });

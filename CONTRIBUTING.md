@@ -84,6 +84,22 @@ lines across nested/generated classes. It measures the production assembly only,
 requires 70% overall and 85% combined API/configuration/transport line coverage,
 and never merges old runs or trusts summary percentages from the report header.
 
+## Translations
+
+Web UI text is translated via bundled JSON catalogs in `web/i18n/`.
+English (`en.json`) is the source locale. To contribute a new translation:
+
+1. Copy `web/i18n/en.json` to `web/i18n/<locale>.json` (for example, `fr.json` using the primary ISO 639-1 language code).
+2. Translate each string, preserving all `{param}` placeholders without modifications.
+3. Keep terminology consistent with Jellyfin's official translations for your language (for example, German uses natural, "Sie"-free imperative style).
+4. Run the catalog and verification tests:
+   ```sh
+   npm run build
+   npm test
+   ```
+   The test runner (`tests/web/i18n.test.mjs`) ensures every key and placeholder matches across catalogs and catches missing or unused keys.
+5. Submit a pull request with your new locale file.
+
 ## Release and compatibility
 
 Release-please collects commits in a release PR and updates `version.txt`, web

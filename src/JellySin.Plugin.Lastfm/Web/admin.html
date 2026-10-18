@@ -1,85 +1,93 @@
 <div id="jellysin-admin" data-role="page" class="page type-interior pluginConfigurationPage">
   <div data-role="content"><div class="content-primary">
-    <h1>JellySin Last.fm</h1>
-    <h2>Your Last.fm account</h2>
-    <p id="jellysin-connection-status" role="status" aria-live="polite">Checking your Last.fm connection…</p>
-    <button id="jellysin-connect" is="emby-button" type="button" class="raised button-submit block" hidden><span id="jellysin-connect-label">Connect Last.fm</span></button>
-    <p>Each user connects their own Last.fm account. Other users do so from the music dashboard: <a id="jellysin-dashboard-link" class="button-link" target="_blank" rel="noopener noreferrer">Open JellySin Last.fm</a></p>
-    <h2>Server settings</h2>
+    <h1 data-i18n="admin_title">JellySin Last.fm</h1>
+    <h2 data-i18n="admin_section_account">Your Last.fm account</h2>
+    <p id="jellysin-connection-status" role="status" aria-live="polite" data-i18n="admin_checking_connection">Checking your Last.fm connection…</p>
+    <button id="jellysin-connect" is="emby-button" type="button" class="raised button-submit block" hidden><span id="jellysin-connect-label" data-i18n="admin_connect_lastfm">Connect Last.fm</span></button>
+    <p><span data-i18n="admin_user_connect_intro">Each user connects their own Last.fm account. Other users do so from the music dashboard: </span><a id="jellysin-dashboard-link" class="button-link" target="_blank" rel="noopener noreferrer" data-i18n="admin_open_dashboard">Open JellySin Last.fm</a></p>
+    <h2 data-i18n="admin_section_server">Server settings</h2>
     <form id="jellysin-settings">
-      <div class="checkboxContainer"><label><input id="jellysin-enabled" is="emby-checkbox" type="checkbox"><span>Enable JellySin Last.fm</span></label></div>
+      <div class="checkboxContainer"><label><input id="jellysin-enabled" is="emby-checkbox" type="checkbox"><span data-i18n="admin_enable_plugin">Enable JellySin Last.fm</span></label></div>
       <fieldset id="jellysin-media-types" style="margin-top:1rem;">
-        <legend>Media types to scrobble</legend>
-        <div class="checkboxContainer"><label><input id="jellysin-media-music" is="emby-checkbox" type="checkbox"><span>Music tracks</span></label></div>
-        <div class="checkboxContainer"><label><input id="jellysin-media-audiobooks" is="emby-checkbox" type="checkbox"><span>Audiobook chapters</span></label></div>
-        <div class="checkboxContainer"><label><input id="jellysin-media-music-videos" is="emby-checkbox" type="checkbox"><span>Music videos</span></label></div>
+        <legend data-i18n="admin_media_types_legend">Media types to scrobble</legend>
+        <div class="checkboxContainer"><label><input id="jellysin-media-music" is="emby-checkbox" type="checkbox"><span data-i18n="admin_media_music">Music tracks</span></label></div>
+        <div class="checkboxContainer"><label><input id="jellysin-media-audiobooks" is="emby-checkbox" type="checkbox"><span data-i18n="admin_media_audiobooks">Audiobook chapters</span></label></div>
+        <div class="checkboxContainer"><label><input id="jellysin-media-music-videos" is="emby-checkbox" type="checkbox"><span data-i18n="admin_media_music_videos">Music videos</span></label></div>
       </fieldset>
       <div class="checkboxContainer checkboxContainer-withDescription" style="margin-top:1rem;">
-        <label><input id="jellysin-all-artists" is="emby-checkbox" type="checkbox"><span>Send every credited artist</span></label>
-        <div class="fieldDescription checkboxFieldDescription">A track with several artists is sent as "A, B &amp; C" instead of under its first artist. Last.fm keeps that credit as an artist of its own.</div>
+        <label><input id="jellysin-all-artists" is="emby-checkbox" type="checkbox"><span data-i18n="admin_all_artists">Send every credited artist</span></label>
+        <div class="fieldDescription checkboxFieldDescription" data-i18n="admin_all_artists_desc">A track with several artists is sent as "A, B &amp; C" instead of under its first artist. Last.fm keeps that credit as an artist of its own.</div>
       </div>
       <div class="checkboxContainer checkboxContainer-withDescription" style="margin-top:1rem;">
-        <label><input id="jellysin-remove-featured-artists" is="emby-checkbox" type="checkbox"><span>Remove featured artists</span></label>
-        <div class="fieldDescription checkboxFieldDescription">Trailing featured credits such as "(feat. B)", "[feat. B]", "feat. B" or "- feat. B" are removed from track titles and artists before scrobbling and now playing.</div>
+        <label><input id="jellysin-remove-featured-artists" is="emby-checkbox" type="checkbox"><span data-i18n="admin_remove_featured">Remove featured artists</span></label>
+        <div class="fieldDescription checkboxFieldDescription" data-i18n="admin_remove_featured_desc">Trailing featured credits such as "(feat. B)", "[feat. B]", "feat. B" or "- feat. B" are removed from track titles and artists before scrobbling and now playing.</div>
       </div>
       <div class="checkboxContainer checkboxContainer-withDescription" style="margin-top:1rem;">
-        <label><input id="jellysin-require-musicbrainz-id" is="emby-checkbox" type="checkbox"><span>Scrobble only tracks with a MusicBrainz recording ID</span></label>
-        <div class="fieldDescription checkboxFieldDescription">Tracks without a valid MusicBrainz recording ID are skipped and neither scrobbled nor sent as now playing.</div>
+        <label><input id="jellysin-require-musicbrainz-id" is="emby-checkbox" type="checkbox"><span data-i18n="admin_require_musicbrainz">Scrobble only tracks with a MusicBrainz recording ID</span></label>
+        <div class="fieldDescription checkboxFieldDescription" data-i18n="admin_require_musicbrainz_desc">Tracks without a valid MusicBrainz recording ID are skipped and neither scrobbled nor sent as now playing.</div>
       </div>
       <fieldset id="jellysin-threshold" style="margin-top:1rem;">
-        <legend>When a play counts</legend>
-        <p>Last.fm counts a track longer than 30 seconds once half of it or 4 minutes, whichever comes first, has been heard. These settings can only make that stricter.</p>
-        <div class="inputContainer"><label for="jellysin-threshold-percent">Share of the track to hear (percent, 50 to 100)</label><input id="jellysin-threshold-percent" is="emby-input" type="number" min="50" max="100" step="1" required></div>
-        <div class="inputContainer"><label for="jellysin-threshold-ceiling">Count any track after (seconds, 240 to 7200)</label><input id="jellysin-threshold-ceiling" is="emby-input" type="number" min="240" max="7200" step="1" required></div>
-        <div class="inputContainer"><label for="jellysin-threshold-minimum">Ignore tracks up to (seconds, 30 to 600)</label><input id="jellysin-threshold-minimum" is="emby-input" type="number" min="30" max="600" step="1" required></div>
+        <legend data-i18n="admin_threshold_legend">When a play counts</legend>
+        <p data-i18n="admin_threshold_desc">Last.fm counts a track longer than 30 seconds once half of it or 4 minutes, whichever comes first, has been heard. These settings can only make that stricter.</p>
+        <div class="inputContainer"><label for="jellysin-threshold-percent" data-i18n="admin_threshold_percent">Share of the track to hear (percent, 50 to 100)</label><input id="jellysin-threshold-percent" is="emby-input" type="number" min="50" max="100" step="1" required></div>
+        <div class="inputContainer"><label for="jellysin-threshold-ceiling" data-i18n="admin_threshold_ceiling">Count any track after (seconds, 240 to 7200)</label><input id="jellysin-threshold-ceiling" is="emby-input" type="number" min="240" max="7200" step="1" required></div>
+        <div class="inputContainer"><label for="jellysin-threshold-minimum" data-i18n="admin_threshold_minimum">Ignore tracks up to (seconds, 30 to 600)</label><input id="jellysin-threshold-minimum" is="emby-input" type="number" min="30" max="600" step="1" required></div>
       </fieldset>
       <div class="selectContainer" style="margin-top:1rem;">
-        <label for="jellysin-library-mode">Library scrobble filter</label>
+        <label for="jellysin-library-mode" data-i18n="admin_library_mode">Library scrobble filter</label>
         <select id="jellysin-library-mode" is="emby-select">
-          <option value="All">All libraries (default)</option>
-          <option value="AllowList">Allow-list (scrobble only selected libraries)</option>
-          <option value="BlockList">Block-list (scrobble all except selected libraries)</option>
+          <option value="All" data-i18n="admin_library_mode_all">All libraries (default)</option>
+          <option value="AllowList" data-i18n="admin_library_mode_allow">Allow-list (scrobble only selected libraries)</option>
+          <option value="BlockList" data-i18n="admin_library_mode_block">Block-list (scrobble all except selected libraries)</option>
         </select>
       </div>
       <div id="jellysin-libraries-group" style="margin-top:1rem;" hidden>
-        <p>Configured libraries:</p>
+        <p data-i18n="admin_configured_libraries">Configured libraries:</p>
         <div id="jellysin-libraries-list"></div>
       </div>
       <fieldset id="jellysin-rules-group" style="margin-top:1rem;">
-        <legend>Metadata cleanup rules</legend>
-        <p>Clean track metadata before scrobbling and now playing. Rules apply in order.</p>
+        <legend data-i18n="admin_cleanup_rules_legend">Metadata cleanup rules</legend>
+        <p data-i18n="admin_cleanup_rules_desc">Clean track metadata before scrobbling and now playing. Rules apply in order.</p>
         <div id="jellysin-rules-list"></div>
-        <button id="jellysin-add-rule" is="emby-button" type="button" class="raised block" style="margin-top:0.5rem;"><span>Add cleanup rule</span></button>
+        <button id="jellysin-add-rule" is="emby-button" type="button" class="raised block" style="margin-top:0.5rem;"><span data-i18n="admin_add_cleanup_rule">Add cleanup rule</span></button>
       </fieldset>
       <fieldset id="jellysin-block-rules-group" style="margin-top:1rem;">
-        <legend>Block rules</legend>
-        <p>Never scrobble or send now playing for items matching any rule.</p>
+        <legend data-i18n="admin_block_rules_legend">Block rules</legend>
+        <p data-i18n="admin_block_rules_desc">Never scrobble or send now playing for items matching any rule.</p>
         <div id="jellysin-block-rules-list"></div>
-        <button id="jellysin-add-block-rule" is="emby-button" type="button" class="raised block" style="margin-top:0.5rem;"><span>Add block rule</span></button>
+        <button id="jellysin-add-block-rule" is="emby-button" type="button" class="raised block" style="margin-top:0.5rem;"><span data-i18n="admin_add_block_rule">Add block rule</span></button>
       </fieldset>
-      <button is="emby-button" type="submit" class="raised button-submit block" style="margin-top:1rem;"><span>Save</span></button>
+      <button is="emby-button" type="submit" class="raised button-submit block" style="margin-top:1rem;"><span data-i18n="admin_save">Save</span></button>
       <p id="jellysin-settings-status" role="status" aria-live="polite"></p>
     </form>
     <details id="jellysin-advanced">
-      <summary>Advanced: Last.fm application</summary>
+      <summary data-i18n="admin_advanced_summary">Advanced: Last.fm application</summary>
       <p id="jellysin-application-status" role="status" aria-live="polite"></p>
-      <p>Release builds include the project's Last.fm application, so most servers need nothing here. A server may use its own application instead; it is stored protected on this server and never shown again.</p>
+      <p data-i18n="admin_advanced_desc">Release builds include the project's Last.fm application, so most servers need nothing here. A server may use its own application instead; it is stored protected on this server and never shown again.</p>
       <form id="jellysin-application-form">
-        <div class="inputContainer"><label for="jellysin-api-key">Application API key</label><input id="jellysin-api-key" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
-        <div class="inputContainer"><label for="jellysin-api-secret">Application shared secret</label><input id="jellysin-api-secret" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
-        <button is="emby-button" type="submit" class="raised block"><span>Save application override</span></button>
+        <div class="inputContainer"><label for="jellysin-api-key" data-i18n="admin_api_key">Application API key</label><input id="jellysin-api-key" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
+        <div class="inputContainer"><label for="jellysin-api-secret" data-i18n="admin_api_secret">Application shared secret</label><input id="jellysin-api-secret" is="emby-input" type="password" autocomplete="off" pattern="[a-fA-F0-9]{32}" maxlength="32" required></div>
+        <button is="emby-button" type="submit" class="raised block"><span data-i18n="admin_save_override">Save application override</span></button>
       </form>
-      <button id="jellysin-remove-override" is="emby-button" type="button" class="raised block" hidden><span>Remove override</span></button>
+      <button id="jellysin-remove-override" is="emby-button" type="button" class="raised block" hidden><span data-i18n="admin_remove_override">Remove override</span></button>
       <div id="jellysin-remove-confirmation" hidden>
-        <p>Remove the application override stored on this server? The server then uses the application included with this build, if there is one. Connected accounts must connect again.</p>
-        <button id="jellysin-confirm-remove" is="emby-button" type="button" class="raised block"><span>Remove the override now</span></button>
-        <button id="jellysin-cancel-remove" is="emby-button" type="button" class="raised block"><span>Keep the override</span></button>
+        <p data-i18n="admin_confirm_remove_desc">Remove the application override stored on this server? The server then uses the application included with this build, if there is one. Connected accounts must connect again.</p>
+        <button id="jellysin-confirm-remove" is="emby-button" type="button" class="raised block"><span data-i18n="admin_confirm_remove_now">Remove the override now</span></button>
+        <button id="jellysin-cancel-remove" is="emby-button" type="button" class="raised block"><span data-i18n="admin_cancel_remove">Keep the override</span></button>
       </div>
     </details>
   </div></div>
   <script type="text/javascript">
   (function () {
     const byId = function (id) { return document.getElementById(id); };
+    let t = function (key, params) {
+      if (params && typeof params === 'object') {
+        let text = key;
+        for (const [k, v] of Object.entries(params)) text = text.replaceAll('{' + k + '}', String(v));
+        return text;
+      }
+      return key;
+    };
     // The server clamps the same way; a value it would not accept is shown as the nearest one it does.
     const thresholdFields = [
       { id: 'jellysin-threshold-percent', key: 'ScrobblePercent', min: 50, max: 100, fallback: 50 },
@@ -98,9 +106,9 @@
 
     function showApplication(source) {
       byId('jellysin-application-status').textContent = source === 'Override'
-        ? 'In use: an application override stored on this server. Connected accounts must connect again after a change.'
-        : source === 'Unreadable' ? 'Not in use: the application override stored on this server cannot be read with its keys, as after a restore without them. Enter the application again or remove the override.'
-        : source === 'Project' ? 'In use: the Last.fm application included with this build.' : 'No Last.fm application is available on this server.';
+        ? t('admin_app_status_override')
+        : source === 'Unreadable' ? t('admin_app_status_unreadable')
+        : source === 'Project' ? t('admin_app_status_project') : t('admin_app_status_none');
       byId('jellysin-remove-override').hidden = source !== 'Override' && source !== 'Unreadable';
       byId('jellysin-remove-confirmation').hidden = true;
       if (source === 'None' || source === 'Unreadable') byId('jellysin-advanced').open = true;
@@ -116,25 +124,25 @@
     function showConnection(connection, available, note) {
       const connected = Boolean(read(connection, 'Connected'));
       const state = connected
-        ? 'Last.fm is connected as ' + String(read(connection, 'Username') ?? '') + (read(connection, 'NeedsReconnect') ? '. Last.fm asks you to connect again.' : '.')
-        : 'Last.fm is not connected.';
+        ? t('admin_connection_connected', { username: String(read(connection, 'Username') ?? '') }).replace(/\.$/, '') + (read(connection, 'NeedsReconnect') ? t('admin_reconnect_required') : '.')
+        : t('admin_connection_not_connected');
       const offered = available && sameServer();
-      byId('jellysin-connect-label').textContent = connected ? 'Reconnect Last.fm' : 'Connect Last.fm';
+      byId('jellysin-connect-label').textContent = connected ? t('admin_reconnect_lastfm') : t('admin_connect_lastfm');
       byId('jellysin-connect').hidden = !offered;
       byId('jellysin-connect').disabled = false;
       byId('jellysin-connection-status').textContent = note || (offered || (connected && available) ? state
-        : available ? state + ' Connect from the music dashboard of this server.'
-        : (connected ? state + ' ' : '') + 'Add a Last.fm application under Advanced before connecting.');
+        : available ? state + t('admin_connect_from_dashboard')
+        : (connected ? state + ' ' : '') + t('admin_add_app_before_connecting'));
     }
 
     async function loadConnection(available) {
       const me = await ApiClient.ajax({ type: 'GET', url: api('Me'), dataType: 'json' });
       let connection = read(me, 'Connection');
-      let note = refusedReturn() && !read(connection, 'Connected') ? 'Last.fm did not connect. Start again.' : '';
+      let note = refusedReturn() && !read(connection, 'Connected') ? t('admin_connection_refused_start_again') : '';
       if (read(connection, 'ApprovalPending')) {
         // The browser came back from Last.fm with an approval: complete it without a further step.
         try { connection = await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Finish'), dataType: 'json' }); note = ''; }
-        catch { note = 'Last.fm did not confirm the connection. Start again.'; }
+        catch { note = t('admin_connection_not_confirmed'); }
       }
       showConnection(connection, available, note);
     }
@@ -177,7 +185,7 @@
         librariesListed = true;
         byId('jellysin-library-mode').disabled = false;
       } catch {
-        list.textContent = 'Could not load libraries.';
+        list.textContent = t('admin_could_not_load_libraries');
       }
     }
 
@@ -213,7 +221,7 @@
       removeBtn.className = 'raised jellysin-remove-rule';
       removeBtn.setAttribute('is', 'emby-button');
       removeBtn.setAttribute('aria-label', label);
-      removeBtn.appendChild(Object.assign(document.createElement('span'), { textContent: 'Remove' }));
+      removeBtn.appendChild(Object.assign(document.createElement('span'), { textContent: t('admin_remove') }));
       removeBtn.addEventListener('click', onRemove);
       return removeBtn;
     }
@@ -223,11 +231,11 @@
       div.className = 'jellysin-rule-row';
       div.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.5rem;';
       div.append(
-        ruleSelect('jellysin-rule-field', 'Rule field', ruleFields, ['Artist', 'Title', 'Album', 'Album artist'], enumIndex(ruleFields, rule && rule.Field)),
-        ruleSelect('jellysin-rule-kind', 'Rule kind', ruleKinds, ruleKinds, enumIndex(ruleKinds, rule && rule.Kind)),
-        ruleControl('input', 'jellysin-rule-match', 'Rule match', { type: 'text', maxLength: 512, placeholder: 'Match', value: (rule && rule.Match) || '' }),
-        ruleControl('input', 'jellysin-rule-replacement', 'Rule replacement', { type: 'text', maxLength: 1024, placeholder: 'Replacement', value: (rule && rule.Replacement) || '' }),
-        ruleRemoveButton('Remove rule', () => div.remove()));
+        ruleSelect('jellysin-rule-field', t('admin_rule_field_label'), ruleFields, [t('admin_field_artist'), t('admin_field_title'), t('admin_field_album'), t('admin_field_album_artist')], enumIndex(ruleFields, rule && rule.Field)),
+        ruleSelect('jellysin-rule-kind', t('admin_rule_kind_label'), ruleKinds, [t('admin_kind_correction'), t('admin_kind_pattern')], enumIndex(ruleKinds, rule && rule.Kind)),
+        ruleControl('input', 'jellysin-rule-match', t('admin_rule_match_label'), { type: 'text', maxLength: 512, placeholder: t('admin_match_placeholder'), value: (rule && rule.Match) || '' }),
+        ruleControl('input', 'jellysin-rule-replacement', t('admin_rule_replacement_label'), { type: 'text', maxLength: 1024, placeholder: t('admin_replacement_placeholder'), value: (rule && rule.Replacement) || '' }),
+        ruleRemoveButton(t('admin_remove_rule'), () => div.remove()));
       return div;
     }
 
@@ -236,9 +244,9 @@
       div.className = 'jellysin-block-rule-row';
       div.style.cssText = 'display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;margin-top:0.5rem;';
       div.append(
-        ruleSelect('jellysin-block-rule-field', 'Block rule field', blockRuleFields, blockRuleFields, enumIndex(blockRuleFields, rule && rule.Field)),
-        ruleControl('input', 'jellysin-block-rule-value', 'Block rule value', { type: 'text', maxLength: 512, placeholder: 'Value', value: (rule && rule.Value) || '' }),
-        ruleRemoveButton('Remove block rule', () => div.remove()));
+        ruleSelect('jellysin-block-rule-field', t('admin_block_rule_field_label'), blockRuleFields, [t('admin_field_genre'), t('admin_field_artist'), t('admin_field_title'), t('admin_field_rating')], enumIndex(blockRuleFields, rule && rule.Field)),
+        ruleControl('input', 'jellysin-block-rule-value', t('admin_block_rule_value_label'), { type: 'text', maxLength: 512, placeholder: t('admin_value_placeholder'), value: (rule && rule.Value) || '' }),
+        ruleRemoveButton(t('admin_remove_block_rule'), () => div.remove()));
       return div;
     }
 
@@ -255,6 +263,11 @@
     function loadBlockRules(rules) { loadRuleList('jellysin-block-rules-list', rules, createBlockRuleRow); }
 
     byId('jellysin-admin').addEventListener('pageshow', async function () {
+      try {
+        const i18n = await import(api('Assets/i18n.js'));
+        t = i18n.t;
+        i18n.applyTranslations(byId('jellysin-admin'));
+      } catch (error) { console.error('JellySin Last.fm: translations could not be loaded; the page stays in English.', error); }
       byId('jellysin-dashboard-link').href = api('');
       byId('jellysin-library-mode').addEventListener('change', updateLibraryGroupVisibility);
       try {
@@ -274,15 +287,15 @@
         await loadLibraries(config.LibraryIds);
         loadRules(config.MetadataRules);
         loadBlockRules(config.BlockRules);
-      } catch { byId('jellysin-settings-status').textContent = 'Settings could not be loaded.'; }
+      } catch { byId('jellysin-settings-status').textContent = t('admin_settings_load_failed'); }
       try { await loadConnection(await loadApplication()); }
-      catch { byId('jellysin-connection-status').textContent = 'The Last.fm connection could not be loaded.'; }
+      catch { byId('jellysin-connection-status').textContent = t('admin_connection_load_failed'); }
     });
 
     byId('jellysin-connect').addEventListener('click', async function (event) {
       const control = event.currentTarget;
       control.disabled = true;
-      let refusal = 'Last.fm sign-in could not start.';
+      let refusal = t('admin_signin_not_started');
       // Set once the page itself refuses after the server answered: the server is told, so that its log shows the click.
       let reason = '';
       try {
@@ -295,16 +308,15 @@
         const back = new URL(target.searchParams.get('cb') ?? '', location.origin);
         const expected = new URL(api('Callback'), location.href);
         if (back.origin !== expected.origin || back.pathname !== expected.pathname) {
-          refusal += ' The server names ' + back.origin + back.pathname + ' as the return address, but this page expects ' + expected.origin + expected.pathname
-            + '. Set the published server address (start option published-server-url) to the address users open, or add the proxy under Networking, Known proxies. Then restart Jellyfin.';
+          refusal += t('admin_signin_refusal_return_address', { named: back.origin + back.pathname, expected: expected.origin + expected.pathname });
           reason = 'return-address';
           throw new Error('Unexpected return address.');
         }
-        byId('jellysin-connection-status').textContent = 'Opening Last.fm…';
+        byId('jellysin-connection-status').textContent = t('admin_signin_opening');
         location.assign(target.href);
       } catch (error) {
         if (reason) await ApiClient.ajax({ type: 'POST', url: api('Me/Connection/Refusal'), contentType: 'application/json', data: JSON.stringify({ Reason: reason }) }).catch(function () {});
-        else if (typeof error?.status === 'number') refusal += ' The server refused the request (HTTP ' + error.status + '); the server log names the reason.';
+        else if (typeof error?.status === 'number') refusal += t('admin_signin_refused_http', { status: error.status });
         byId('jellysin-connection-status').textContent = refusal;
         control.disabled = false;
       }
@@ -322,7 +334,7 @@
         await ApiClient.ajax({ type: 'PUT', url: api('Admin/Application'), contentType: 'application/json', data: JSON.stringify(input) });
         showApplication('Override');
         await loadConnection(true);
-      } catch { byId('jellysin-application-status').textContent = 'The application override could not be saved.'; }
+      } catch { byId('jellysin-application-status').textContent = t('admin_override_save_failed'); }
       finally { input.ApiKey = ''; input.Secret = ''; control.disabled = false; }
     });
 
@@ -340,7 +352,7 @@
       try {
         await ApiClient.ajax({ type: 'DELETE', url: api('Admin/Application') });
         await loadConnection(await loadApplication());
-      } catch { byId('jellysin-application-status').textContent = 'The application override could not be removed.'; }
+      } catch { byId('jellysin-application-status').textContent = t('admin_override_remove_failed'); }
       finally { control.disabled = false; }
     });
 
@@ -406,8 +418,8 @@
         }
         config.BlockRules = blockRules;
         await ApiClient.updatePluginConfiguration(id, config);
-        document.getElementById('jellysin-settings-status').textContent = 'Settings saved.';
-      } catch { document.getElementById('jellysin-settings-status').textContent = 'Settings could not be saved.'; }
+        document.getElementById('jellysin-settings-status').textContent = t('admin_settings_saved');
+      } catch { document.getElementById('jellysin-settings-status').textContent = t('admin_settings_save_failed'); }
       finally { control.disabled = false; }
     });
   })();
