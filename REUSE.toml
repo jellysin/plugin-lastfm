@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 lusoris <lusoris@pm.me>
+# SPDX-License-Identifier: EUPL-1.2
+#
+# REUSE (https://reuse.software) annotations: the licensing of every file in
+# machine-readable form for SPDX and SBOM accuracy. Later tables win for files
+# matched by more than one table (REUSE specification 3.3). Full licence texts
+# live under LICENSES/; the root LICENSE is the EUPL-1.2 text shipped in the
+# plugin package. Last.fm data and third-party dependencies are not part of this
+# repository and keep their own terms. The vendored register skills under
+# .agents/skills and .claude/skills carry their upstream MIT notices in their
+# own LICENSE files. Run `reuse lint` to verify.
+version = 1
+SPDX-PackageName = "jellysin-plugin-lastfm"
+SPDX-PackageSupplier = "lusoris <lusoris@pm.me>"
+SPDX-PackageDownloadLocation = "https://github.com/jellysin/plugin-lastfm"
+
+# ── First-party code, configuration, tooling, tests ─────────────────────────
+[[annotations]]
+path = ["**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 lusoris <lusoris@pm.me>"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# ── First-party prose: documentation, agent context, changelog ──────────────
+[[annotations]]
+path = [
+  "README.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "CHANGELOG.md",
+  "AGENTS.md",
+  "AGENTS.readonly.md",
+  "CLAUDE.md",
+  "**/AGENTS.md",
+  "**/README.md",
+  "docs/**",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 lusoris <lusoris@pm.me>"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
