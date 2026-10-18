@@ -60,6 +60,11 @@ The local gate's SDK images in `tools/sdk.sh` move in one pull request with
 `global.json` and `.node-version`. Their registries give no release time, so the
 images skip the wait and follow the version files, which still wait; the Python
 tests fail when either rule is missing.
+`make verify-all` also runs `reuse lint` (REUSE 6, the release line of the required
+REUSE lint check) through `tools/reuse-lint.sh`, which fails when reuse 6 is not
+installed. Because `REUSE.toml` labels the whole tree, the same script then runs
+`tools/licence_coverage.py`: a file of a new type or in a new place fails until it
+is declared there, in another `REUSE.toml` table, or in its own SPDX header.
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,
