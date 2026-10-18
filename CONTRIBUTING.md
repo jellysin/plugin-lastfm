@@ -147,8 +147,13 @@ production graph against the committed lock and restored assets, then creates a
 deterministic ZIP, SPDX file/dependency inventory and checksums. The release metadata
 carries the version's section of `CHANGELOG.md` as the text the Plugin Repository
 shows; a tagged build without that section fails. Independent builds
-in different checkout paths must produce the same four artifacts. The workflow
-attests them, verifies existing draft bytes and publishes only a complete release.
+in different checkout paths must produce the same four artifacts. The build runs in
+the reusable `build-signed.yml`, which attests the artifacts and the SPDX SBOM and signs
+each one with cosign keyless, so the signing identity is that file at the tag. A
+separate publish job checks every artifact with `gh attestation verify` and
+`cosign verify-blob` through `.github/actions/verify-signed`, the same check
+`release-rehearsal.yml` runs on `main`. Only then does it verify existing draft bytes
+and publish a complete release.
 Immutable releases must be
 enabled before publication. Retry by dispatching the same workflow on the same tag;
 never use an upload replacement option or change already published bytes.
