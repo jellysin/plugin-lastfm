@@ -400,7 +400,7 @@ async function openSettings(page, options = {}) {
     globalThis.ApiClient = {
       getUrl: path => input.server + '/jellyfin/' + path,
       getPluginConfiguration: async () => ({ ...config }),
-      updatePluginConfiguration: async (_id, saved) => { state.savedConfig = saved; },
+      updatePluginConfiguration: async (_id, saved) => { state.savedConfig = saved; Object.assign(config, saved); },
       ajax: async request => {
         const path = request.url.split('/JellySin/Lastfm/')[1];
         const data = request.data ? JSON.parse(request.data) : null;
@@ -427,7 +427,7 @@ test('native admin settings save the library rule only when the libraries could 
   await page.locator('#jellysin-library-mode').selectOption('AllowList');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 1, LibraryIds: [music, books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [] });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 1, LibraryIds: [music, books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [], BlockRules: [] });
 });
 
 test('native admin settings keep the library rule when the libraries could not be listed', async ({ page }) => {
@@ -436,7 +436,7 @@ test('native admin settings keep the library rule when the libraries could not b
   await expect(page.locator('#jellysin-libraries-list')).toHaveText('Could not load libraries.');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 2, LibraryIds: [books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [] });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false, LibraryMode: 2, LibraryIds: [books] , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [], BlockRules: [] });
 });
 
 test('native admin settings save the media types to scrobble', async ({ page }) => {
@@ -449,7 +449,7 @@ test('native admin settings save the media types to scrobble', async ({ page }) 
   await page.getByLabel('Music videos').check();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: false, ScrobbleAudiobooks: true, ScrobbleMusicVideos: true , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [] });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: true, HostSetting: 'preserved', ScrobbleMusic: false, ScrobbleAudiobooks: true, ScrobbleMusicVideos: true , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [], BlockRules: [] });
 });
 
 test('native admin settings show the media type defaults for a configuration saved before they existed', async ({ page }) => {
@@ -552,6 +552,53 @@ test('native admin settings list, add, remove and save metadata cleanup rules', 
   ]);
 });
 
+test('native admin settings list, add, remove, save and reload block rules', async ({ page }) => {
+  // Jellyfin may send an enum by name or by number; the page saves numbers.
+  await openSettings(page, {
+    config: {
+      BlockRules: [
+        { Field: 'Rating', Value: 'Explicit' },
+        { Field: 0, Value: 'Podcast' }
+      ]
+    }
+  });
+  const rows = page.locator('.jellysin-block-rule-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0).locator('.jellysin-block-rule-field')).toHaveValue('3');
+  await expect(rows.nth(0).locator('.jellysin-block-rule-value')).toHaveValue('Explicit');
+  await expect(rows.nth(1).locator('.jellysin-block-rule-field')).toHaveValue('0');
+  await expect(rows.nth(1).locator('.jellysin-block-rule-value')).toHaveValue('Podcast');
+
+  await rows.nth(1).locator('.jellysin-remove-rule').click();
+  await expect(rows).toHaveCount(1);
+
+  await page.locator('#jellysin-add-block-rule').click();
+  const added = rows.nth(1);
+  await added.locator('.jellysin-block-rule-field').selectOption('Artist');
+  await added.locator('.jellysin-block-rule-value').fill('Blocked Artist');
+  // A row left without a value is not saved.
+  await page.locator('#jellysin-add-block-rule').click();
+  await expect(rows).toHaveCount(3);
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
+
+  const saved = await page.evaluate(() => globalThis.fixture.savedConfig);
+  expect(saved.BlockRules).toEqual([
+    { Field: 3, Value: 'Explicit' },
+    { Field: 1, Value: 'Blocked Artist' }
+  ]);
+
+  // Reload the page settings with saved configuration.
+  await page.locator('#jellysin-admin').dispatchEvent('pageshow');
+  const reloadedRows = page.locator('.jellysin-block-rule-row');
+  await expect(reloadedRows).toHaveCount(2);
+  await expect(reloadedRows.nth(0).locator('.jellysin-block-rule-field')).toHaveValue('3');
+  await expect(reloadedRows.nth(0).locator('.jellysin-block-rule-value')).toHaveValue('Explicit');
+  await expect(reloadedRows.nth(1).locator('.jellysin-block-rule-field')).toHaveValue('1');
+  await expect(reloadedRows.nth(1).locator('.jellysin-block-rule-value')).toHaveValue('Blocked Artist');
+});
+
 const calls = (page, path) => page.evaluate(wanted => globalThis.fixture.calls.filter(call => call.path === wanted), path);
 
 test('native admin settings preserve host configuration and clear application secrets', async ({ page }) => {
@@ -561,7 +608,7 @@ test('native admin settings preserve host configuration and clear application se
   await page.locator('#jellysin-enabled').uncheck();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#jellysin-settings-status')).toHaveText('Settings saved.');
-  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [] });
+  expect(await page.evaluate(() => globalThis.fixture.savedConfig)).toEqual({ Enabled: false, HostSetting: 'preserved', ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: false , ScrobblePercent: 50, ScrobbleCeilingSeconds: 240, ScrobbleMinimumLengthSeconds: 30, ScrobbleAllArtists: false, RemoveFeaturedArtists: false, MetadataRules: [], BlockRules: [] });
   // The application fields are for the rare server with its own application: closed until asked for.
   await expect(page.locator('#jellysin-advanced')).not.toHaveAttribute('open');
   await expect(page.getByLabel('Application API key', { exact: true })).toBeHidden();

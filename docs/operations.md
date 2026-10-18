@@ -258,6 +258,13 @@ its artist and title and no album, because Jellyfin keeps no album for it. Other
 videos never count. A configuration saved before these switches existed scrobbles
 music only (`ConfigurationTests.SettingsSavedBeforeMediaTypesExistedScrobbleMusicOnly`).
 
+Administrators can also define server-wide block rules on the plugin settings
+page by genre, artist, title or official rating (`BlockRules.cs`). Rules match
+the whole field, case-insensitively and trimmed, without regular expressions.
+Any item matching an active block rule is rejected in memory when playback is
+captured, before per-user scrobble rules are evaluated and without database or
+network operations.
+
 Each user can narrow these rules for their own account on the dashboard, under
 "Library scrobbling", "Devices that scrobble" and "Media types that scrobble". A
 user can exclude more libraries, devices or media types, but never turn on what an

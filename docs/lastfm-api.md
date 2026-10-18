@@ -108,6 +108,14 @@ Empty album or album artist fields are omitted. The settings page keeps at most
 64 rules; a rule without a match, with a match over 512 characters or with a
 replacement over 1024 characters is dropped when the settings are saved.
 
+Tracks matching server-wide block rules (`BlockRules.cs`) are dropped during
+capture and are never scrobbled or sent as now playing. Each rule targets genre,
+artist, title or rating as a case-insensitive, trimmed whole-field match without
+regular expressions. Genre matches any of the item's genres; artist matches any
+credited track artist or album artist; title matches the track title; and rating
+matches the official rating. The settings page keeps at most 64 block rules;
+empty values or values over 512 characters are omitted when saved.
+
 JSON API errors must be examined even with HTTP 200. Codes 11 and 16 represent
 temporary service failures; invalid session code 9 requires reconnecting. Invalid
 or suspended application credentials and signature errors need administrator or

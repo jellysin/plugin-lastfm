@@ -22,7 +22,7 @@ public sealed class ConfigurationTests
 
     [Fact]
     public void SettingsHoldTheConfiguredProperties() =>
-        Assert.Equal(["Enabled", "LibraryIds", "LibraryMode", "MetadataRules", "RemoveFeaturedArtists", "ScrobbleAllArtists", "ScrobbleAudiobooks", "ScrobbleCeilingSeconds", "ScrobbleMinimumLengthSeconds", "ScrobbleMusic", "ScrobbleMusicVideos", "ScrobblePercent"], typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly).Select(property => property.Name).Order());
+        Assert.Equal(["BlockRules", "Enabled", "LibraryIds", "LibraryMode", "MetadataRules", "RemoveFeaturedArtists", "ScrobbleAllArtists", "ScrobbleAudiobooks", "ScrobbleCeilingSeconds", "ScrobbleMinimumLengthSeconds", "ScrobbleMusic", "ScrobbleMusicVideos", "ScrobblePercent"], typeof(PluginConfiguration).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly).Select(property => property.Name).Order());
 
     [Fact]
     public void SettingsWithLibraryRulesRoundtripsXml()
