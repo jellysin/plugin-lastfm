@@ -114,5 +114,6 @@ See [account privacy and operations](docs/operations.md),
 [architecture](docs/architecture.md). Performance measurements and their limits
 are recorded in [the benchmark documentation](benchmarks/README.md).
 
-Build and validation instructions are in CONTRIBUTING.md. New source is licensed
-under EUPL-1.2; Last.fm data and third-party dependencies retain their own terms.
+Build and validation instructions are in CONTRIBUTING.md. Code is licensed under
+EUPL-1.2 and documentation under CC-BY-SA-4.0, as REUSE.toml records file by file;
+Last.fm data and third-party dependencies retain their own terms.

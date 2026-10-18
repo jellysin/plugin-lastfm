@@ -1,0 +1,10 @@
+---
+# praetorctl adopt wrote this file for actionlint, which rejects a runs-on label
+# missing from its built-in table of GitHub-hosted runners unless it is declared
+# under self-hosted-runner.labels. Each label below is one a Praetor-managed
+# workflow runs on that actionlint v1.7.12 does not know. Adoption only adds a
+# missing label and never removes one, so keep your own settings here, and
+# delete a label once your actionlint accepts .github/workflows without it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
