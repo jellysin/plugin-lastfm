@@ -38,6 +38,9 @@ public sealed class PluginConfiguration : BasePluginConfiguration
     // Off by default: a title or artist that names its featured artist is sent as tagged, as before this option.
     public bool RemoveFeaturedArtists { get; set; }
 
+    // Off by default: scrobble and update now playing only for tracks with a valid MusicBrainz recording id.
+    public bool RequireMusicBrainzId { get; set; }
+
     public Guid[] LibraryIds
     {
         get => _libraryIds;
