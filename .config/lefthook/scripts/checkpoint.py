@@ -7,6 +7,8 @@ import os
 import re
 import stat
 import sys
+import tempfile
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -15,6 +17,19 @@ from common import HookError, run_bounded
 
 MAX_OUTPUT = 1024 * 1024
 MAX_PATHS = 10000
+MAX_WORKTREES = 512
+MAX_UNFINISHED_WORKTREES = 20
+MAX_WORKTREE_ACTIONS = 10
+OPEN_ITEMS_LIMIT = 1024 * 1024
+# The hook has no session-start timestamp; recent Git admin-file activity stands in for
+# "created or changed by this session" and deliberately excludes older inventory worktrees.
+WORKTREE_ACTIVITY_WINDOW = 24 * 60 * 60
+WORKTREE_CHECK_BUDGET = 22
+WORKTREE_CHECK_WORKERS = 8
+WORKTREE_COMMAND_TIMEOUT = 1
+# Seconds per Git call of the landed-by-content check, which diffs and applies a whole branch.
+LANDED_CHECK_TIMEOUT = 5
+PULL_REQUEST_TIMEOUT = 2
 # gh 2.100.0 requests the first 100 contexts for pr list; equality is incomplete.
 MAX_CHECKS = 100
 # GitHub reports check-run start times in UTC with second precision.
@@ -58,7 +73,7 @@ class CheckpointError(Exception):
     """A bounded, actionable planner failure."""
 
 
-def _run(argv, root, *, allowed=(0,), network=False):
+def _run(argv, root, *, allowed=(0,), network=False, timeout=None, index=None):
     env = dict(os.environ)
     for key in (
         "GIT_DIR",
@@ -72,11 +87,13 @@ def _run(argv, root, *, allowed=(0,), network=False):
     env.update(
         GIT_TERMINAL_PROMPT="0", GH_PROMPT_DISABLED="1", PYTHONDONTWRITEBYTECODE="1"
     )
+    if index is not None:
+        env["GIT_INDEX_FILE"] = str(index)
     try:
         return run_bounded(
             argv,
             cwd=root,
-            timeout=15 if network else TIMEOUT,
+            timeout=timeout if timeout is not None else (15 if network else TIMEOUT),
             max_output=MAX_OUTPUT,
             allowed=allowed,
             env=env,
@@ -355,20 +372,28 @@ WORKTREE_DIFF = ("--no-ext-diff", "--no-textconv", "--ignore-submodules=all")
 NAME_ONLY = ("--name-only", "-z", "--no-renames")
 
 
-def _diff_names(root, *options):
-    return _paths(_git(root, "diff", *WORKTREE_DIFF, *options))
+def _diff_names(root, *options, timeout=None):
+    return _paths(_git(root, "diff", *WORKTREE_DIFF, *options, timeout=timeout))
 
 
-def _worktree(root):
-    tracked = _diff_names(root, *NAME_ONLY, "--")
+def _worktree(root, timeout=None):
+    tracked = _diff_names(root, *NAME_ONLY, "--", timeout=timeout)
     untracked = _paths(
-        _git(root, "ls-files", "--others", "--exclude-standard", "-z", "--")
+        _git(
+            root,
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+            timeout=timeout,
+        )
     )
-    staged = _diff_names(root, "--cached", *NAME_ONLY, "--")
+    staged = _diff_names(root, "--cached", *NAME_ONLY, "--", timeout=timeout)
     private_writes = _diff_names(
-        root, "--cached", *NAME_ONLY, "--diff-filter=ACMRTUXB", "--"
+        root, "--cached", *NAME_ONLY, "--diff-filter=ACMRTUXB", "--", timeout=timeout
     )
-    conflicts = _paths(_git(root, "ls-files", "-u", "-z"))
+    conflicts = _paths(_git(root, "ls-files", "-u", "-z", timeout=timeout))
     public = {name for name in tracked | staged | untracked if _public(name)}
     if len(public) > MAX_PATHS:
         raise CheckpointError(f"changed public path count exceeds {MAX_PATHS}")
@@ -382,10 +407,466 @@ def _worktree(root):
     return public
 
 
-def _branch(root):
+def _listed_worktrees(root):
+    """Read a bounded NUL-delimited worktree listing; record fields cannot contain NUL."""
+    fields = _git(
+        root, "worktree", "list", "--porcelain", "-z", timeout=WORKTREE_COMMAND_TIMEOUT
+    ).split(b"\0")
+    entries = []
+    entry = {}
+    for raw in fields:
+        field = os.fsdecode(raw)
+        if not field:
+            if entry:
+                entries.append(entry)
+                entry = {}
+            if len(entries) >= MAX_WORKTREES:
+                break
+            continue
+        key, separator, value = field.partition(" ")
+        if key == "worktree" and separator:
+            entry["path"] = value
+        elif key in {"bare", "prunable", "detached"}:
+            entry[key] = True
+        elif key in {"HEAD", "branch"} and separator:
+            entry[key] = value
+    if entry and len(entries) < MAX_WORKTREES:
+        entries.append(entry)
+    return entries
+
+
+def _gitdir(path, common_dir):
+    """Resolve a worktree's admin directory from its .git directory or pointer file."""
+    marker = path / ".git"
+    try:
+        if marker.is_dir():
+            return marker.resolve()
+        raw = marker.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeError):
+        return common_dir if path.resolve() == Path(common_dir).parent else None
+    if len(raw) > 4096 or not raw.startswith("gitdir: "):
+        return None
+    target = Path(raw[8:].strip())
+    return (target if target.is_absolute() else marker.parent / target).resolve()
+
+
+def _worktree_recent(path, common_dir, now):
+    """Use admin-directory and selected state-file mtimes as bounded activity evidence."""
+    directory = _gitdir(path, common_dir)
+    if directory is None:
+        return False
+    candidates = (
+        directory,
+        directory / "HEAD",
+        directory / "index",
+        directory / "logs" / "HEAD",
+    )
+    newest = 0
+    for candidate in candidates:
+        try:
+            newest = max(newest, candidate.stat().st_mtime)
+        except OSError:
+            continue
+    age = now - newest
+    return newest > 0 and 0 <= age <= WORKTREE_ACTIVITY_WINDOW
+
+
+# Characters that continue a name, a dot aside: a branch may hold "/", a directory name may not,
+# and a whole path is bounded by white space. A dot continues a name only when a name character
+# follows it, so a name that ends a sentence still counts. OPEN.md holds a name when nothing on
+# either side continues it: "branch=feat/x" and ".../worktrees/x." name the worktree, while
+# "feat/x2", "old-x" and "x.old" do not.
+BRANCH_NAME_CHARS = "A-Za-z0-9_/-"
+DIRECTORY_NAME_CHARS = "A-Za-z0-9_-"
+
+
+def _name_held(open_text, name, chars):
+    """Whether open_text holds name with no name character, or dot and name character, around it."""
+    if not name:
+        return False
+    pattern = f"(?<![.{chars}])" + re.escape(name) + f"(?![{chars}]|\\.[{chars}])"
+    return re.search(pattern, open_text) is not None
+
+
+def _path_held(open_text, path):
+    """Whether open_text holds path bounded by white space, a sentence-ending dot allowed."""
+    pattern = r"(?<!\S)" + re.escape(path) + r"(?![^\s.]|\.\S)"
+    return bool(path) and re.search(pattern, open_text) is not None
+
+
+def _named_worktree(open_text, entry):
+    """Match branch, directory name, or whole path in bounded OPEN.md text."""
+    return (
+        _name_held(
+            open_text,
+            entry.get("branch", "").removeprefix("refs/heads/"),
+            BRANCH_NAME_CHARS,
+        )
+        or _name_held(open_text, Path(entry["path"]).name, DIRECTORY_NAME_CHARS)
+        or _path_held(open_text, entry["path"])
+    )
+
+
+def _open_worktree_text(root):
+    """Read only the bounded OPEN ledger; a missing ledger names no worktrees."""
+    try:
+        with (Path(root) / ".workingdir" / "OPEN.md").open("rb") as stream:
+            raw = stream.read(OPEN_ITEMS_LIMIT + 1)
+    except FileNotFoundError:
+        return ""
+    if len(raw) > OPEN_ITEMS_LIMIT:
+        raise CheckpointError(".workingdir/OPEN.md exceeds 1 MiB")
+    return raw.decode("utf-8", errors="replace")
+
+
+def _remote_ref_exists(path, ref):
+    """Whether a remote-tracking ref exists locally, with a bounded Git call."""
+    raw = _run(
+        ["git", "rev-parse", "--verify", "--quiet", ref],
+        path,
+        allowed=(0, 1),
+        timeout=WORKTREE_COMMAND_TIMEOUT,
+    )
+    return bool(raw.strip())
+
+
+def _rev_list_count(path, *refs):
+    """Count HEAD commits outside refs, with a bounded Git call."""
+    raw = _git(
+        path,
+        "rev-list",
+        "--count",
+        "HEAD",
+        "--not",
+        *refs,
+        timeout=WORKTREE_COMMAND_TIMEOUT,
+    )
+    return int(raw.decode().strip())
+
+
+def _worktree_base_ahead(path, cfg):
+    """Return whether this branch is pushed to its configured remote and ahead of base."""
+    branch = _branch(path, timeout=WORKTREE_COMMAND_TIMEOUT)
+    if not branch:
+        return False
+    remote = cfg["remote"]
+    branch_ref = f"refs/remotes/{remote}/{branch}"
+    base_ref = f"refs/remotes/{remote}/{cfg['base']}"
+    if not _remote_ref_exists(path, branch_ref) or not _remote_ref_exists(
+        path, base_ref
+    ):
+        return False
+    return (
+        _rev_list_count(path, branch_ref) == 0 and _rev_list_count(path, base_ref) > 0
+    )
+
+
+def _pull_request_argv(cfg, branch=None):
+    """Build the bounded repository listing or one explicit-head PR probe."""
+    argv = ["gh", "pr", "list", "--repo", cfg["repository"], "--state", "all"]
+    if branch:
+        argv.extend(("--head", branch))
+    return [*argv, "--limit", "200", "--json", "headRefName,state"]
+
+
+def _pull_request_rows(raw, kind):
+    """Decode a bounded PR listing and reject unknown row shapes or states."""
+    rows = json.loads(raw)
+    if not isinstance(rows, list) or len(rows) > 200:
+        raise CheckpointError(f"pull request {kind} is malformed")
+    if any(
+        not isinstance(row, dict)
+        or not isinstance(row.get("headRefName"), str)
+        or row.get("state") not in {"OPEN", "CLOSED", "MERGED"}
+        for row in rows
+    ):
+        raise CheckpointError(f"pull request {kind} is malformed")
+    return rows
+
+
+def _list_pull_requests(root, cfg):
+    """Return validated states from the single repository-wide PR listing."""
+    try:
+        raw = _run(
+            _pull_request_argv(cfg),
+            root,
+            network=True,
+            allowed=(0,),
+            timeout=PULL_REQUEST_TIMEOUT,
+        )
+        rows = _pull_request_rows(raw, "listing")
+        states = {}
+        for row in rows:
+            states.setdefault(row["headRefName"], set()).add(row["state"])
+    except (CheckpointError, ValueError, TypeError):
+        return {}
+    return states
+
+
+def _probe_one_pull_request(root, cfg, branch):
+    """Return the validated states for one explicit branch-head query."""
+    raw = _run(
+        _pull_request_argv(cfg, branch),
+        root,
+        network=True,
+        allowed=(0,),
+        timeout=PULL_REQUEST_TIMEOUT,
+    )
+    rows = _pull_request_rows(raw, "probe")
+    return {row["state"] for row in rows if row["headRefName"] == branch}
+
+
+def _probe_pull_requests(root, cfg, branches, states, deadline):
+    """Probe at most three absent branches; unavailable state stays explicitly unverified."""
+    probes = 0
+    for branch in branches:
+        if branch in states or probes >= 3 or time.monotonic() >= deadline:
+            continue
+        probes += 1
+        try:
+            states[branch] = _probe_one_pull_request(root, cfg, branch)
+        except (CheckpointError, ValueError, TypeError, KeyError):
+            states[branch] = {"UNVERIFIED"}
+    return states
+
+
+def _pull_request_states(root, cfg, branches, deadline):
+    """Read all PR heads once, then probe at most three absent branches."""
+    if not cfg.get("enabled") or not cfg.get("repository"):
+        return {}, "checkpoint config disabled or repository missing"
+    if not branches:
+        return {}, ""
+    if time.monotonic() >= deadline:
+        return {}, "worktree check budget exhausted"
+    states = _list_pull_requests(root, cfg)
+    return _probe_pull_requests(root, cfg, branches, states, deadline), ""
+
+
+def _recent_unnamed_worktrees(root, common_dir, open_text, now):
+    """Return bounded listed worktrees that are recent, present, and unnamed."""
+    root_path = Path(
+        _git(root, "rev-parse", "--show-toplevel", timeout=WORKTREE_COMMAND_TIMEOUT)
+        .decode()
+        .strip()
+    ).resolve()
+    candidates = []
+    for entry in _listed_worktrees(root):
+        path = Path(entry.get("path", ""))
+        try:
+            resolved = path.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if (
+            resolved == root_path
+            or entry.get("bare")
+            or entry.get("prunable")
+            or not resolved.is_dir()
+            or not _worktree_recent(resolved, common_dir, now)
+        ):
+            continue
+        entry["path"] = str(resolved)
+        entry["branch"] = entry.get("branch", "").removeprefix("refs/heads/")
+        if not _named_worktree(open_text, entry):
+            candidates.append((entry, resolved))
+    return candidates
+
+
+def _public_change_reason(path):
+    """Return public dirty-path count or the existing worktree reader's failure."""
+    try:
+        public = _worktree(path, timeout=WORKTREE_COMMAND_TIMEOUT)
+        return [f"{len(public)} public change(s)"] if public else []
+    except (CheckpointError, OSError) as error:
+        return [str(error)]
+
+
+def _content_in_base(path, cfg):
+    """Whether the worktree's net change since its merge base is already in the remote base.
+
+    A branch that landed through a squash or a train has neither a remote copy of its commits
+    nor a pull request of its own head, yet nothing of it is unfinished. Its reversed patch then
+    applies to the base. Read-only: the index lives in a temporary folder outside the repository.
+    """
+    remote, base = cfg.get("remote") or "origin", cfg.get("base") or "main"
+    base_ref = f"refs/remotes/{remote}/{base}"
+    if not _remote_ref_exists(path, base_ref):
+        return False
+    fork = _git(path, "merge-base", base_ref, "HEAD", timeout=LANDED_CHECK_TIMEOUT)
+    diff = ["diff", "--binary", *WORKTREE_DIFF, fork.decode().strip(), "HEAD"]
+    patch = _git(path, *diff, timeout=LANDED_CHECK_TIMEOUT)
+    return not patch.strip() or _reverse_applies(path, base_ref, patch)
+
+
+def _reverse_applies(path, base_ref, patch):
+    """Whether patch applies in reverse to base_ref, on an index in a temporary folder."""
+    with tempfile.TemporaryDirectory(prefix="praetor-landed-") as scratch:
+        index = Path(scratch) / "index"
+        change = Path(scratch) / "change.patch"
+        change.write_bytes(patch)
+        _git(path, "read-tree", base_ref, index=index, timeout=LANDED_CHECK_TIMEOUT)
+        check = ["apply", "--check", "--reverse", "--cached", str(change)]
+        try:
+            _git(path, *check, index=index, timeout=LANDED_CHECK_TIMEOUT)
+        except CheckpointError:
+            return False
+    return True
+
+
+def _landed(path, cfg):
+    """_content_in_base, failing closed: a check that cannot run leaves the worktree judged."""
+    try:
+        return _content_in_base(path, cfg)
+    except (CheckpointError, ValueError, OSError):
+        return False
+
+
+def _worktree_unpublished_count(path):
+    """Count HEAD commits unreachable from every remote, using the canonical criterion."""
+    return _rev_list_count(path, "--remotes")
+
+
+def _judge_worktree(root, cfg, entry, path, deadline):
+    """Return one worktree's unfinished reasons and whether its PR needs checking."""
+    if time.monotonic() >= deadline:
+        return (
+            entry,
+            ["pull request state not verified (worktree check budget exhausted)"],
+            False,
+        )
+    reasons = _public_change_reason(path)
+    if not reasons and _landed(path, cfg):
+        return entry, [], False
+    try:
+        count = _worktree_unpublished_count(path)
+    except (CheckpointError, ValueError, OSError) as error:
+        reasons.append(f"commit state not verified ({error})")
+        return entry, reasons, False
+    if count:
+        reasons.append(f"{count} commit(s) not on any remote")
+        return entry, reasons, False
+    if not cfg.get("enabled") or not cfg.get("repository"):
+        return entry, reasons, False
+    try:
+        return entry, reasons, _worktree_base_ahead(path, cfg)
+    except (CheckpointError, ValueError, OSError) as error:
+        reasons.append(f"pull request state not verified ({error})")
+        return entry, reasons, False
+
+
+def _ordered_map(fn, items):
+    """fn over items on at most WORKTREE_CHECK_WORKERS threads, results in item order.
+
+    Plain threads, because the minimal Python of the devcontainer (python3-minimal) has
+    neither concurrent.futures nor queue. The first exception a call raised is raised
+    again after every thread has finished, as ThreadPoolExecutor.map does.
+    """
+    results, errors, lock, cursor = [None] * len(items), [], threading.Lock(), [0]
+
+    def work():
+        for _ in range(len(items)):
+            with lock:
+                index, cursor[0] = cursor[0], cursor[0] + 1
+            if index >= len(items):
+                return
+            try:
+                results[index] = fn(items[index])
+            except Exception as error:  # noqa: BLE001  re-raised below, after the join
+                errors.append(error)
+                return
+
+    threads = [
+        threading.Thread(target=work)
+        for _ in range(min(WORKTREE_CHECK_WORKERS, len(items)))
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    if errors:
+        raise errors[0]
+    return results
+
+
+def _judge_worktree_candidates(root, cfg, candidates, deadline):
+    """Separate unfinished records from branches requiring bounded PR state reads."""
+    jobs = [(cfg, entry, path, deadline) for entry, path in candidates]
+    results = _ordered_map(lambda job: _judge_worktree(root, *job), jobs)
+    records = [(entry, reasons) for entry, reasons, _ in results]
+    pr_candidates = []
+    for entry, _reasons, needs_pr in results:
+        if needs_pr:
+            pr_candidates.append((entry, _reasons))
+    return records, pr_candidates
+
+
+def _unfinished_worktree_records(root, cfg):
+    """Observe only recent, unnamed linked worktrees; return records and optional skip note."""
+    deadline = time.monotonic() + WORKTREE_CHECK_BUDGET
+    common_raw = (
+        _git(
+            root,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+            timeout=WORKTREE_COMMAND_TIMEOUT,
+        )
+        .decode()
+        .strip()
+    )
+    common_dir = Path(common_raw).resolve()
+    candidates = _recent_unnamed_worktrees(
+        root, common_dir, _open_worktree_text(root), time.time()
+    )
+    records, pr_candidates = _judge_worktree_candidates(root, cfg, candidates, deadline)
+    states, skipped = _pull_request_states(
+        root, cfg, [item[0]["branch"] for item in pr_candidates], deadline
+    )
+    for entry, reasons in pr_candidates:
+        state = states.get(entry["branch"])
+        if state is None or "UNVERIFIED" in state:
+            reasons.append("pull request state not verified")
+        elif not state.intersection({"OPEN", "MERGED"}):
+            reasons.append(
+                "pushed branch ahead of base has no open or merged pull request"
+            )
+    return [(entry, reasons) for entry, reasons in records if reasons], skipped
+
+
+def _add_unfinished_worktrees(root, cfg, result):
+    """Append bounded stop actions for every recent unnamed worktree with unfinished work."""
+    if result.get("deferred"):
+        return
+    records, skipped = _unfinished_worktree_records(root, cfg)
+    result["unfinished_worktrees"] = [
+        {"path": item[0]["path"], "branch": item[0]["branch"], "reasons": item[1]}
+        for item in records[:MAX_UNFINISHED_WORKTREES]
+    ]
+    result["unfinished_worktrees_truncated"] = max(
+        0, len(records) - MAX_UNFINISHED_WORKTREES
+    )
+    if skipped:
+        result["pull_request_check_skipped"] = skipped
+    for entry, reasons in records[:MAX_WORKTREE_ACTIONS]:
+        reason_text = ", ".join(reasons)
+        result["actions"].append(
+            f"Unfinished worktree {entry['path']} ({entry['branch'] or 'detached'}): "
+            f"{reason_text}; finish it (commit, push, PR) or name it in .workingdir/OPEN.md "
+            "with id, branch, last step, next step"
+        )
+    more = max(0, len(records) - MAX_WORKTREE_ACTIONS)
+    if more:
+        result["actions"].append(
+            f"Unfinished worktrees: and {more} more; name them in .workingdir/OPEN.md"
+        )
+
+
+def _branch(root, timeout=None):
     return (
         _run(
-            ["git", "symbolic-ref", "--quiet", "--short", "HEAD"], root, allowed=(0, 1)
+            ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+            root,
+            allowed=(0, 1),
+            timeout=timeout,
         )
         .decode()
         .strip()
@@ -394,6 +875,57 @@ def _branch(root):
 
 def _remote_url(root, remote):
     return _git(root, "remote", "get-url", remote).decode().strip()
+
+
+def _ssh_transport_disabled(url):
+    if not (url.startswith("git@") or urlsplit(url).scheme == "ssh"):
+        return False
+    # A plain split, not shlex: the adopted bundle runs under the owner overlay's Python, which has
+    # no shlex module, and only the first word (a program named false) matters here.
+    words = os.environ.get("GIT_SSH_COMMAND", "").split()
+    return bool(words) and Path(words[0]).name == "false"
+
+
+def _push_transport_disabled(root, cfg):
+    try:
+        url = _remote_url(root, cfg["remote"])
+    except CheckpointError:
+        return False
+    if (
+        url.startswith("git@")
+        or url.startswith("ssh://")
+        or urlsplit(url).scheme == "ssh"
+    ):
+        return _ssh_transport_disabled(url)
+    if urlsplit(url).scheme != "https" or os.environ.get("GIT_TERMINAL_PROMPT") != "0":
+        return False
+    helper = (
+        _git(root, "config", "--get", "credential.helper", allowed=(0, 1))
+        .decode()
+        .strip()
+    )
+    return not helper
+
+
+def _forge_token_absent():
+    if os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"):
+        return False
+    config = os.environ.get("GH_CONFIG_DIR")
+    return not config or not (Path(config) / "hosts.yml").is_file()
+
+
+def _detached_job_deferral(root, cfg):
+    label = os.environ.get("PRAETOR_DETACHED_JOB")
+    if (
+        not label
+        or not _push_transport_disabled(root, cfg)
+        or not _forge_token_absent()
+    ):
+        return None
+    return (
+        f"detached job {label}: no push transport, no forge token; "
+        "the launching session commits"
+    )
 
 
 def _validate_remote(url, repository):
@@ -791,6 +1323,7 @@ def _empty_result(include_paths):
     result = {
         "schema_version": 1,
         "enabled": False,
+        "deferred": False,
         "due": False,
         "actions": [],
         "branch": "",
@@ -806,7 +1339,7 @@ def _empty_result(include_paths):
     return result
 
 
-def _observe_worktree(root, cfg, event, include_paths, result):
+def _observe_worktree(root, cfg, event, include_paths, result, require_branch=True):
     result["enabled"] = True
     result["review_status"] = (
         "not_observed" if cfg.get("require_checks", False) else "not_requested"
@@ -822,8 +1355,9 @@ def _observe_worktree(root, cfg, event, include_paths, result):
     result["commit_due"] = _commit_due(root, cfg, event, head, public)
     result["due"] = result["commit_due"]
     result["publication_status"] = "not_due"
-    if result["due"]:
+    if result["due"] and require_branch:
         _require_checkpoint_branch(result["branch"], cfg)
+    if result["due"]:
         result["actions"] = list(PUBLIC_ACTIONS)
     return head, public
 
@@ -921,6 +1455,30 @@ def _validate_stability(root, head, public, result):
         )
 
 
+def _inspect_enabled_checkpoint(root, cfg, event, include_paths, result):
+    """Observe enabled checkout state, publication, and stop-only linked worktrees."""
+    deferral = _detached_job_deferral(root, cfg)
+    head, public = _observe_worktree(
+        root, cfg, event, include_paths, result, require_branch=deferral is None
+    )
+    if deferral is not None:
+        result.update(
+            deferred=True,
+            deferral=deferral,
+            due=False,
+            actions=[],
+            publication_status="deferred_detached_job",
+        )
+        _validate_stability(root, head, public, result)
+        return result
+    _observe_publication(root, cfg, event, result)
+    if event == "stop":
+        _add_unfinished_worktrees(root, cfg, result)
+    result["due"] = bool(result["actions"])
+    _validate_stability(root, head, public, result)
+    return result
+
+
 def inspect_checkpoint(root: Path, event: str, include_paths: bool = False) -> dict:
     result = _empty_result(include_paths)
     if event not in {"tool", "stop"}:
@@ -929,12 +1487,11 @@ def inspect_checkpoint(root: Path, event: str, include_paths: bool = False) -> d
     try:
         cfg = _config(root)
         if not cfg.get("enabled", False):
+            if event == "stop":
+                _add_unfinished_worktrees(root, cfg, result)
+                result["due"] = bool(result["actions"])
             return result
-        head, public = _observe_worktree(root, cfg, event, include_paths, result)
-        _observe_publication(root, cfg, event, result)
-        result["due"] = bool(result["actions"])
-        _validate_stability(root, head, public, result)
-        return result
+        return _inspect_enabled_checkpoint(root, cfg, event, include_paths, result)
     except (CheckpointError, ValueError, OSError) as error:
         result["publication_status"] = "error"
         result["error"] = str(error)

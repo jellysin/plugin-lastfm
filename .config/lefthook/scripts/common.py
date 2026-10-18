@@ -113,6 +113,13 @@ def stop_process_group(process, sig=signal.SIGTERM, grace=None):
 
 def _signal_group(pgid, sig):
     """Send ``sig`` to group ``pgid``; False once no process of ours is left in it."""
+    if (
+        not isinstance(pgid, int)
+        or isinstance(pgid, bool)
+        or pgid <= 1
+        or pgid == os.getpgrp()
+    ):
+        return False
     try:
         os.killpg(pgid, sig)
     except (ProcessLookupError, PermissionError):
