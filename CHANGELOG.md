@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/jellysin/plugin-lastfm/compare/v0.3.0...v0.4.0) (2026-10-18)
+
+
+### Features
+
+* remove featured-artist credits from titles and artists ([#174](https://github.com/jellysin/plugin-lastfm/issues/174)) ([bc08a25](https://github.com/jellysin/plugin-lastfm/commit/bc08a25b38646c5430fd45a00747675647331daf)), closes [#173](https://github.com/jellysin/plugin-lastfm/issues/173) [#97](https://github.com/jellysin/plugin-lastfm/issues/97)
+
 ## [0.3.0](https://github.com/jellysin/plugin-lastfm/compare/v0.2.0...v0.3.0) (2026-10-18)
 
 
