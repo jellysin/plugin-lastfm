@@ -12,6 +12,10 @@ concurrency:
 jobs:
   verify:
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     uses: ./.github/workflows/ci.yml
   build:
     needs: verify
@@ -43,7 +47,7 @@ jobs:
           name: ${{ needs.build.outputs.artifact }}
       - uses: ./.github/actions/verify-signed
       - name: Verify bytes, resume missing draft uploads and publish
-        uses: jellysin/release-helper/actions/publish@f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
+        uses: jellysin/release-helper/actions/publish@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
         with:
           directory: dist
           tag: ${{ github.ref_name }}

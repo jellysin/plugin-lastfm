@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
   workflow_call:
 permissions:
@@ -28,6 +29,10 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
       LASTFM_API_KEY: ''
       LASTFM_SHARED_SECRET: ''
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -95,7 +100,8 @@ jobs:
         run: |
           dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build -- --self-test
           dotnet run --project benchmarks/JellySin.Plugin.Lastfm.Benchmarks -c Release --no-build > build/playback-benchmark.json
-      - uses: jellysin/release-helper/actions/check@f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
+      - uses: jellysin/release-helper/actions/check@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
+      - uses: jellysin/release-helper/actions/milestone@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
       - name: Validate workflows and scan tracked history for secrets
         env:
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
@@ -140,7 +146,7 @@ jobs:
       - name: Enforce real-library search and playback budgets and scrobble delivery under that load on Jellyfin 12.1
         run: python tools/library_load.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --tracks 10000 --server '12.1'
       - name: Validate installable package and release metadata
-        uses: jellysin/release-helper/actions/package@f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
+        uses: jellysin/release-helper/actions/package@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
           nuget-lock-path: src/JellySin.Plugin.Lastfm/packages.lock.json
@@ -151,7 +157,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jellysin/release-helper
-          ref: f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
+          ref: c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
           path: build/repro-tooling
           persist-credentials: false
       # The helper holds the plugin's own server references at the floor; planted ones show that this pin does.

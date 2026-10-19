@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Create the tag and one unpublished draft
-        uses: jellysin/release-helper/actions/prepare@f1ffebfa67f8b8f37d94b8fc22174e9f75dbd28e # v1.2.3
+        uses: jellysin/release-helper/actions/prepare@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
         with:
           tag: ${{ inputs.tag }}
           commit: ${{ inputs.commit }}
