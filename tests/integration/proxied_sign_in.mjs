@@ -47,7 +47,7 @@ async function settings(context, origin) {
   await page.locator('#jellysin-connect').waitFor({ state: 'visible', timeout: wait });
   // A click before the page knows the connection is answered, then overwritten when the page finishes loading.
   const shown = (await page.locator('#jellysin-connection-status').textContent() ?? '').trim();
-  require(shown !== 'Checking your Last.fm connection…', 'the page offers Connect while it still checks the connection');
+  require(shown === 'Last.fm is not connected.', `the page offers Connect while it says ${JSON.stringify(shown)}`);
   return page;
 }
 
