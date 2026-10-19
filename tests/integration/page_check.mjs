@@ -17,7 +17,7 @@ const shot = (page, name, selector) => (selector ? page.locator(selector) : page
 
 /** A context that reaches only the server under test. Last.fm's approval page approves at once and returns to the callback. */
 async function open(browser, errors) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ locale: 'en-US', viewport: { width: 1280, height: 900 } });
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
     if (url.origin === run.origin) return route.continue();

@@ -14,7 +14,7 @@ const require = (condition, description) => { if (!condition) throw new Refused(
 
 /** A browser context that reaches only the server under test; the approval page of Last.fm is a stub. */
 async function open(browser) {
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, locale: 'en-US', viewport: { width: 1280, height: 900 } });
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
     if (url.origin === run.published || url.origin === run.direct) return route.continue();
@@ -45,6 +45,9 @@ async function settings(context, origin) {
   const page = await context.newPage();
   await page.goto(origin + settingsPage);
   await page.locator('#jellysin-connect').waitFor({ state: 'visible', timeout: wait });
+  // A click before the page knows the connection is answered, then overwritten when the page finishes loading.
+  const shown = (await page.locator('#jellysin-connection-status').textContent() ?? '').trim();
+  require(shown !== 'Checking your Last.fm connection…', 'the page offers Connect while it still checks the connection');
   return page;
 }
 

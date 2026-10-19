@@ -1,4 +1,6 @@
 <div id="jellysin-admin" data-role="page" class="page type-interior pluginConfigurationPage">
+  <!-- The web client's "block" class sets display: block, which would show a hidden button before the page has loaded its state. -->
+  <style>#jellysin-admin [hidden] { display: none !important; }</style>
   <div data-role="content"><div class="content-primary">
     <h1 data-i18n="admin_title">JellySin Last.fm</h1>
     <h2 data-i18n="admin_section_account">Your Last.fm account</h2>

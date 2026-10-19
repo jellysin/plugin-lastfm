@@ -173,6 +173,7 @@ jobs:
             build/native-userdata-floor.json
             build/native-userdata-newest.json
             build/native-userdata-12.1.json
+            build/proxied-sign-in
             playwright-report
             test-results
           if-no-files-found: ignore
