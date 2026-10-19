@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/jellysin/plugin-lastfm/compare/v0.4.0...v0.5.0) (2026-10-19)
+
+
+### Features
+
+* optional local scrobble log with JSON/CSV export ([#185](https://github.com/jellysin/plugin-lastfm/issues/185)) ([f273748](https://github.com/jellysin/plugin-lastfm/commit/f273748828cc03e5988679111cdd47bb52e676e9))
+* optionally scrobble only tracks with a MusicBrainz recording ID ([#183](https://github.com/jellysin/plugin-lastfm/issues/183)) ([ccdd61b](https://github.com/jellysin/plugin-lastfm/commit/ccdd61b74943310f0d33c26b1d7e2a9784390816))
+* rotate similarity and discovery playlists with a retention period ([#184](https://github.com/jellysin/plugin-lastfm/issues/184)) ([f424c01](https://github.com/jellysin/plugin-lastfm/commit/f424c01f049c997850c841daace7166cda4beed4))
+* skip plays that match server block rules ([#182](https://github.com/jellysin/plugin-lastfm/issues/182)) ([cac75d2](https://github.com/jellysin/plugin-lastfm/commit/cac75d28472ed79866ed4d8696bb25d11d122e27))
+* **web:** translate the dashboard and settings page, with German ([#186](https://github.com/jellysin/plugin-lastfm/issues/186)) ([20de04f](https://github.com/jellysin/plugin-lastfm/commit/20de04f1b583d1886e2bbe0184c11debc725fa4f))
+
+
+### Bug Fixes
+
+* **web:** name the brand link by its visible text ([#179](https://github.com/jellysin/plugin-lastfm/issues/179)) ([090724a](https://github.com/jellysin/plugin-lastfm/commit/090724af6db815583a3b4eee7dacfb33e89dd1a5))
+
 ## [0.4.0](https://github.com/jellysin/plugin-lastfm/compare/v0.3.0...v0.4.0) (2026-10-18)
 
 
