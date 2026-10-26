@@ -217,7 +217,7 @@ def returned(status, headers):
             self.end_headers()
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
     try:
         smoke.check_return_address(smoke.Client(f"http://127.0.0.1:{server.server_address[1]}", "/jellyfin", token="a" * 32))
@@ -252,7 +252,7 @@ def began(back, cookie, published="", configured=True, asked=None):
         do_POST = do_PUT = do_DELETE = answer
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
     origin = f"http://127.0.0.1:{server.server_address[1]}"
     try:
@@ -285,7 +285,7 @@ def wrote(accepts, published=""):
             self.wfile.write(body)
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
     try:
         smoke.check_page_origin(smoke.Client(f"http://127.0.0.1:{server.server_address[1]}", "/jellyfin", token="a" * 32), published)
