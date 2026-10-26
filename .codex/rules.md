@@ -83,16 +83,8 @@ Register follows the audience, then the task label of your brief (`register:` in
 # Fast local test suite
 # Declared commands only; run them before claiming application verification.
 'npm' 'run' 'build'
-'dotnet' 'restore' './benchmarks/JellySin.Plugin.Lastfm.Benchmarks/JellySin.Plugin.Lastfm.Benchmarks.csproj' '--locked-mode'
-'dotnet' 'build' './benchmarks/JellySin.Plugin.Lastfm.Benchmarks/JellySin.Plugin.Lastfm.Benchmarks.csproj' '-c' 'Release' '--no-restore' '-warnaserror'
-'dotnet' 'restore' './src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj' '--locked-mode'
-'dotnet' 'build' './src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj' '-c' 'Release' '--no-restore' '-warnaserror'
-'dotnet' 'restore' './tests/JellySin.Plugin.Lastfm.Tests/JellySin.Plugin.Lastfm.Tests.csproj' '--locked-mode'
-'dotnet' 'build' './tests/JellySin.Plugin.Lastfm.Tests/JellySin.Plugin.Lastfm.Tests.csproj' '-c' 'Release' '--no-restore' '-warnaserror'
-'dotnet' 'restore' './tests/integration/JellySin.NativeProbe/JellySin.NativeProbe.csproj' '--locked-mode'
-'dotnet' 'build' './tests/integration/JellySin.NativeProbe/JellySin.NativeProbe.csproj' '-c' 'Release' '--no-restore' '-warnaserror'
-'dotnet' 'restore' './tools/JellySin.CodePolicy/JellySin.CodePolicy.csproj' '--locked-mode'
-'dotnet' 'build' './tools/JellySin.CodePolicy/JellySin.CodePolicy.csproj' '-c' 'Release' '--no-restore' '-warnaserror'
+'dotnet' 'restore' './JellySin.Plugin.Lastfm.sln' '--locked-mode'
+'dotnet' 'build' './JellySin.Plugin.Lastfm.sln' '-c' 'Release' '--no-restore' '-warnaserror'
 'npm' 'run' 'check'
 'npm' 'run' 'test'
 'dotnet' 'test' './tests/JellySin.Plugin.Lastfm.Tests/JellySin.Plugin.Lastfm.Tests.csproj' '-c' 'Release' '--no-build'
