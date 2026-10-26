@@ -3,8 +3,13 @@ import { readFile } from 'node:fs/promises';
 
 const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url);
 
-function createSettingsHtml({ hash = '#/mypreferencesmenu', userId = 'user-1', includePlayback = true, includeLinks = true, includeHeader = true } = {}) {
-  const headerHtml = includeHeader ? '<div class="skinHeader" style="height:60px"></div>' : '';
+function createSettingsHtml({ hash = '#/mypreferencesmenu', userId = 'user-1', includePlayback = true, includeLinks = true, header = 'skin' } = {}) {
+  let headerHtml = '';
+  if (header === 'skin') {
+    headerHtml = '<div class="skinHeader" style="height:60px"></div>';
+  } else if (header === 'appbar') {
+    headerHtml = '<header class="MuiAppBar-root" style="position:fixed;top:0;left:0;right:0;height:64px;z-index:1100"></header>';
+  }
   const playbackLink = includePlayback ? `
     <a class="lnkPlaybackPreferences listItem-border emby-button" style="display:block;margin:0;padding:0">
       <div class="listItem">
@@ -178,3 +183,28 @@ test('warns once when user settings layout is not recognised', async ({ page }) 
   await page.evaluate(() => new Promise(resolve => globalThis.requestAnimationFrame(() => resolve())));
   expect(warnings.filter(text => text.includes(expectedWarning))).toHaveLength(1);
 });
+
+for (const [header, height] of [['appbar', 64], ['skin', 60]]) {
+  test(`dialog is positioned below ${header} header and close button is not covered`, async ({ page }) => {
+    await setupPage(page, createSettingsHtml({ header }));
+
+    const row = page.locator('a.lnkJellySinLastfm');
+    await expect(row).toBeVisible();
+    await row.click();
+
+    const dialog = page.locator('div[role="dialog"][aria-label="Last.fm"]');
+    await expect(dialog).toBeVisible();
+    const box = await dialog.boundingBox();
+    expect(box.y).toBeGreaterThanOrEqual(height);
+    await expect(dialog.locator('button[aria-label="Close"]')).toBeVisible();
+
+    const hitMatchesClose = await page.evaluate(() => {
+      const btn = globalThis.document.querySelector('.jellysin-lastfm-close');
+      if (!btn) return false;
+      const rect = btn.getBoundingClientRect();
+      const hit = globalThis.document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return hit === btn || btn.contains(hit);
+    });
+    expect(hitMatchesClose).toBe(true);
+  });
+}

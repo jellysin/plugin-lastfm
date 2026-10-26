@@ -97,11 +97,27 @@ function createCloseButton(): HTMLButtonElement {
   return closeButton;
 }
 
+function headerBottom(): number {
+  const headers = document.querySelectorAll('.skinHeader, .MuiAppBar-root');
+  let maxBottom = 0;
+  const count = headers.length;
+  for (let i = 0; i < count; i++) {
+    const el = headers[i];
+    if (!el) continue;
+    if (window.getComputedStyle(el).display === 'none') continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.height <= 0) continue;
+    if (rect.bottom > maxBottom) {
+      maxBottom = rect.bottom;
+    }
+  }
+  return Math.max(0, maxBottom);
+}
+
 function openView(base: string, failed = false): void {
   if (!document.body || activeDialog) return;
 
-  const header = document.querySelector('.skinHeader');
-  const topOffset = header ? header.getBoundingClientRect().height : 0;
+  const topOffset = headerBottom();
 
   const container = document.createElement('div');
   container.className = 'jellysin-lastfm-dialog';

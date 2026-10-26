@@ -96,6 +96,57 @@ async function session(context, account) {
 
 let activePage = null;
 
+async function probeDialogGeometry(page) {
+  return page.evaluate(() => {
+    const dialog = document.querySelector('.jellysin-lastfm-dialog');
+    if (!dialog) return { ok: false, headerBottom: 0, dialogTop: 0, reason: 'dialog missing' };
+
+    const dialogTop = dialog.getBoundingClientRect().top;
+    const headers = document.querySelectorAll('.skinHeader, .MuiAppBar-root');
+    let maxHeaderBottom = 0;
+    const count = headers.length;
+    for (let i = 0; i < count; i++) {
+      const header = headers[i];
+      if (window.getComputedStyle(header).display === 'none') continue;
+      const rect = header.getBoundingClientRect();
+      if (rect.height <= 0) continue;
+      if (rect.bottom > maxHeaderBottom) {
+        maxHeaderBottom = rect.bottom;
+      }
+    }
+
+    if (dialogTop < maxHeaderBottom) {
+      return {
+        ok: false,
+        headerBottom: maxHeaderBottom,
+        dialogTop,
+        reason: `dialog top (${dialogTop}px) < header bottom (${maxHeaderBottom}px)`,
+      };
+    }
+
+    const closeBtn = document.querySelector('.jellysin-lastfm-close');
+    if (!closeBtn) {
+      return { ok: false, headerBottom: maxHeaderBottom, dialogTop, reason: 'close button missing' };
+    }
+
+    const rect = closeBtn.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(cx, cy);
+    const hitOk = hit === closeBtn || closeBtn.contains(hit);
+    if (!hitOk) {
+      return {
+        ok: false,
+        headerBottom: maxHeaderBottom,
+        dialogTop,
+        reason: `close button covered at (${cx}, ${cy})`,
+      };
+    }
+
+    return { ok: true, headerBottom: maxHeaderBottom, dialogTop, reason: '' };
+  });
+}
+
 const checks = {
   'Last.fm row in user settings': async context => {
     const page = await session(context, run.listener);
@@ -119,8 +170,11 @@ const checks = {
     await frame.locator('#connect-lastfm').waitFor({ state: 'visible', timeout: wait });
     const passwordVisible = await frame.locator('input[type="password"]').isVisible().catch(() => false);
     require(!passwordVisible, 'Last.fm frame has a visible password input');
+    const geometry = await probeDialogGeometry(activePage);
+    require(geometry.ok, `Dialog geometry invalid: ${geometry.reason}`);
     await activePage.screenshot({ path: join(run.evidence, '2-lastfm-dialog.png') });
-    return (await frame.locator('#connect-lastfm').textContent() ?? '').trim();
+    const connectText = (await frame.locator('#connect-lastfm').textContent() ?? '').trim();
+    return `${connectText} (header bottom: ${geometry.headerBottom}px, dialog top: ${geometry.dialogTop}px)`;
   },
 };
 
