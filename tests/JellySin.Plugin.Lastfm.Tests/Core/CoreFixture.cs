@@ -30,10 +30,10 @@ public sealed class CoreFixture : IDisposable
         LibraryRules = new LibraryRuleService(Store);
     }
 
-    public async Task ConnectAsync(Guid? user = null)
+    public async Task ConnectAsync(Guid? user = null, string token = "browser-test-token")
     {
         await ConfigureApplicationAsync();
-        await ApproveAsync(user ?? UserId);
+        await ApproveAsync(user ?? UserId, token);
         await Accounts.FinishAsync(user ?? UserId, TestContext.Current.CancellationToken);
     }
 
