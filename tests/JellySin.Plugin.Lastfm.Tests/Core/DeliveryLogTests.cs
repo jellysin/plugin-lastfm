@@ -27,18 +27,10 @@ public sealed class DeliveryLogTests
     public async Task OneAcceptedPlayWritesInformationLine()
     {
         using var fixture = new CoreFixture();
-        await ConnectWithMarkerAsync(fixture);
-        var (sessions, _, _, outbox, playback, logger) = CreateServices(fixture);
-        await playback.StartAsync(TestContext.Current.CancellationToken);
-        PlayScrobble(sessions, fixture);
-        await playback.StopAsync(TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (method, _, _) => method switch
-        {
-            "track.scrobble" => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}"),
-            _ => JsonDocument.Parse("{}")
-        };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
-        await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
+        var logger = await DeliverScrobblesAsync(
+            fixture,
+            ["session-1"],
+            () => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}"));
 
         var expectedUser = Logged.User(fixture.UserId);
         Assert.Single(logger.Lines);
@@ -50,19 +42,10 @@ public sealed class DeliveryLogTests
     public async Task BatchOfTwoWithIgnoreCodesWritesInformationLine()
     {
         using var fixture = new CoreFixture();
-        await ConnectWithMarkerAsync(fixture);
-        var (sessions, _, _, outbox, playback, logger) = CreateServices(fixture);
-        await playback.StartAsync(TestContext.Current.CancellationToken);
-        PlayScrobble(sessions, fixture, "session-1");
-        PlayScrobble(sessions, fixture, "session-2");
-        await playback.StopAsync(TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (method, _, _) => method switch
-        {
-            "track.scrobble" => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":[{\"ignoredMessage\":{\"code\":\"0\"}},{\"ignoredMessage\":{\"code\":\"2\"}}]}}"),
-            _ => JsonDocument.Parse("{}")
-        };
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
-        await delivery.RunOnceAsync(TestContext.Current.CancellationToken);
+        var logger = await DeliverScrobblesAsync(
+            fixture,
+            ["session-1", "session-2"],
+            () => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":[{\"ignoredMessage\":{\"code\":\"0\"}},{\"ignoredMessage\":{\"code\":\"2\"}}]}}"));
 
         var expectedUser = Logged.User(fixture.UserId);
         Assert.Single(logger.Lines);
@@ -341,6 +324,26 @@ public sealed class DeliveryLogTests
         Assert.Equal(expected, nowPlaying.GetValueOrDefault("albumArtist"));
         var scrobble = Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble").Values;
         Assert.Equal(expected, scrobble.GetValueOrDefault("albumArtist[0]"));
+    }
+
+    private static async Task<FakeLogger<DeliveryService>> DeliverScrobblesAsync(CoreFixture fixture, string[] sessionIds, Func<JsonDocument> answer)
+    {
+        await ConnectWithMarkerAsync(fixture);
+        var (sessions, _, _, outbox, playback, logger) = CreateServices(fixture);
+        await playback.StartAsync(Ct);
+        foreach (var sessionId in sessionIds)
+        {
+            PlayScrobble(sessions, fixture, sessionId);
+        }
+        await playback.StopAsync(Ct);
+        fixture.Client.Handler = (method, _, _) => method switch
+        {
+            "track.scrobble" => answer(),
+            _ => JsonDocument.Parse("{}")
+        };
+        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, logger);
+        await delivery.RunOnceAsync(Ct);
+        return logger;
     }
 
     private static async Task<FakeLogger<DeliveryService>> DeliverPlayingNowAsync(CoreFixture fixture, Func<JsonDocument> answer, int secondsBeforeDelivery = 0)

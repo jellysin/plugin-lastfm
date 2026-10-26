@@ -9,20 +9,8 @@ public sealed class AccountConcurrencyTests
     public async Task DisconnectImmediatelyCancelsPendingGrantAndCannotBeUndoneByItsResponse()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var attempt = await fixture.ApproveAsync(fixture.UserId);
-        var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Client.AsyncHandler = async (_, _, token) =>
-        {
-            entered.SetResult(token);
-            // Deliberately emulate a transport which delivers its response after cancellation.
-            await release.Task;
-            return JsonDocument.Parse("{\"session\":{\"name\":\"StaleListener\",\"key\":\"stale-key\"}}");
-        };
+        var (_, finish, authorization, release) = await StartBlockedGrantAsync(fixture);
         var background = fixture.Accounts.GetOperationToken(fixture.UserId);
-        var finish = fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        var authorization = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         var disconnect = fixture.Accounts.DisconnectAsync(fixture.UserId, TestContext.Current.CancellationToken);
         try
         {
@@ -46,18 +34,7 @@ public sealed class AccountConcurrencyTests
     public async Task DisconnectInvalidatesPendingExchangeAndCancelledGateWaiters()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var attempt = await fixture.ApproveAsync(fixture.UserId);
-        var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Client.AsyncHandler = async (_, _, token) =>
-        {
-            entered.SetResult(token);
-            await release.Task;
-            return JsonDocument.Parse("{\"session\":{\"name\":\"StaleListener\",\"key\":\"stale-key\"}}");
-        };
-        var finish = fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        var authorization = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var (attempt, finish, authorization, release) = await StartBlockedGrantAsync(fixture);
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var second = fixture.Accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, waiting.Token);
         await waiting.CancelAsync();
@@ -87,5 +64,24 @@ public sealed class AccountConcurrencyTests
             await fixture.Accounts.DisconnectAsync(userId, TestContext.Current.CancellationToken);
         }
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Connected);
+    }
+
+    private static async Task<(ConnectionAttempt Attempt, Task<AccountStatus> Finish, CancellationToken Authorization, TaskCompletionSource Release)>
+        StartBlockedGrantAsync(CoreFixture fixture)
+    {
+        await fixture.ConnectAsync();
+        var attempt = await fixture.ApproveAsync(fixture.UserId);
+        var entered = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Client.AsyncHandler = async (_, _, token) =>
+        {
+            entered.SetResult(token);
+            // Deliberately emulate a transport which delivers its response after cancellation.
+            await release.Task;
+            return JsonDocument.Parse("{\"session\":{\"name\":\"StaleListener\",\"key\":\"stale-key\"}}");
+        };
+        var finish = fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var authorization = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        return (attempt, finish, authorization, release);
     }
 }

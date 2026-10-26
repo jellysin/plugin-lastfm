@@ -244,11 +244,7 @@ public sealed class OutboxTests
     public async Task TemporaryErrorsWaitBeforeRetry(int error)
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (_, _, _) => throw new LastfmException(error);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var outbox = await FlushWithErrorAsync(fixture, error);
         await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
         Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble");
         fixture.Clock.Advance(31);
@@ -260,11 +256,7 @@ public sealed class OutboxTests
     public async Task InvalidSessionPausesAccountAndRetainsListen()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (_, _, _) => throw new LastfmException(9);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var outbox = await FlushWithErrorAsync(fixture, 9);
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
         Assert.Equal(1, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
     }
@@ -273,11 +265,7 @@ public sealed class OutboxTests
     public async Task MalformedBatchResultDoesNotSilentlyAcknowledgeAnything()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (_, _, _) => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":[]}}");
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var outbox = await FlushWithHandlerAsync(fixture, (_, _, _) => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":[]}}"));
         Assert.Equal(1, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).Pending);
     }
 
@@ -307,11 +295,7 @@ public sealed class OutboxTests
     public async Task ExplicitResumeReleasesRateLimitedPendingEntries()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (_, _, _) => throw new LastfmException(29);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var outbox = await FlushWithErrorAsync(fixture, 29);
         await outbox.ResumeAsync(fixture.UserId, TestContext.Current.CancellationToken);
         fixture.Client.Handler = null;
         await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
@@ -322,11 +306,7 @@ public sealed class OutboxTests
     public async Task ReconnectAutomaticallyReleasesOnlyInvalidSessionFailures()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        fixture.Client.Handler = (_, _, _) => throw new LastfmException(9);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var outbox = await FlushWithErrorAsync(fixture, 9);
         fixture.Client.Handler = null;
         await fixture.ConnectAsync();
         await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
@@ -359,6 +339,21 @@ public sealed class OutboxTests
         fixture.Clock.Advance(1);
         Assert.Equal(7, (await outbox.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).OldestPendingDays);
     }
+
+    private static async Task<ScrobbleOutbox> FlushWithHandlerAsync(
+        CoreFixture fixture,
+        Func<string, IReadOnlyDictionary<string, string>, string?, JsonDocument> handler)
+    {
+        await fixture.ConnectAsync();
+        var outbox = NewOutbox(fixture);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        fixture.Client.Handler = handler;
+        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        return outbox;
+    }
+
+    private static Task<ScrobbleOutbox> FlushWithErrorAsync(CoreFixture fixture, int error) =>
+        FlushWithHandlerAsync(fixture, (_, _, _) => throw new LastfmException(error));
 
     private static ScrobbleOutbox NewOutbox(CoreFixture fixture) => new(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
     private static EligibleListen Listen(CoreFixture fixture) => new(Guid.NewGuid(), fixture.UserId, new MusicTrack(Guid.NewGuid(), "Artist", "Song", "Album", null, 180), fixture.Clock.GetUtcNow(),
