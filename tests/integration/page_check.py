@@ -9,11 +9,12 @@ the server's own loopback port. The browser's request for Last.fm's approval pag
 approval for a fixed token. No real Last.fm account, application or credential is used.
 
 The browser half (page_check.mjs) signs in as an administrator and saves the plugin settings and a made-up
-application, connects an ordinary user, and opens charts, recent listens and one discovery result. Then that
-user's own client plays a library track in real time past the scrobble threshold, imports the listening history
-into the native play counts and turns on favourite synchronization; each flow must reach the stand-in with the
-track it names and leave the native user data the API reports. The evidence directory receives one screenshot
-per page, the server log, the methods the stand-in answered and its tunnel record.
+application, connects an ordinary user, and opens charts, recent listens, discovery, account settings,
+delivery status, import preview and disconnect confirmation. Then that user's own client plays a library
+track in real time past the scrobble threshold, imports the listening history into the native play counts
+and turns on favourite synchronization; each flow must reach the stand-in with the track it names and leave
+the native user data the API reports. The evidence directory receives one screenshot per page, the server
+log, the methods the stand-in answered and its tunnel record.
 """
 
 from __future__ import annotations
@@ -260,6 +261,7 @@ def run(image: str, plugin: Path, evidence: Path) -> None:
             require(browser.returncode == 0, "A page check failed; see the lines above and the evidence directory.")
             require(flows, "A listener flow failed; see the lines above and the evidence directory.")
             print(f"PASS: Jellyfin {host.version}: administrator settings, connection, charts, recent listens, discovery, "
+                  "account settings, delivery status, import preview, disconnect confirmation, "
                   "scrobbling, history import and favourite synchronization.", flush=True)
         finally:
             try:

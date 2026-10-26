@@ -131,6 +131,50 @@ const checks = {
     await shot(frame, '5-discovery', '#discovery');
     return `in library: ${JSON.stringify((await text(frame, '#discovery-local')).slice(0, 60))}; beyond: ${JSON.stringify((await text(frame, '#discovery-external')).slice(0, 60))}`;
   },
+  'account settings': async () => {
+    const frame = run.frame();
+    for (const id of ['#scrobbling', '#library-exclusions', '#device-exclusions', '#media-type-exclusions', '#scrobble-log']) {
+      require(await frame.locator(id).isVisible(), `${id} is not visible`);
+    }
+    for (const id of ['#library-exclusions-summary', '#device-exclusions-summary', '#media-type-exclusions-summary']) {
+      await frame.locator(id).filter({ hasNotText: /^Loading/ }).waitFor({ timeout: wait });
+    }
+    await shot(frame, '6-account-settings', '#connection');
+    const lib = (await text(frame, '#library-exclusions-summary')).slice(0, 60);
+    const dev = (await text(frame, '#device-exclusions-summary')).slice(0, 60);
+    const med = (await text(frame, '#media-type-exclusions-summary')).slice(0, 60);
+    return `libraries: ${JSON.stringify(lib)}; devices: ${JSON.stringify(dev)}; media types: ${JSON.stringify(med)}`;
+  },
+  'delivery status': async () => {
+    const frame = run.frame();
+    const details = frame.locator('#connection details', { hasText: 'Delivery status' });
+    if (!(await details.evaluate(el => el.open))) await details.locator('summary').click();
+    await frame.locator('#delivery-refresh').click();
+    await frame.locator('#delivery-status').filter({ hasNotText: 'Refresh to inspect pending submissions.' }).waitFor({ timeout: wait });
+    await shot(details, '7-delivery-status');
+    return JSON.stringify((await text(frame, '#delivery-status')).slice(0, 80));
+  },
+  'import preview': async () => {
+    const frame = run.frame();
+    const details = frame.locator('#history details', { hasText: 'Import play counts into Jellyfin' });
+    if (!(await details.evaluate(el => el.open))) await details.locator('summary').click();
+    await frame.locator('#history-preview').click();
+    await frame.locator('#history-preview-list p').first().waitFor({ state: 'visible', timeout: wait });
+    await shot(details, '8-import-preview');
+    return JSON.stringify((await text(frame, '#history-preview-list p:first-child')).slice(0, 80));
+  },
+  'disconnect confirmation': async () => {
+    const frame = run.frame();
+    await frame.locator('#disconnect-lastfm').click();
+    await frame.locator('#disconnect-confirmation').waitFor({ state: 'visible', timeout: wait });
+    await shot(frame, '9-disconnect-confirmation', '#disconnect-confirmation');
+    await frame.locator('#cancel-disconnect').click();
+    await frame.locator('#disconnect-confirmation').waitFor({ state: 'hidden', timeout: wait });
+    require(await frame.locator('#disconnect-confirmation').isHidden(), '#disconnect-confirmation is still visible');
+    const status = await text(frame, '#connection-status');
+    require(status === `Connected as ${run.lastfmUser}`, `the page says ${JSON.stringify(status)}`);
+    return status;
+  },
 };
 
 const browser = await chromium.launch();
