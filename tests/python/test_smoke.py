@@ -49,13 +49,13 @@ def pin_drift(images, updates):
     return wrong
 
 
-def changed(rule=None, manager=None):
-    """Return the update configuration with the 12.1 rule or the server pattern replaced."""
+def changed(rule=None, manager=None, target="12.1"):
+    """Return the update configuration with the target release rule or the server pattern replaced."""
     updates = copy.deepcopy(UPDATES)
     if manager:
         updates["customManagers"][1]["matchStrings"] = [updates["customManagers"][1]["matchStrings"][0].replace(*manager)]
     if rule is not None:
-        updates["packageRules"] = [entry for entry in updates["packageRules"] if entry.get("matchDepTypes") != ["12.1"]] + rule
+        updates["packageRules"] = [entry for entry in updates["packageRules"] if entry.get("matchDepTypes") != [target]] + rule
     return updates
 
 
@@ -113,7 +113,7 @@ class AnswerTests(unittest.TestCase):
 
 class ServerChoiceTests(unittest.TestCase):
     def test_every_pinned_server_carries_a_release_and_a_digest(self):
-        self.assertEqual(["12.1", "floor", "newest"], sorted(IMAGES))
+        self.assertEqual(["12.1", "12.2", "floor", "newest"], sorted(IMAGES))
         for image in IMAGES.values():
             self.assertIsNotNone(smoke.IMAGE_TAG.fullmatch(image), image)
 
@@ -121,18 +121,21 @@ class ServerChoiceTests(unittest.TestCase):
         self.assertEqual([], pin_drift(IMAGES, UPDATES))
 
     def test_pin_the_update_bot_could_lose_or_move_is_named(self):
-        narrow = {"matchDepTypes": ["12.1"], "allowedVersions": "/^12\\.1(?:\\.|$)/"}
-        unheld = "12.1: no single update rule holds it at its release"
-        planted = [
-            ("12.1: the image names another release", {"12.1": "jellyfin/jellyfin:12.2" + DIGEST}, UPDATES),
-            (unheld, IMAGES, changed(rule=[])),
-            (unheld, IMAGES, changed(rule=[narrow, narrow])),
-            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12(?:\\.|$)/"}])),
-            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12\\.1/"}])),
-            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "12.1"}])),
-            ("12.1: not read by the update bot", IMAGES, changed(manager=("|[0-9]+\\.[0-9]+", ""))),
-            ("spare: not read by the update bot", {"spare": IMAGES["newest"]}, UPDATES),
-        ]
+        planted = []
+        for release in ("12.1", "12.2"):
+            escaped = release.replace(".", r"\.")
+            narrow = {"matchDepTypes": [release], "allowedVersions": f"/^{escaped}(?:\\.|$)/"}
+            unheld = f"{release}: no single update rule holds it at its release"
+            planted.extend([
+                (f"{release}: the image names another release", {release: "jellyfin/jellyfin:99.0" + DIGEST}, UPDATES),
+                (unheld, IMAGES, changed(rule=[], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow, narrow], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12(?:\\.|$)/"}], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": f"/^{escaped}/"}], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": release}], target=release)),
+                (f"{release}: not read by the update bot", {release: IMAGES[release]}, changed(manager=("|[0-9]+\\.[0-9]+", ""))),
+            ])
+        planted.append(("spare: not read by the update bot", {"spare": IMAGES["newest"]}, UPDATES))
         for number, (named, images, updates) in enumerate(planted):
             with self.subTest(number=number, named=named):
                 self.assertEqual([named], pin_drift(images, updates))
