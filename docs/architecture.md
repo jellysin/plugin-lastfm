@@ -54,9 +54,9 @@ checked at the API boundary.
 
 Public assets are served from embedded resources with no-store, a restrictive CSP,
 no-referrer and nosniff headers. URL composition respects Jellyfin's reverse-proxy
-base path. The dashboard uses Jellyfin sign-in or Quick Connect and a separate
-Last.fm browser grant that returns to the plugin's callback; no Last.fm
-mobile/password authentication is used.
+base path. The user page opens from the Last.fm row of Jellyfin's user settings
+using the web client session and uses a separate Last.fm browser grant that returns
+to the plugin's callback; no Last.fm mobile/password authentication is used.
 
 ## Delivery
 

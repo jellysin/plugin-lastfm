@@ -95,10 +95,7 @@ const connection = state => ({ Connected: state.connected, Username: state.conne
 
 function respond(path, method, body, url, state) {
   if (path === '/JellySin/Lastfm/Bootstrap') return json({ BasePath: state.prefix, ServerId: 'fixture-server', Version: '1.0.0' });
-  if (path === '/Users/AuthenticateByName' || path === '/Users/AuthenticateWithQuickConnect') return json({ AccessToken: token, ServerId: 'fixture-server', User: { Name: 'listener' } });
-  if (path === '/QuickConnect/Enabled') return json(true);
-  if (path === '/QuickConnect/Initiate') return json({ Secret: 'q'.repeat(32), Code: '123456' });
-  if (path === '/JellySin/Lastfm/Auth/QuickConnect/Status') return json({ Authenticated: true });
+  if (path === '/Users/AuthenticateByName') return json({ AccessToken: token, ServerId: 'fixture-server', User: { Name: 'listener' } });
   if (path === '/Sessions/Logout') return empty();
   const endpoint = path.replace('/JellySin/Lastfm/', '');
   if (endpoint === 'Me') return json({ UserName: 'listener', IsAdministrator: state.administrator, Connection: connection(state) });

@@ -57,7 +57,6 @@ test('not embedded shows open-in-jellyfin and no login form', async ({ page }) =
   await expect(page.locator('#open-in-jellyfin-link')).toHaveAttribute('href', /#\/mypreferencesmenu$/);
   await expect(page.locator('#open-in-jellyfin-link')).toHaveAttribute('target', '_top');
   await expect(page.locator('#login-form')).toHaveCount(0);
-  await expect(page.locator('#quick-connect')).toHaveCount(0);
   await expect(page.locator('#sign-in')).toHaveCount(0);
   await expect(page.locator('#signed-in')).toBeHidden();
 });

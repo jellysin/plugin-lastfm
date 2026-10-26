@@ -130,6 +130,15 @@ jobs:
       # The plugin's own pages in a browser, then a play, a history import and a favourite sync as a listener, with Last.fm answered by a stand-in on the run's own network; any failed page or flow fails the step.
       - name: Open the plugin pages and run the listener flows on the newest Jellyfin 12 with a Last.fm stand-in
         run: python tests/integration/page_check.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --evidence build/page-check
+      # The user settings row in Jellyfin 12.2 web must point to the Last.fm view and open without a sign-in.
+      - name: Verify user settings entry and dialog opening on Jellyfin 12.2
+        run: python tests/integration/settings_entry.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server '12.2' --evidence build/settings-entry-12.2
+      # The user settings row on the newest Jellyfin 12 must keep that entrypoint and open the dialog without a sign-in.
+      - name: Verify user settings entry and dialog opening on the newest Jellyfin 12
+        run: python tests/integration/settings_entry.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --evidence build/settings-entry-newest
+      # A restructured web client layout that hides the expected DOM anchor must be detected and refused.
+      - name: Require a restructured settings layout to turn the settings entry check red
+        run: python tests/integration/settings_entry.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --plant moved-layout --evidence build/settings-entry-planted
       - name: Verify native history writes and interrupted private playlist recovery on the oldest supported Jellyfin
         run: python tests/integration/native_userdata.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --probe tests/integration/JellySin.NativeProbe/bin/Release/net10.0/JellySin.NativeProbe.dll --server floor --report build/native-userdata-floor.json
       - name: Verify native history writes and interrupted private playlist recovery on the newest Jellyfin 12
@@ -180,6 +189,10 @@ jobs:
             build/native-userdata-newest.json
             build/native-userdata-12.1.json
             build/proxied-sign-in
+            build/page-check
+            build/settings-entry-12.2
+            build/settings-entry-newest
+            build/settings-entry-planted
             playwright-report
             test-results
           if-no-files-found: ignore

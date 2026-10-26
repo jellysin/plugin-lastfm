@@ -46,10 +46,9 @@ JellySin: Jellyfin plus sin, a little temptation for your media server; said JEL
 - External links to Last.fm artist and album pages built from library names on page
   render without network calls.
 
-The account dashboard is served by the plugin at `/JellySin/Lastfm/` under your
-Jellyfin server's base path. Sign in with Jellyfin credentials or Quick Connect,
-then select **Connect Last.fm**: the browser opens Last.fm, you allow access there,
-and it returns to the dashboard connected. Each Jellyfin user manages their own
+The user page opens from the Last.fm row of Jellyfin's user settings using the
+web client session. Select **Connect Last.fm**: the browser opens Last.fm, you allow access there,
+and it returns connected. Each Jellyfin user manages their own
 account. Last.fm passwords and session keys are never entered into the dashboard.
 
 ## Installation after the first release
@@ -59,9 +58,8 @@ account. Last.fm passwords and session keys are never entered into the dashboard
 2. Install **JellySin Last.fm** when it appears in the Plugin Repository, then restart Jellyfin.
 3. As administrator, open the plugin's settings page and select **Connect Last.fm**
    to connect your own account. Release builds need no application key.
-4. Every other user visits `/JellySin/Lastfm/` on the server, signs in, selects
+4. Every other user opens the Last.fm row of Jellyfin's user settings, selects
    **Connect Last.fm** and enables the features they want for their account.
-   An administrator can add a [link to it in Jellyfin's menu](docs/operations.md#a-link-in-jellyfins-menu).
 
 Jellyfin 10.11 is unsupported. Users of the older Last.fm plugin must remove it,
 restart Jellyfin and reconnect their accounts in this plugin. The new GUID is

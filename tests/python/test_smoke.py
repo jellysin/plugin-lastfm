@@ -49,13 +49,13 @@ def pin_drift(images, updates):
     return wrong
 
 
-def changed(rule=None, manager=None):
-    """Return the update configuration with the 12.1 rule or the server pattern replaced."""
+def changed(rule=None, manager=None, target="12.1"):
+    """Return the update configuration with the target release rule or the server pattern replaced."""
     updates = copy.deepcopy(UPDATES)
     if manager:
         updates["customManagers"][1]["matchStrings"] = [updates["customManagers"][1]["matchStrings"][0].replace(*manager)]
     if rule is not None:
-        updates["packageRules"] = [entry for entry in updates["packageRules"] if entry.get("matchDepTypes") != ["12.1"]] + rule
+        updates["packageRules"] = [entry for entry in updates["packageRules"] if entry.get("matchDepTypes") != [target]] + rule
     return updates
 
 
@@ -113,7 +113,7 @@ class AnswerTests(unittest.TestCase):
 
 class ServerChoiceTests(unittest.TestCase):
     def test_every_pinned_server_carries_a_release_and_a_digest(self):
-        self.assertEqual(["12.1", "floor", "newest"], sorted(IMAGES))
+        self.assertEqual(["12.1", "12.2", "floor", "newest"], sorted(IMAGES))
         for image in IMAGES.values():
             self.assertIsNotNone(smoke.IMAGE_TAG.fullmatch(image), image)
 
@@ -121,18 +121,21 @@ class ServerChoiceTests(unittest.TestCase):
         self.assertEqual([], pin_drift(IMAGES, UPDATES))
 
     def test_pin_the_update_bot_could_lose_or_move_is_named(self):
-        narrow = {"matchDepTypes": ["12.1"], "allowedVersions": "/^12\\.1(?:\\.|$)/"}
-        unheld = "12.1: no single update rule holds it at its release"
-        planted = [
-            ("12.1: the image names another release", {"12.1": "jellyfin/jellyfin:12.2" + DIGEST}, UPDATES),
-            (unheld, IMAGES, changed(rule=[])),
-            (unheld, IMAGES, changed(rule=[narrow, narrow])),
-            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12(?:\\.|$)/"}])),
-            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12\\.1/"}])),
-            (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "12.1"}])),
-            ("12.1: not read by the update bot", IMAGES, changed(manager=("|[0-9]+\\.[0-9]+", ""))),
-            ("spare: not read by the update bot", {"spare": IMAGES["newest"]}, UPDATES),
-        ]
+        planted = []
+        for release in ("12.1", "12.2"):
+            escaped = release.replace(".", r"\.")
+            narrow = {"matchDepTypes": [release], "allowedVersions": f"/^{escaped}(?:\\.|$)/"}
+            unheld = f"{release}: no single update rule holds it at its release"
+            planted.extend([
+                (f"{release}: the image names another release", {release: "jellyfin/jellyfin:99.0" + DIGEST}, UPDATES),
+                (unheld, IMAGES, changed(rule=[], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow, narrow], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": "/^12(?:\\.|$)/"}], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": f"/^{escaped}/"}], target=release)),
+                (unheld, IMAGES, changed(rule=[narrow | {"allowedVersions": release}], target=release)),
+                (f"{release}: not read by the update bot", {release: IMAGES[release]}, changed(manager=("|[0-9]+\\.[0-9]+", ""))),
+            ])
+        planted.append(("spare: not read by the update bot", {"spare": IMAGES["newest"]}, UPDATES))
         for number, (named, images, updates) in enumerate(planted):
             with self.subTest(number=number, named=named):
                 self.assertEqual([named], pin_drift(images, updates))
@@ -411,6 +414,70 @@ class ReturnAddressTests(unittest.TestCase):
         for name, value, expected in (("Cache-Control", "private", "must not be cached"), ("Referrer-Policy", "origin", "referrer leakage")):
             with self.subTest(header=name), self.assertRaisesRegex(SmokeFailure, expected):
                 returned(302, REFUSED | {name: value})
+
+
+def authentication_answer(command, path, auth, adapter_status):
+    """The planted server's status and body for one request of check_authentication."""
+    plugin = "/jellyfin/JellySin/Lastfm"
+    if path == plugin + "/Admin/Application":
+        if command != "GET":
+            return 400, b""
+        return (200, json.dumps({"Configured": True}).encode()) if 'Token="admin-token"' in auth else (403, b"")
+    if path == plugin + "/Me":
+        listener = json.dumps({"Username": "SmokeListener", "IsAdministrator": False}).encode()
+        return (200, listener) if 'Token="listener-token"' in auth else (401, b"")
+    if path == plugin + "/Me/Favourites":
+        return 403, b""
+    if path.startswith("/jellyfin/Auth/Keys"):
+        keys = json.dumps({"Items": [{"AccessToken": "temp-key", "AppName": "JellySinSmoke"}]}).encode()
+        return (200, keys) if command == "GET" else (204, b"")
+    if path == plugin + "/Auth/QuickConnect/Status":
+        return adapter_status, b'{"Authenticated": true}' if adapter_status == 200 else b""
+    return 404, b""
+
+
+def authenticated(adapter_status=404):
+    """Run check_authentication against a local server with the planted adapter status; return what it was asked."""
+    asked = []
+
+    class Planted(http.server.BaseHTTPRequestHandler):
+        def log_message(self, _format, *arguments):
+            pass
+
+        def answer(self):
+            asked.append((self.command, self.path))
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            status, body = authentication_answer(self.command, self.path, self.headers.get("Authorization", ""), adapter_status)
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        do_GET = do_POST = do_PUT = do_DELETE = answer
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+    thread.start()
+    try:
+        origin = f"http://127.0.0.1:{server.server_address[1]}"
+        admin = smoke.Client(origin, "/jellyfin", token="admin-token")
+        listener = smoke.Client(origin, "/jellyfin", token="listener-token")
+        smoke.check_authentication(admin, listener, True)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    return asked
+
+
+class AuthenticationTests(unittest.TestCase):
+    def test_accepts_when_quick_connect_adapter_returns_404(self):
+        asked = authenticated(adapter_status=404)
+        self.assertIn(("POST", "/jellyfin/JellySin/Lastfm/Auth/QuickConnect/Status"), asked)
+
+    def test_refuses_when_quick_connect_adapter_answers_200(self):
+        with self.assertRaisesRegex(SmokeFailure, r"POST /JellySin/Lastfm/Auth/QuickConnect/Status returned HTTP 200; expected \(404,\)"):
+            authenticated(adapter_status=200)
 
 
 def library_options(kinds=("Audio", "MusicAlbum", "MusicArtist")):

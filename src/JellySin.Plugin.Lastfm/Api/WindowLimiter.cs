@@ -25,9 +25,6 @@ public abstract class WindowLimiter(TimeProvider clock, int limit, TimeSpan wind
     }
 }
 
-/// <summary>A fixed-memory global bound for the anonymous Quick Connect status adapter.</summary>
-public sealed class QuickConnectLimiter(TimeProvider clock) : WindowLimiter(clock, 60, TimeSpan.FromSeconds(1));
-
 /// <summary>
 /// A bound on the log lines for returns from Last.fm that name no user. The return address answers without a sign-in,
 /// so a stranger could otherwise fill the server log one request at a time.

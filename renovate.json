@@ -141,6 +141,16 @@
       "allowedVersions": "/^12\\.1(?:\\.|$)/"
     },
     {
+      "description": "A server image named after a release in tools/smoke.py keeps that release; only its digest moves. The Python tests compare this pattern with the entry.",
+      "matchPackageNames": [
+        "jellyfin/jellyfin"
+      ],
+      "matchDepTypes": [
+        "12.2"
+      ],
+      "allowedVersions": "/^12\\.2(?:\\.|$)/"
+    },
+    {
       "description": "praetor-managed files: praetorctl adopt ships their updates and praetorctl audit locks them byte for byte",
       "matchFileNames": [
         ".devcontainer/devcontainer.json",

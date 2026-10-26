@@ -98,9 +98,10 @@ ends TLS and passes every request on as plain HTTP with the host name unchanged.
 The server therefore sees `http` where the browser names `https`. A headless
 Chromium then uses the plugin the way a person does:
 
-- at the published address: sign in on the dashboard and select **Connect
-  Last.fm**, save a preference, ask for a Quick Connect code, and select the
-  button on the plugin's settings page in the server's own web interface. The
+- at the published address: open the user page from the Last.fm row of
+  Jellyfin's user settings using the web client session, select **Connect
+  Last.fm**, save a preference, and select the button on the plugin's
+  settings page in the server's own web interface. The
   browser must arrive at `https://www.last.fm/api/auth/` with a return address
   under the published address and hold the host-only secure cookie of the attempt.
   The dashboard offers its preferences to a connected account only, and the run
@@ -187,6 +188,31 @@ It needs Docker, Node with the repository's locked packages and `openssl`. The
 evidence directory receives the screenshots, `result.json`, the server log, the
 methods the stand-in answered and its tunnel record; keep it out of the
 repository. CI runs this check on the newest Jellyfin 12.
+
+## Settings entry and web dialog
+
+`tests/integration/settings_entry.py` tests that `web/entry.ts` injects the
+Last.fm link (`a.lnkJellySinLastfm`) into the user settings menu
+(`#/mypreferencesmenu`) in the official Jellyfin web client across supported web
+releases, and that clicking the row opens the Last.fm dialog in an iframe without
+a sign-in prompt:
+
+- an ordinary user opens `#/mypreferencesmenu`; the Last.fm row
+  `a.lnkJellySinLastfm` must appear within 30 seconds and no Jellyfin login form
+  may be visible;
+- clicking the row opens the dialog iframe (`iframe[title="Last.fm"]`); the
+  `#connect-lastfm` button must appear with no visible password field.
+
+```sh
+python tests/integration/settings_entry.py \
+  --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
+  --server '12.2' --evidence build/settings-entry-12.2
+```
+
+`--server` accepts `12.2` or `newest`. `--plant moved-layout` simulates a breaking
+Jellyfin web client layout change by installing a MutationObserver in the browser
+that renames anchor classes before the page renders; the run passes only when
+the row check fails and records that refusal in `result.json`.
 
 ## Legacy Last.fm plugin next to JellySin
 

@@ -15,8 +15,6 @@ public sealed class RequestValidationTests
     [Theory]
     [InlineData("application", true)]
     [InlineData("application", false)]
-    [InlineData("quick-connect", true)]
-    [InlineData("quick-connect", false)]
     [InlineData("playlist", true)]
     [InlineData("playlist", false)]
     [InlineData("refusal", true)]
@@ -32,7 +30,6 @@ public sealed class RequestValidationTests
         object request = requestType switch
         {
             "application" => new ApplicationInput(valid ? new string('a', 32) : "invalid", new string('b', 32)),
-            "quick-connect" => new QuickConnectInput(valid ? new string('x', 32) : "short"),
             "refusal" => new ConnectionRefusal(valid ? "return-address" : new string('r', 33)),
             _ => new PlaylistInput(Guid.Empty, valid ? "My music" : string.Empty, PlaylistSource.Loved, Limit: valid ? 50 : 0)
         };
