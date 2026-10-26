@@ -59,9 +59,7 @@ public sealed class ScheduledTaskTests
     {
         using var f = new FeatureFixture();
         var task = new FavouriteSyncTask(f.Core.Accounts, f.Runs, NullLogger<FavouriteSyncTask>.Instance);
-        var triggers = task.GetDefaultTriggers().ToList();
-        Assert.Equal([TaskTriggerInfoType.StartupTrigger, TaskTriggerInfoType.IntervalTrigger], triggers.Select(trigger => trigger.Type));
-        Assert.Equal(TimeSpan.FromMinutes(5).Ticks, triggers[1].IntervalTicks);
+        AssertDefaultTriggers(task, TimeSpan.FromMinutes(5));
     }
 
     [Fact]
@@ -100,9 +98,7 @@ public sealed class ScheduledTaskTests
         await matching.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
 
         // Second run while first is executing must be a no-op that completes immediately.
-        var secondRun = task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
-        await secondRun.WaitAsync(TimeSpan.FromMilliseconds(500), ct);
-        Assert.True(secondRun.IsCompletedSuccessfully);
+        await AssertOverlapExecutionIsNoOpAsync(task, ct);
 
         release.Set();
         await firstRun.WaitAsync(TimeSpan.FromSeconds(5), ct);
@@ -114,24 +110,15 @@ public sealed class ScheduledTaskTests
         using var f = new FeatureFixture();
         await f.InitializeAsync();
         var task = new FavouriteSyncTask(f.Core.Accounts, f.Runs, NullLogger<FavouriteSyncTask>.Instance);
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            task.ExecuteAsync(Mock.Of<IProgress<double>>(), cts.Token));
+        await AssertHonoursCancellationAsync(task);
     }
 
     [Fact]
     public void PlaylistRefreshTask_DefaultTriggers_AreStartupAndFiveMinuteInterval()
     {
         using var f = new FeatureFixture();
-        var discovery = new DiscoveryService(f.Api, f.Library, Mock.Of<IDiscoveryLibrary>(), f.Core.Accounts);
-        var playlistService = new PlaylistService(f.Api, discovery, f.Library,
-            Mock.Of<ILibraryManager>(), Mock.Of<IPlaylistManager>(), f.Core.Store, f.Locks, f.Core.Clock, f.Core.Accounts);
-        var task = new PlaylistRefreshTask(f.Core.Accounts, playlistService, NullLogger<PlaylistRefreshTask>.Instance);
-        var triggers = task.GetDefaultTriggers().ToList();
-        Assert.Equal([TaskTriggerInfoType.StartupTrigger, TaskTriggerInfoType.IntervalTrigger], triggers.Select(trigger => trigger.Type));
-        Assert.Equal(TimeSpan.FromMinutes(5).Ticks, triggers[1].IntervalTicks);
+        var task = CreatePlaylistRefreshTask(f);
+        AssertDefaultTriggers(task, TimeSpan.FromMinutes(5));
     }
 
     [Fact]
@@ -140,22 +127,9 @@ public sealed class ScheduledTaskTests
         var ct = TestContext.Current.CancellationToken;
         using var f = new FeatureFixture();
         await f.InitializeAsync();
-        var local = f.AddLocal("Recover playlist");
-        var playlist = new Playlist { Id = Guid.NewGuid(), OwnerUserId = f.Core.UserId, Path = "" };
-        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-playlist-operation",
-            new PlaylistOperation(new(Guid.NewGuid(), "Recovery", PlaylistSource.Top), [local.Id], playlist.Id, Guid.NewGuid()), ct);
-
-        var library = new Mock<ILibraryManager>();
-        library.Setup(l => l.GetItemById<Playlist>(playlist.Id, f.Core.UserId)).Returns(playlist);
-        var playlists = new Mock<IPlaylistManager>();
-        var updated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        playlists.Setup(p => p.UpdatePlaylist(It.IsAny<PlaylistUpdateRequest>()))
-            .Returns(() => { updated.TrySetResult(); return Task.CompletedTask; });
-
-        var discovery = new DiscoveryService(f.Api, f.Library, Mock.Of<IDiscoveryLibrary>(), f.Core.Accounts);
-        var playlistService = new PlaylistService(f.Api, discovery, f.Library,
-            library.Object, playlists.Object, f.Core.Store, f.Locks, f.Core.Clock, f.Core.Accounts);
-        var task = new PlaylistRefreshTask(f.Core.Accounts, playlistService, NullLogger<PlaylistRefreshTask>.Instance);
+        var (_, library) = await SetupPlaylistRecoveryAsync(f, "Recover playlist", ct);
+        var (playlists, updated) = SetupPlaylistUpdate();
+        var task = CreatePlaylistRefreshTask(f, library.Object, playlists.Object);
 
         await task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
         await updated.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
@@ -168,31 +142,16 @@ public sealed class ScheduledTaskTests
         var ct = TestContext.Current.CancellationToken;
         using var f = new FeatureFixture();
         await f.InitializeAsync();
-        var local = f.AddLocal("Overlap recovery");
-        var playlist = new Playlist { Id = Guid.NewGuid(), OwnerUserId = f.Core.UserId, Path = "" };
-        await f.Core.Store.WriteAsync(f.Core.UserId, "feature-playlist-operation",
-            new PlaylistOperation(new(Guid.NewGuid(), "Recovery", PlaylistSource.Top), [local.Id], playlist.Id, Guid.NewGuid()), ct);
-
-        var library = new Mock<ILibraryManager>();
-        library.Setup(l => l.GetItemById<Playlist>(playlist.Id, f.Core.UserId)).Returns(playlist);
-        var playlists = new Mock<IPlaylistManager>();
-        var updating = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (_, library) = await SetupPlaylistRecoveryAsync(f, "Overlap recovery", ct);
         using var release = new ManualResetEventSlim();
-        playlists.Setup(p => p.UpdatePlaylist(It.IsAny<PlaylistUpdateRequest>()))
-            .Returns(() => { updating.TrySetResult(); release.Wait(); return Task.CompletedTask; });
-
-        var discovery = new DiscoveryService(f.Api, f.Library, Mock.Of<IDiscoveryLibrary>(), f.Core.Accounts);
-        var playlistService = new PlaylistService(f.Api, discovery, f.Library,
-            library.Object, playlists.Object, f.Core.Store, f.Locks, f.Core.Clock, f.Core.Accounts);
-        var task = new PlaylistRefreshTask(f.Core.Accounts, playlistService, NullLogger<PlaylistRefreshTask>.Instance);
+        var (playlists, updating) = SetupPlaylistUpdate(() => release.Wait());
+        var task = CreatePlaylistRefreshTask(f, library.Object, playlists.Object);
 
         var firstRun = task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
         await updating.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
 
         // Second run while first is in progress is a no-op.
-        var secondRun = task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
-        await secondRun.WaitAsync(TimeSpan.FromMilliseconds(500), ct);
-        Assert.True(secondRun.IsCompletedSuccessfully);
+        await AssertOverlapExecutionIsNoOpAsync(task, ct);
 
         release.Set();
         await firstRun.WaitAsync(TimeSpan.FromSeconds(5), ct);
@@ -204,27 +163,16 @@ public sealed class ScheduledTaskTests
     {
         using var f = new FeatureFixture();
         await f.InitializeAsync();
-        var discovery = new DiscoveryService(f.Api, f.Library, Mock.Of<IDiscoveryLibrary>(), f.Core.Accounts);
-        var playlistService = new PlaylistService(f.Api, discovery, f.Library,
-            Mock.Of<ILibraryManager>(), Mock.Of<IPlaylistManager>(), f.Core.Store, f.Locks, f.Core.Clock, f.Core.Accounts);
-        var task = new PlaylistRefreshTask(f.Core.Accounts, playlistService, NullLogger<PlaylistRefreshTask>.Instance);
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            task.ExecuteAsync(Mock.Of<IProgress<double>>(), cts.Token));
+        var task = CreatePlaylistRefreshTask(f);
+        await AssertHonoursCancellationAsync(task);
     }
 
     [Fact]
     public void ScrobbleDeliveryTask_DefaultTriggers_AreStartupAndOneMinuteInterval()
     {
         using var fixture = new CoreFixture();
-        var (_, _, _, outbox, playback, _) = CreateDeliveryServices(fixture);
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
-        var task = new ScrobbleDeliveryTask(playback, delivery, NullLogger<ScrobbleDeliveryTask>.Instance);
-        var triggers = task.GetDefaultTriggers().ToList();
-        Assert.Equal([TaskTriggerInfoType.StartupTrigger, TaskTriggerInfoType.IntervalTrigger], triggers.Select(trigger => trigger.Type));
-        Assert.Equal(TimeSpan.FromMinutes(1).Ticks, triggers[1].IntervalTicks);
+        using var bundle = CreateDeliveryTask(fixture);
+        AssertDefaultTriggers(bundle.Task, TimeSpan.FromMinutes(1));
     }
 
     [Fact]
@@ -232,22 +180,16 @@ public sealed class ScheduledTaskTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var (sessions, _, _, outbox, playback, _) = CreateDeliveryServices(fixture);
-        await playback.StartAsync(ct);
-
-        PlayScrobble(sessions, fixture);
-        await playback.StopAsync(ct);
+        var (_, outbox, playback) = await SetupDeliveryPlaybackAsync(fixture, ct);
 
         fixture.Client.Handler = (method, _, _) => method switch
         {
-            "track.scrobble" => JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}"),
+            "track.scrobble" => SuccessfulScrobbleResponse(),
             _ => JsonDocument.Parse("{}")
         };
 
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
-        var task = new ScrobbleDeliveryTask(playback, delivery, NullLogger<ScrobbleDeliveryTask>.Instance);
-        await task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
+        using var bundle = CreateDeliveryTask(fixture, playback, outbox);
+        await bundle.Task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
 
         Assert.Contains(fixture.Client.Calls, c => c.Method == "track.scrobble");
     }
@@ -257,9 +199,7 @@ public sealed class ScheduledTaskTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var (sessions, _, _, outbox, playback, _) = CreateDeliveryServices(fixture);
-        await playback.StartAsync(ct);
+        var (_, outbox, playback) = await SetupDeliveryPlaybackAsync(fixture, ct);
 
         var entered = 0;
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -271,22 +211,18 @@ public sealed class ScheduledTaskTests
                 Interlocked.Increment(ref entered);
                 delivered.TrySetResult();
                 release.Wait(TimeSpan.FromSeconds(10));
-                return JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}");
+                return SuccessfulScrobbleResponse();
             }
             return JsonDocument.Parse("{}");
         };
 
-        PlayScrobble(sessions, fixture);
-        await playback.StopAsync(ct);
+        using var bundle = CreateDeliveryTask(fixture, playback, outbox);
 
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
-        var task = new ScrobbleDeliveryTask(playback, delivery, NullLogger<ScrobbleDeliveryTask>.Instance);
-
-        var firstRun = task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
+        var firstRun = bundle.Task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
         await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
 
         // A second run waits for the first instead of sending beside it.
-        var secondRun = task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
+        var secondRun = bundle.Task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
         await Task.Delay(TimeSpan.FromMilliseconds(300), ct);
         Assert.False(secondRun.IsCompleted);
         Assert.Equal(1, Volatile.Read(ref entered));
@@ -308,7 +244,7 @@ public sealed class ScheduledTaskTests
         {
             if (method != "track.scrobble") return JsonDocument.Parse("{}");
             delivered.TrySetResult();
-            return JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}");
+            return SuccessfulScrobbleResponse();
         };
         using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
         await playback.StartAsync(ct);
@@ -327,15 +263,119 @@ public sealed class ScheduledTaskTests
     public async Task ScrobbleDeliveryTask_HonoursCancellation()
     {
         using var fixture = new CoreFixture();
-        var (_, _, _, outbox, playback, _) = CreateDeliveryServices(fixture);
-        using var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
+        using var bundle = CreateDeliveryTask(fixture);
+        await AssertHonoursCancellationAsync(bundle.Task);
+    }
+
+    private sealed record DeliveryTaskBundle(DeliveryService Delivery, ScrobbleDeliveryTask Task) : IDisposable
+    {
+        public void Dispose() => Delivery.Dispose();
+    }
+
+    private static DeliveryTaskBundle CreateDeliveryTask(
+        CoreFixture fixture,
+        PlaybackService playback,
+        ScrobbleOutbox outbox)
+    {
+        var delivery = new DeliveryService(playback, outbox, fixture.Accounts, NullLogger<DeliveryService>.Instance);
         var task = new ScrobbleDeliveryTask(playback, delivery, NullLogger<ScrobbleDeliveryTask>.Instance);
+        return new DeliveryTaskBundle(delivery, task);
+    }
+
+    private static DeliveryTaskBundle CreateDeliveryTask(CoreFixture fixture)
+    {
+        var (_, _, _, outbox, playback, _) = CreateDeliveryServices(fixture);
+        return CreateDeliveryTask(fixture, playback, outbox);
+    }
+
+    private static async Task<(Mock<ISessionManager> Sessions, ScrobbleOutbox Outbox, PlaybackService Playback)> SetupDeliveryPlaybackAsync(
+        CoreFixture fixture,
+        CancellationToken ct)
+    {
+        await fixture.ConnectAsync();
+        var (sessions, _, _, outbox, playback, _) = CreateDeliveryServices(fixture);
+        await playback.StartAsync(ct);
+        PlayScrobble(sessions, fixture);
+        await playback.StopAsync(ct);
+        return (sessions, outbox, playback);
+    }
+
+    private static PlaylistRefreshTask CreatePlaylistRefreshTask(
+        FeatureFixture fixture,
+        ILibraryManager? libraryManager = null,
+        IPlaylistManager? playlistManager = null)
+    {
+        var discovery = new DiscoveryService(fixture.Api, fixture.Library, Mock.Of<IDiscoveryLibrary>(), fixture.Core.Accounts);
+        var playlistService = new PlaylistService(
+            fixture.Api,
+            discovery,
+            fixture.Library,
+            libraryManager ?? Mock.Of<ILibraryManager>(),
+            playlistManager ?? Mock.Of<IPlaylistManager>(),
+            fixture.Core.Store,
+            fixture.Locks,
+            fixture.Core.Clock,
+            fixture.Core.Accounts);
+        return new PlaylistRefreshTask(fixture.Core.Accounts, playlistService, NullLogger<PlaylistRefreshTask>.Instance);
+    }
+
+    private static async Task<(Playlist Playlist, Mock<ILibraryManager> Library)> SetupPlaylistRecoveryAsync(
+        FeatureFixture fixture,
+        string trackTitle,
+        CancellationToken ct)
+    {
+        var local = fixture.AddLocal(trackTitle);
+        var playlist = new Playlist { Id = Guid.NewGuid(), OwnerUserId = fixture.Core.UserId, Path = "" };
+        await fixture.Core.Store.WriteAsync(
+            fixture.Core.UserId,
+            "feature-playlist-operation",
+            new PlaylistOperation(new(Guid.NewGuid(), "Recovery", PlaylistSource.Top), [local.Id], playlist.Id, Guid.NewGuid()),
+            ct);
+
+        var library = new Mock<ILibraryManager>();
+        library.Setup(l => l.GetItemById<Playlist>(playlist.Id, fixture.Core.UserId)).Returns(playlist);
+        return (playlist, library);
+    }
+
+    private static (Mock<IPlaylistManager> Playlists, TaskCompletionSource Signal) SetupPlaylistUpdate(Action? onUpdate = null)
+    {
+        var playlists = new Mock<IPlaylistManager>();
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        playlists.Setup(p => p.UpdatePlaylist(It.IsAny<PlaylistUpdateRequest>()))
+            .Returns(() =>
+            {
+                signal.TrySetResult();
+                onUpdate?.Invoke();
+                return Task.CompletedTask;
+            });
+        return (playlists, signal);
+    }
+
+    private static void AssertDefaultTriggers(IScheduledTask task, TimeSpan interval)
+    {
+        var triggers = task.GetDefaultTriggers().ToList();
+        Assert.Equal([TaskTriggerInfoType.StartupTrigger, TaskTriggerInfoType.IntervalTrigger], triggers.Select(trigger => trigger.Type));
+        Assert.Equal(interval.Ticks, triggers[1].IntervalTicks);
+    }
+
+    private static async Task AssertHonoursCancellationAsync(IScheduledTask task)
+    {
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             task.ExecuteAsync(Mock.Of<IProgress<double>>(), cts.Token));
     }
+
+    private static async Task AssertOverlapExecutionIsNoOpAsync(IScheduledTask task, CancellationToken ct)
+    {
+        var secondRun = task.ExecuteAsync(Mock.Of<IProgress<double>>(), ct);
+        await secondRun.WaitAsync(TimeSpan.FromMilliseconds(500), ct);
+        Assert.True(secondRun.IsCompletedSuccessfully);
+    }
+
+    private static JsonDocument SuccessfulScrobbleResponse() =>
+        JsonDocument.Parse("{\"scrobbles\":{\"scrobble\":{\"ignoredMessage\":{\"code\":\"0\"}}}}");
 
     private static (Mock<ISessionManager> Sessions, Mock<IPluginManager> Plugins, PlaybackTracker Tracker, ScrobbleOutbox Outbox, PlaybackService Playback, FakeLogger<DeliveryService> Logger)
         CreateDeliveryServices(CoreFixture fixture)
