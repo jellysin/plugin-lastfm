@@ -84,22 +84,11 @@ public sealed class FeaturedCreditTests
     public async Task ScrobbleCarriesShortenedFeaturedCreditsWhenEnabled()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var config = new PluginConfiguration { RemoveFeaturedArtists = true };
-        using var rules = new LibraryRuleService(fixture.Store, null, () => config);
-        var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
-        var item = new Audio
-        {
-            Id = Guid.NewGuid(),
-            Name = "Song (feat. B)",
-            Artists = ["A feat. B"],
-            Album = "Album (feat. C)",
-            AlbumArtists = ["A feat. B"],
-            RunTimeTicks = TimeSpan.FromSeconds(200).Ticks
-        };
-        await MediaTypeTests.PlayAsync(fixture, rules, outbox, item);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        var scrobble = Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble").Values;
+        var scrobble = await ScrobbleAudioAsync(
+            fixture,
+            new PluginConfiguration { RemoveFeaturedArtists = true },
+            album: "Album (feat. C)",
+            albumArtists: ["A feat. B"]);
         Assert.Equal("A", scrobble["artist[0]"]);
         Assert.Equal("Song", scrobble["track[0]"]);
         Assert.Equal("Album (feat. C)", scrobble["album[0]"]);
@@ -110,22 +99,11 @@ public sealed class FeaturedCreditTests
     public async Task ScrobbleSendsUnchangedMetadataWhenDisabledByDefault()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        var config = new PluginConfiguration { RemoveFeaturedArtists = false };
-        using var rules = new LibraryRuleService(fixture.Store, null, () => config);
-        var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
-        var item = new Audio
-        {
-            Id = Guid.NewGuid(),
-            Name = "Song (feat. B)",
-            Artists = ["A feat. B"],
-            Album = "Album",
-            AlbumArtists = ["A feat. B"],
-            RunTimeTicks = TimeSpan.FromSeconds(200).Ticks
-        };
-        await MediaTypeTests.PlayAsync(fixture, rules, outbox, item);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        var scrobble = Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble").Values;
+        var scrobble = await ScrobbleAudioAsync(
+            fixture,
+            new PluginConfiguration { RemoveFeaturedArtists = false },
+            album: "Album",
+            albumArtists: ["A feat. B"]);
         Assert.Equal("A feat. B", scrobble["artist[0]"]);
         Assert.Equal("Song (feat. B)", scrobble["track[0]"]);
     }
@@ -134,7 +112,6 @@ public sealed class FeaturedCreditTests
     public async Task MetadataRulesExecuteAfterFeaturedCreditsAreStripped()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
         var config = new PluginConfiguration
         {
             RemoveFeaturedArtists = true,
@@ -144,6 +121,18 @@ public sealed class FeaturedCreditTests
                 new MetadataRule(MetadataRuleField.Title, MetadataRuleKind.Correction, "Song", "Corrected Song")
             ]
         };
+        var scrobble = await ScrobbleAudioAsync(fixture, config);
+        Assert.Equal("Artist A", scrobble["artist[0]"]);
+        Assert.Equal("Corrected Song", scrobble["track[0]"]);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, string>> ScrobbleAudioAsync(
+        CoreFixture fixture,
+        PluginConfiguration config,
+        string? album = null,
+        string[]? albumArtists = null)
+    {
+        await fixture.ConnectAsync();
         using var rules = new LibraryRuleService(fixture.Store, null, () => config);
         var outbox = new ScrobbleOutbox(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock);
         var item = new Audio
@@ -151,12 +140,12 @@ public sealed class FeaturedCreditTests
             Id = Guid.NewGuid(),
             Name = "Song (feat. B)",
             Artists = ["A feat. B"],
+            Album = album,
+            AlbumArtists = albumArtists ?? [],
             RunTimeTicks = TimeSpan.FromSeconds(200).Ticks
         };
         await MediaTypeTests.PlayAsync(fixture, rules, outbox, item);
         await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        var scrobble = Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble").Values;
-        Assert.Equal("Artist A", scrobble["artist[0]"]);
-        Assert.Equal("Corrected Song", scrobble["track[0]"]);
+        return Assert.Single(fixture.Client.Calls, call => call.Method == "track.scrobble").Values;
     }
 }

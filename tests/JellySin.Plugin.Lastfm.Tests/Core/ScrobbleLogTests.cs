@@ -17,13 +17,11 @@ public sealed class ScrobbleLogTests
     {
         using var fixture = new CoreFixture();
         await fixture.ConnectAsync();
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        var outcome = await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var outcome = await DeliverDefaultListenAsync(fixture);
         Assert.NotNull(outcome);
         Assert.Equal(1, outcome.Accepted);
 
-        var log = await fixture.Store.ReadAsync<List<ScrobbleLogEntry>>(fixture.UserId, ScrobbleOutbox.LogStoreKey, TestContext.Current.CancellationToken);
+        var log = await ReadLogAsync(fixture);
         Assert.Null(log);
     }
 
@@ -125,18 +123,10 @@ public sealed class ScrobbleLogTests
     public async Task UserRemovedOrDisconnected_LogKeyGone()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        await fixture.LibraryRules.SetScrobbleLogEnabledAsync(fixture.UserId, true, TestContext.Current.CancellationToken);
-
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
-
-        var logBefore = await fixture.Store.ReadAsync<List<ScrobbleLogEntry>>(fixture.UserId, ScrobbleOutbox.LogStoreKey, TestContext.Current.CancellationToken);
-        Assert.NotNull(logBefore);
+        await SetupPopulatedLogAsync(fixture);
 
         await fixture.Accounts.DisconnectAsync(fixture.UserId, TestContext.Current.CancellationToken);
-        var logAfterDisconnect = await fixture.Store.ReadAsync<List<ScrobbleLogEntry>>(fixture.UserId, ScrobbleOutbox.LogStoreKey, TestContext.Current.CancellationToken);
+        var logAfterDisconnect = await ReadLogAsync(fixture);
         Assert.Null(logAfterDisconnect);
     }
 
@@ -152,30 +142,20 @@ public sealed class ScrobbleLogTests
         await fixture.ConnectAsync();
         Assert.False(await fixture.LibraryRules.IsScrobbleLogEnabledAsync(fixture.UserId, TestContext.Current.CancellationToken));
 
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        var outcome = await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        var outcome = await DeliverDefaultListenAsync(fixture);
         Assert.NotNull(outcome);
         Assert.Equal(1, outcome.Accepted);
-        Assert.Null(await fixture.Store.ReadAsync<List<ScrobbleLogEntry>>(fixture.UserId, ScrobbleOutbox.LogStoreKey, TestContext.Current.CancellationToken));
+        Assert.Null(await ReadLogAsync(fixture));
     }
 
     [Fact]
     public async Task SwitchingOff_DeletesTheLog()
     {
         using var fixture = new CoreFixture();
-        await fixture.ConnectAsync();
-        await fixture.LibraryRules.SetScrobbleLogEnabledAsync(fixture.UserId, true, TestContext.Current.CancellationToken);
-
-        var outbox = NewOutbox(fixture);
-        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
-        await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
-
-        var logBefore = await fixture.Store.ReadAsync<List<ScrobbleLogEntry>>(fixture.UserId, ScrobbleOutbox.LogStoreKey, TestContext.Current.CancellationToken);
-        Assert.NotNull(logBefore);
+        await SetupPopulatedLogAsync(fixture);
 
         await fixture.LibraryRules.SetScrobbleLogEnabledAsync(fixture.UserId, false, TestContext.Current.CancellationToken);
-        var logAfter = await fixture.Store.ReadAsync<List<ScrobbleLogEntry>>(fixture.UserId, ScrobbleOutbox.LogStoreKey, TestContext.Current.CancellationToken);
+        var logAfter = await ReadLogAsync(fixture);
         Assert.Null(logAfter);
         Assert.False(await fixture.LibraryRules.IsScrobbleLogEnabledAsync(fixture.UserId, TestContext.Current.CancellationToken));
     }
@@ -271,6 +251,27 @@ public sealed class ScrobbleLogTests
         var fetchedSettings = Assert.IsType<ScrobbleLogSettingsResponse>(fetched.Value);
         Assert.True(fetchedSettings.Enabled);
     }
+
+    private static async Task<FlushOutcome> DeliverDefaultListenAsync(CoreFixture fixture, ScrobbleOutbox? outbox = null)
+    {
+        outbox ??= NewOutbox(fixture);
+        await outbox.EnqueueAsync(Listen(fixture), TestContext.Current.CancellationToken);
+        var outcome = await outbox.FlushAsync(fixture.UserId, TestContext.Current.CancellationToken);
+        Assert.NotNull(outcome);
+        Assert.Equal(1, outcome.Accepted);
+        return outcome;
+    }
+
+    private static async Task SetupPopulatedLogAsync(CoreFixture fixture)
+    {
+        await fixture.ConnectAsync();
+        await fixture.LibraryRules.SetScrobbleLogEnabledAsync(fixture.UserId, true, TestContext.Current.CancellationToken);
+        await DeliverDefaultListenAsync(fixture);
+        Assert.NotNull(await ReadLogAsync(fixture));
+    }
+
+    private static Task<List<ScrobbleLogEntry>?> ReadLogAsync(CoreFixture fixture) =>
+        fixture.Store.ReadAsync<List<ScrobbleLogEntry>>(fixture.UserId, ScrobbleOutbox.LogStoreKey, TestContext.Current.CancellationToken);
 
     private static ScrobbleOutbox NewOutbox(CoreFixture fixture) =>
         new(fixture.Store, fixture.Accounts, fixture.Client, fixture.Clock, fixture.LibraryRules);
