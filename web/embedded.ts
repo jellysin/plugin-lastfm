@@ -26,6 +26,10 @@ function probeParentSession(serverId: string): ParentProbe {
     }
     if (typeof parentApi.serverId === 'function') {
       const parentServerId = parentApi.serverId();
+      if (typeof parentServerId === 'string' && parentServerId !== '' && parentServerId !== serverId) {
+        // Different server id is final; undefined or empty id means ApiClient is still connecting.
+        return 'absent';
+      }
       if (typeof parentServerId !== 'string' || parentServerId !== serverId) {
         return 'pending';
       }

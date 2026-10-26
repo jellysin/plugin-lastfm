@@ -489,25 +489,67 @@ test('waitForParentSession returns undefined without retry when parent access th
 
 test('waitForParentSession returns undefined on serverId mismatch', async () => {
   const originalWindow = globalThis.window;
-  let calls = 0;
+  let tokenCalls = 0;
+  let serverIdCalls = 0;
   try {
     globalThis.window = {
       parent: {
         ApiClient: {
           accessToken() {
-            calls++;
+            tokenCalls++;
             return 'a'.repeat(32);
           },
-          serverId() { return 'different-server'; },
+          serverId() {
+            serverIdCalls++;
+            return 'different-server';
+          },
         },
       },
     };
-    const session = await waitForParentSession('test-server', 3, 0);
+    const start = Date.now();
+    const session = await waitForParentSession('test-server', 10, 100);
+    const duration = Date.now() - start;
     assert.equal(session, undefined);
-    assert.equal(calls, 3);
+    assert.equal(tokenCalls, 1);
+    assert.equal(serverIdCalls, 1);
+    assert.ok(duration < 80, `Expected immediate return without waiting, took ${duration}ms`);
   } finally {
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
   }
 });
+
+test('waitForParentSession returns session when serverId appears on 3rd try', async () => {
+  const originalWindow = globalThis.window;
+  let tokenCalls = 0;
+  let serverIdCalls = 0;
+  try {
+    globalThis.window = {
+      parent: {
+        ApiClient: {
+          accessToken() {
+            tokenCalls++;
+            return 'a'.repeat(32);
+          },
+          serverId() {
+            serverIdCalls++;
+            return serverIdCalls >= 3 ? 'test-server' : undefined;
+          },
+        },
+      },
+    };
+    const session = await waitForParentSession('test-server', 5, 0);
+    assert.deepEqual(session, {
+      accessToken: 'a'.repeat(32),
+      serverId: 'test-server',
+      user: { name: '' },
+    });
+    assert.equal(tokenCalls, 3);
+    assert.equal(serverIdCalls, 3);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
 
