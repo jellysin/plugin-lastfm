@@ -1,7 +1,5 @@
-using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using MediaBrowser.Controller;
-using MediaBrowser.Controller.QuickConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,7 +9,7 @@ namespace JellySin.Plugin.Lastfm.Api;
 [AllowAnonymous]
 [TypeFilter(typeof(ApiExceptionFilter))]
 [Route("JellySin/Lastfm")]
-public sealed class PublicController(IServerApplicationHost host, IQuickConnect quickConnect, QuickConnectLimiter limiter, ServerAddress server) : ControllerBase
+public sealed class PublicController(IServerApplicationHost host) : ControllerBase
 {
     private static readonly HashSet<string> Assets = new(StringComparer.Ordinal)
     {
@@ -42,21 +40,6 @@ public sealed class PublicController(IServerApplicationHost host, IQuickConnect 
         };
     }
 
-    [HttpPost("Auth/QuickConnect/Status")]
-    [RequestSizeLimit(1024)]
-    public IActionResult QuickConnectStatus(QuickConnectInput input)
-    {
-        SecurityHeaders();
-        if (!RequestOrigin.IsAllowed(Request, server)) return StatusCode(403);
-        if (!limiter.TryAcquire())
-        {
-            Response.Headers.RetryAfter = "1";
-            return StatusCode(429);
-        }
-        if (!quickConnect.IsEnabled) return NotFound();
-        return Ok(new { Authenticated = quickConnect.CheckRequestStatus(input.Secret).Authenticated });
-    }
-
     private IActionResult Resource(string file, string contentType)
     {
         SecurityHeaders();
@@ -65,9 +48,4 @@ public sealed class PublicController(IServerApplicationHost host, IQuickConnect 
     }
 
     private void SecurityHeaders() => ResponseSecurity.Apply(Response);
-}
-
-public sealed record QuickConnectInput([Required, StringLength(128, MinimumLength = 16)] string Secret)
-{
-    public override string ToString() => "Quick Connect request (redacted)";
 }

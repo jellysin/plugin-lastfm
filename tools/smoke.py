@@ -421,7 +421,7 @@ def create_user(admin: Client, password: str, name: str = "SmokeListener") -> di
     return user
 
 
-def check_authentication(admin: Client, listener: Client, listener_id: str, expect_configured: bool) -> None:
+def check_authentication(admin: Client, listener: Client, expect_configured: bool) -> None:
     anonymous = Client(admin.origin, admin.base_path)
     anonymous.request(PREFIX + "/Me", expected=401, raw=True)
     configured = admin.request(PREFIX + "/Admin/Application")["configured"]
@@ -437,21 +437,7 @@ def check_authentication(admin: Client, listener: Client, listener_id: str, expe
     key = next(item["accesstoken"] for item in keys["items"] if item["appname"] == "JellySinSmoke")
     Client(admin.origin, admin.base_path, key).request(PREFIX + "/Me", expected=401, raw=True)
     admin.request("/Auth/Keys/" + urllib.parse.quote(key, safe=""), "DELETE", expected=204)
-    require(admin.request("/QuickConnect/Enabled") is True, "Quick Connect is unavailable in the isolated server.")
-    attempt = anonymous.request("/QuickConnect/Initiate", "POST")
-    anonymous.request(PREFIX + "/Auth/QuickConnect/Status", "POST", {"Secret": "short"}, 400, raw=True)
-    anonymous.request(PREFIX + "/Auth/QuickConnect/Status", "POST", {"Secret": attempt["secret"]}, 403, {"Origin": "https://foreign.invalid"}, raw=True)
-    status = anonymous.request(PREFIX + "/Auth/QuickConnect/Status", "POST", {"Secret": attempt["secret"]})
-    require(not status["authenticated"], "A new Quick Connect request was already authorized.")
-    query = urllib.parse.urlencode({"code": attempt["code"], "userId": listener_id})
-    admin.request("/QuickConnect/Authorize?" + query, "POST")
-    status = anonymous.request(PREFIX + "/Auth/QuickConnect/Status", "POST", {"Secret": attempt["secret"]})
-    require(status["authenticated"], "Quick Connect authorization was not recognized by the plugin.")
-    session = anonymous.request("/Users/AuthenticateWithQuickConnect", "POST", {"Secret": attempt["secret"]})
-    quick = Client(admin.origin, admin.base_path, session["accesstoken"])
-    require(quick.request(PREFIX + "/Me")["username"] == "SmokeListener", "Quick Connect authenticated the wrong user.")
-    quick.request("/Sessions/Logout", "POST", expected=204)
-    quick.request(PREFIX + "/Me", expected=401, raw=True)
+    anonymous.request(PREFIX + "/Auth/QuickConnect/Status", "POST", {"Secret": "x" * 32}, 404, raw=True)
 
 
 def conflict_mark(payload: bytes) -> Any:
@@ -624,11 +610,11 @@ def run_smoke(host: DockerHost, expect_configured: bool = False) -> dict[str, An
     user = create_user(admin, listener_password)
     listener = Client(host.origin)
     listener.authenticate("SmokeListener", listener_password)
-    check_authentication(admin, listener, user["id"], expect_configured)
+    check_authentication(admin, listener, expect_configured)
     check_sign_in_address(admin, listener, host.published, expect_configured)
     check_page_origin(listener, host.published)
     check_user_isolation(admin, listener, admin_user["id"])
-    print("PASS: password/Quick Connect, anonymous/API-key/origin rejection and user isolation.", flush=True)
+    print("PASS: password sign-in, anonymous/API-key/origin rejection and user isolation.", flush=True)
     track = check_library(admin, listener, user)
     check_disabled_playback(admin, listener, track)
     print("PASS: real music scan, restricted-library access and disabled-playback events.", flush=True)

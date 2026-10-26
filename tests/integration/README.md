@@ -98,9 +98,10 @@ ends TLS and passes every request on as plain HTTP with the host name unchanged.
 The server therefore sees `http` where the browser names `https`. A headless
 Chromium then uses the plugin the way a person does:
 
-- at the published address: sign in on the dashboard and select **Connect
-  Last.fm**, save a preference, ask for a Quick Connect code, and select the
-  button on the plugin's settings page in the server's own web interface. The
+- at the published address: open the user page from the Last.fm row of
+  Jellyfin's user settings using the web client session, select **Connect
+  Last.fm**, save a preference, and select the button on the plugin's
+  settings page in the server's own web interface. The
   browser must arrive at `https://www.last.fm/api/auth/` with a return address
   under the published address and hold the host-only secure cookie of the attempt.
   The dashboard offers its preferences to a connected account only, and the run
