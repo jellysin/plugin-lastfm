@@ -110,7 +110,8 @@ Unmatched and ambiguous tracks remain for review. Last.fm offers no idempotency 
 whose reply is lost cannot be guaranteed exactly once.
 
 See [account privacy and operations](docs/operations.md),
-[API research and integration boundaries](docs/lastfm-api.md), and
+[API research and integration boundaries](docs/lastfm-api.md),
+[where each function lives in Jellyfin](docs/jellyfin-integration.md), and
 [architecture](docs/architecture.md). Performance measurements and their limits
 are recorded in [the benchmark documentation](benchmarks/README.md).
 
