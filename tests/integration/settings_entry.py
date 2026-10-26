@@ -6,6 +6,7 @@ an ordinary listener user, signs into the Jellyfin web client, and runs
 tests/integration/settings_entry.mjs in a headless browser to confirm:
 1. The Last.fm row appears in the user settings menu (#/mypreferencesmenu).
 2. Clicking the row opens the Last.fm view without requiring a sign-in.
+3. The Last.fm page reopens below the header after the sign-in return.
 
 With --plant moved-layout, the browser injects a mutation observer that renames
 DOM classes to simulate a restructured settings page; the test requires the
@@ -84,7 +85,7 @@ def evaluate_browser_result(result_path: Path, exit_code: int, plant: str) -> No
     results = result.get("results", [])
     if plant == "none":
         require(exit_code == 0, f"Browser run failed with exit code {exit_code}")
-        require(len(results) == 2 and all(item.get("passed") for item in results), "A settings entry check failed.")
+        require(len(results) == 3 and all(item.get("passed") for item in results), "A settings entry check failed.")
         print(f"PASS: Jellyfin {result.get('server')}: settings entry verified.", flush=True)
         return
     if plant == "moved-layout":

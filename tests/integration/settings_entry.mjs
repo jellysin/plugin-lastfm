@@ -176,6 +176,21 @@ const checks = {
     const connectText = (await frame.locator('#connect-lastfm').textContent() ?? '').trim();
     return `${connectText} (header bottom: ${geometry.headerBottom}px, dialog top: ${geometry.dialogTop}px)`;
   },
+  'Last.fm page reopens below the header after the sign-in return': async () => {
+    require(activePage !== null, 'No active page from user settings check');
+    await activePage.keyboard.press('Escape');
+    await activePage.locator('.jellysin-lastfm-dialog').waitFor({ state: 'detached', timeout: wait });
+    // A hash-only change would not reload the web client; the sign-in return is a fresh load.
+    await activePage.goto('about:blank');
+    await activePage.goto(run.origin + '/web/index.html#/mypreferencesmenu?lastfm=open');
+    const frame = activePage.frameLocator('iframe[title="Last.fm"]');
+    await frame.locator('#connect-lastfm').waitFor({ state: 'visible', timeout: wait });
+    const geometry = await probeDialogGeometry(activePage);
+    require(geometry.ok, `Dialog geometry invalid: ${geometry.reason}`);
+    await activePage.screenshot({ path: join(run.evidence, '3-lastfm-return.png') });
+    const connectText = (await frame.locator('#connect-lastfm').textContent() ?? '').trim();
+    return `${connectText} (header bottom: ${geometry.headerBottom}px, dialog top: ${geometry.dialogTop}px)`;
+  },
 };
 
 const browser = await chromium.launch();

@@ -114,22 +114,31 @@ function headerBottom(): number {
   return Math.max(0, maxBottom);
 }
 
+function placeView(container: HTMLElement): void {
+  const topOffset = headerBottom();
+  const nextTop = `${topOffset}px`;
+  const nextHeight = `calc(100% - ${topOffset}px)`;
+  if (container.style.top !== nextTop) {
+    container.style.top = nextTop;
+  }
+  if (container.style.height !== nextHeight) {
+    container.style.height = nextHeight;
+  }
+}
+
 function openView(base: string, failed = false): void {
   if (!document.body || activeDialog) return;
-
-  const topOffset = headerBottom();
 
   const container = document.createElement('div');
   container.className = 'jellysin-lastfm-dialog';
   container.setAttribute('role', 'dialog');
   container.setAttribute('aria-label', 'Last.fm');
   container.style.position = 'fixed';
-  container.style.top = `${topOffset}px`;
+  placeView(container);
   container.style.left = '0';
   container.style.right = '0';
   container.style.bottom = '0';
   container.style.width = '100%';
-  container.style.height = `calc(100% - ${topOffset}px)`;
   container.style.zIndex = '1000';
   container.style.backgroundColor = '#101010';
 
@@ -218,6 +227,9 @@ function handlePage(page: Element): void {
 }
 
 function scan(): void {
+  if (activeDialog) {
+    placeView(activeDialog);
+  }
   // The settings page re-renders its rows, so presence of the row is checked rather than a mark on the page.
   for (const page of document.querySelectorAll('.userPreferencesPage')) {
     if (!page.querySelector('a.lnkJellySinLastfm')) {
@@ -233,6 +245,10 @@ window.addEventListener('popstate', () => {
 
 window.addEventListener('hashchange', () => {
   checkAutoOpen(getBase());
+});
+
+window.addEventListener('resize', () => {
+  if (activeDialog) placeView(activeDialog);
 });
 
 const observer = new MutationObserver(() => {
