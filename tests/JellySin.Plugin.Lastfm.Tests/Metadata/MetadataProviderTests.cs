@@ -19,8 +19,7 @@ public sealed class MetadataProviderTests : IDisposable
     [Fact]
     public async Task ArtistBioMappedWithAttribution()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var result = await GetArtistMetadataAsync(
             """
             {
               "artist": {
@@ -33,10 +32,6 @@ public sealed class MetadataProviderTests : IDisposable
             }
             """);
 
-        var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
-        var info = new ArtistInfo { Name = "Cher" };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
         Assert.True(result.HasMetadata);
         Assert.NotNull(result.Item);
         Assert.Equal("Cher", result.Item.Name);
@@ -47,8 +42,7 @@ public sealed class MetadataProviderTests : IDisposable
     [Fact]
     public async Task AlbumWikiMappedWithAttribution()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var result = await GetAlbumMetadataAsync(
             """
             {
               "album": {
@@ -62,10 +56,6 @@ public sealed class MetadataProviderTests : IDisposable
             }
             """);
 
-        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
-        var info = new AlbumInfo { Name = "Believe", AlbumArtists = ["Cher"] };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
         Assert.True(result.HasMetadata);
         Assert.NotNull(result.Item);
         Assert.Equal("Believe", result.Item.Name);
@@ -76,8 +66,7 @@ public sealed class MetadataProviderTests : IDisposable
     [Fact]
     public async Task HtmlStrippedToPlainText()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var result = await GetArtistMetadataAsync(
             """
             {
               "artist": {
@@ -88,10 +77,6 @@ public sealed class MetadataProviderTests : IDisposable
               }
             }
             """);
-
-        var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
-        var info = new ArtistInfo { Name = "Cher" };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
 
         Assert.True(result.HasMetadata);
         Assert.NotNull(result.Item);
@@ -106,8 +91,7 @@ public sealed class MetadataProviderTests : IDisposable
     [Fact]
     public async Task MissingBioYieldsNoMetadata()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var result = await GetArtistMetadataAsync(
             """
             {
               "artist": {
@@ -116,19 +100,13 @@ public sealed class MetadataProviderTests : IDisposable
             }
             """);
 
-        var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
-        var info = new ArtistInfo { Name = "Cher" };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
-        Assert.False(result.HasMetadata);
-        Assert.Null(result.Item);
+        AssertNoMetadata(result);
     }
 
     [Fact]
     public async Task MissingWikiYieldsNoMetadata()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var result = await GetAlbumMetadataAsync(
             """
             {
               "album": {
@@ -138,12 +116,7 @@ public sealed class MetadataProviderTests : IDisposable
             }
             """);
 
-        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
-        var info = new AlbumInfo { Name = "Believe", AlbumArtists = ["Cher"] };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
-        Assert.False(result.HasMetadata);
-        Assert.Null(result.Item);
+        AssertNoMetadata(result);
     }
 
     [Fact]
@@ -156,15 +129,18 @@ public sealed class MetadataProviderTests : IDisposable
         var info = new ArtistInfo { Name = "UnknownArtistNonExistent" };
         var result = await provider.GetMetadata(info, CancellationToken.None);
 
-        Assert.False(result.HasMetadata);
-        Assert.Null(result.Item);
+        AssertNoMetadata(result);
     }
 
     [Fact]
     public async Task MbidPreferredOverNames_Artist()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var info = new ArtistInfo
+        {
+            Name = "Cher",
+            ProviderIds = { ["MusicBrainzArtist"] = "bfcc6d75-a6a5-4bc6-8282-47aec8531818" }
+        };
+        var result = await GetArtistMetadataAsync(
             """
             {
               "artist": {
@@ -173,31 +149,22 @@ public sealed class MetadataProviderTests : IDisposable
                 "bio": { "content": "Bio content. <a href=\"https://www.last.fm/music/Cher\">Read more on Last.fm</a>" }
               }
             }
-            """);
+            """,
+            info);
 
-        var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
-        var info = new ArtistInfo
-        {
-            Name = "Cher",
-            ProviderIds = { ["MusicBrainzArtist"] = "bfcc6d75-a6a5-4bc6-8282-47aec8531818" }
-        };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
-        Assert.True(result.HasMetadata);
-        Assert.True(result.QueriedById);
-        Assert.Single(_fixture.Client.Calls);
-        var call = _fixture.Client.Calls[0];
-        Assert.Equal("artist.getInfo", call.Method);
-        Assert.Equal("bfcc6d75-a6a5-4bc6-8282-47aec8531818", call.Values["mbid"]);
-        Assert.Equal("0", call.Values["autocorrect"]);
-        Assert.False(call.Values.ContainsKey("artist"));
+        AssertMbidPreferred(result, "artist.getInfo", "bfcc6d75-a6a5-4bc6-8282-47aec8531818", "artist");
     }
 
     [Fact]
     public async Task MbidPreferredOverNames_Album()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var info = new AlbumInfo
+        {
+            Name = "Believe",
+            AlbumArtists = ["Cher"],
+            ProviderIds = { ["MusicBrainzAlbum"] = "61bf0388-b8a9-48f4-81d1-7eb02706dfb0" }
+        };
+        var result = await GetAlbumMetadataAsync(
             """
             {
               "album": {
@@ -207,33 +174,16 @@ public sealed class MetadataProviderTests : IDisposable
                 "wiki": { "content": "Album wiki. <a href=\"https://www.last.fm/music/Cher/Believe\">Read more on Last.fm</a>" }
               }
             }
-            """);
+            """,
+            info);
 
-        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
-        var info = new AlbumInfo
-        {
-            Name = "Believe",
-            AlbumArtists = ["Cher"],
-            ProviderIds = { ["MusicBrainzAlbum"] = "61bf0388-b8a9-48f4-81d1-7eb02706dfb0" }
-        };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
-        Assert.True(result.HasMetadata);
-        Assert.True(result.QueriedById);
-        Assert.Single(_fixture.Client.Calls);
-        var call = _fixture.Client.Calls[0];
-        Assert.Equal("album.getInfo", call.Method);
-        Assert.Equal("61bf0388-b8a9-48f4-81d1-7eb02706dfb0", call.Values["mbid"]);
-        Assert.Equal("0", call.Values["autocorrect"]);
-        Assert.False(call.Values.ContainsKey("album"));
-        Assert.False(call.Values.ContainsKey("artist"));
+        AssertMbidPreferred(result, "album.getInfo", "61bf0388-b8a9-48f4-81d1-7eb02706dfb0", "album", "artist");
     }
 
     [Fact]
     public async Task NamesWithSpacesAndNonAsciiPassedUnchanged()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var result = await GetArtistMetadataAsync(
             """
             {
               "artist": {
@@ -241,11 +191,8 @@ public sealed class MetadataProviderTests : IDisposable
                 "bio": { "content": "Bio. <a href=\"https://www.last.fm/music/Bj%C3%B6rk\">Read more on Last.fm</a>" }
               }
             }
-            """);
-
-        var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
-        var info = new ArtistInfo { Name = "Björk & The Sugar-cubes" };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
+            """,
+            new ArtistInfo { Name = "Björk & The Sugar-cubes" });
 
         Assert.True(result.HasMetadata);
         Assert.Single(_fixture.Client.Calls);
@@ -277,61 +224,20 @@ public sealed class MetadataProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task WikiPublishedNeverBecomesPremiereDate()
-    {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
-            """
-            {
-              "album": {
-                "name": "Believe",
-                "artist": "Cher",
-                "wiki": {
-                  "published": "6 Apr 1999, 00:00",
-                  "content": "Album wiki. <a href=\"https://www.last.fm/music/Cher/Believe\">Read more on Last.fm</a>"
-                }
-              }
-            }
-            """);
-
-        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
-        var info = new AlbumInfo { Name = "Believe", AlbumArtists = ["Cher"] };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
-        Assert.True(result.HasMetadata);
-        Assert.NotNull(result.Item);
-        Assert.Null(result.Item.PremiereDate);
-        Assert.Null(result.Item.ProductionYear);
-    }
+    public Task WikiPublishedNeverBecomesPremiereDate() =>
+        AssertAlbumDatesAsync(
+            releaseDate: null,
+            published: "6 Apr 1999, 00:00",
+            expectedPremiereDate: null,
+            expectedProductionYear: null);
 
     [Fact]
-    public async Task ReleaseDateFieldPopulatesPremiereDateAndProductionYear()
-    {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
-            """
-            {
-              "album": {
-                "name": "Believe",
-                "artist": "Cher",
-                "releasedate": "6 Apr 1999, 00:00",
-                "wiki": {
-                  "published": "10 May 2010, 12:00",
-                  "content": "Album wiki. <a href=\"https://www.last.fm/music/Cher/Believe\">Read more on Last.fm</a>"
-                }
-              }
-            }
-            """);
-
-        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
-        var info = new AlbumInfo { Name = "Believe", AlbumArtists = ["Cher"] };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
-        Assert.True(result.HasMetadata);
-        Assert.NotNull(result.Item);
-        Assert.Equal(new DateTime(1999, 4, 6), result.Item.PremiereDate);
-        Assert.Equal(1999, result.Item.ProductionYear);
-    }
+    public Task ReleaseDateFieldPopulatesPremiereDateAndProductionYear() =>
+        AssertAlbumDatesAsync(
+            releaseDate: "6 Apr 1999, 00:00",
+            published: "10 May 2010, 12:00",
+            expectedPremiereDate: new DateTime(1999, 4, 6),
+            expectedProductionYear: 1999);
 
     [Fact]
     public async Task GetSearchResultsReturnsAtMostOneResult()
@@ -380,8 +286,13 @@ public sealed class MetadataProviderTests : IDisposable
     [Fact]
     public async Task ReleaseGroupIdIsNotSentAsAlbumMbid()
     {
-        await _fixture.ConfigureApplicationAsync();
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var info = new AlbumInfo
+        {
+            Name = "Believe",
+            AlbumArtists = ["Cher"],
+            ProviderIds = { ["MusicBrainzReleaseGroup"] = "4f8773eb-254b-4b13-8a3d-4c3e7215c0e1" }
+        };
+        var result = await GetAlbumMetadataAsync(
             """
             {
               "album": {
@@ -390,16 +301,8 @@ public sealed class MetadataProviderTests : IDisposable
                 "wiki": { "content": "Album wiki. <a href=\"https://www.last.fm/music/Cher/Believe\">Read more on Last.fm</a>" }
               }
             }
-            """);
-
-        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
-        var info = new AlbumInfo
-        {
-            Name = "Believe",
-            AlbumArtists = ["Cher"],
-            ProviderIds = { ["MusicBrainzReleaseGroup"] = "4f8773eb-254b-4b13-8a3d-4c3e7215c0e1" }
-        };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
+            """,
+            info);
 
         Assert.True(result.HasMetadata);
         Assert.False(result.QueriedById);
@@ -483,7 +386,6 @@ public sealed class MetadataProviderTests : IDisposable
     [Fact]
     public async Task CapKeepsTheAttribution()
     {
-        await _fixture.ConfigureApplicationAsync();
         const int cap = 32_768;
         var longBody = new string('x', cap + 500);
         var attributionUrl = "https://www.last.fm/music/Cher";
@@ -491,7 +393,7 @@ public sealed class MetadataProviderTests : IDisposable
         var expectedAttribution = $"Read more on Last.fm: {attributionUrl}";
         var jsonContent = JsonSerializer.Serialize(rawContent);
 
-        _fixture.Client.Handler = (method, _, _) => JsonDocument.Parse(
+        var result = await GetArtistMetadataAsync(
             $$"""
             {
               "artist": {
@@ -503,10 +405,6 @@ public sealed class MetadataProviderTests : IDisposable
             }
             """);
 
-        var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
-        var info = new ArtistInfo { Name = "Cher" };
-        var result = await provider.GetMetadata(info, CancellationToken.None);
-
         Assert.True(result.HasMetadata);
         Assert.NotNull(result.Item);
         Assert.NotNull(result.Item.Overview);
@@ -514,5 +412,92 @@ public sealed class MetadataProviderTests : IDisposable
             result.Item.Overview.Length <= cap + expectedAttribution.Length,
             $"Expected overview length <= {cap + expectedAttribution.Length}, but got {result.Item.Overview.Length}");
         Assert.EndsWith(attributionUrl, result.Item.Overview);
+    }
+
+    private async Task<MetadataResult<MusicArtist>> GetArtistMetadataAsync(
+        string jsonResponse,
+        ArtistInfo? info = null)
+    {
+        await _fixture.ConfigureApplicationAsync();
+        _fixture.Client.Handler = (_, _, _) => JsonDocument.Parse(jsonResponse);
+
+        var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
+        info ??= new ArtistInfo { Name = "Cher" };
+        return await provider.GetMetadata(info, CancellationToken.None);
+    }
+
+    private async Task<MetadataResult<MusicAlbum>> GetAlbumMetadataAsync(
+        string jsonResponse,
+        AlbumInfo? info = null)
+    {
+        await _fixture.ConfigureApplicationAsync();
+        _fixture.Client.Handler = (_, _, _) => JsonDocument.Parse(jsonResponse);
+
+        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
+        info ??= new AlbumInfo { Name = "Believe", AlbumArtists = ["Cher"] };
+        return await provider.GetMetadata(info, CancellationToken.None);
+    }
+
+    private async Task AssertAlbumDatesAsync(
+        string? releaseDate,
+        string? published,
+        DateTime? expectedPremiereDate,
+        int? expectedProductionYear)
+    {
+        var releaseDateLine = releaseDate is not null ? $"\"releasedate\": \"{releaseDate}\"," : string.Empty;
+        var publishedLine = published is not null ? $"\"published\": \"{published}\"," : string.Empty;
+
+        var result = await GetAlbumMetadataAsync(
+            $$"""
+            {
+              "album": {
+                "name": "Believe",
+                "artist": "Cher",
+                {{releaseDateLine}}
+                "wiki": {
+                  {{publishedLine}}
+                  "content": "Album wiki. <a href=\"https://www.last.fm/music/Cher/Believe\">Read more on Last.fm</a>"
+                }
+              }
+            }
+            """);
+
+        Assert.True(result.HasMetadata);
+        Assert.NotNull(result.Item);
+        if (expectedPremiereDate is null)
+        {
+            Assert.Null(result.Item.PremiereDate);
+            Assert.Null(result.Item.ProductionYear);
+        }
+        else
+        {
+            Assert.Equal(expectedPremiereDate, result.Item.PremiereDate);
+            Assert.Equal(expectedProductionYear, result.Item.ProductionYear);
+        }
+    }
+
+    private void AssertMbidPreferred<T>(
+        MetadataResult<T> result,
+        string expectedMethod,
+        string expectedMbid,
+        params string[] prohibitedKeys)
+    {
+        Assert.True(result.HasMetadata);
+        Assert.True(result.QueriedById);
+        Assert.Single(_fixture.Client.Calls);
+        var call = _fixture.Client.Calls[0];
+        Assert.Equal(expectedMethod, call.Method);
+        Assert.Equal(expectedMbid, call.Values["mbid"]);
+        Assert.Equal("0", call.Values["autocorrect"]);
+        foreach (var key in prohibitedKeys)
+        {
+            Assert.False(call.Values.ContainsKey(key));
+        }
+    }
+
+    private static void AssertNoMetadata<T>(MetadataResult<T> result)
+    {
+        Assert.False(result.HasMetadata);
+        Assert.Null(result.Item);
     }
 }
