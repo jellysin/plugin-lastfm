@@ -42,7 +42,6 @@ public sealed class BuiltAssemblyTests
         ],
         ["PluginServiceRegistrator"] = ["MediaBrowser.Controller.Plugins.IPluginServiceRegistrator"],
         // Abstract: the server's task scan skips it and finds only the two tasks built on it.
-        ["Tasks.AccountTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
         ["Tasks.FavouriteSyncTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
         ["Tasks.LibraryScanRematchTask"] = ["MediaBrowser.Controller.Library.ILibraryPostScanTask"],
         ["Tasks.PlaylistRefreshTask"] = ["MediaBrowser.Model.Tasks.IScheduledTask"],
@@ -152,7 +151,8 @@ public sealed class BuiltAssemblyTests
     private static SortedDictionary<string, string[]> HostSurface(Assembly assembly)
     {
         var surface = new SortedDictionary<string, string[]>(StringComparer.Ordinal);
-        foreach (var type in assembly.GetTypes().Where(type => !type.IsInterface))
+        // Same filter as the server's type export (ApplicationHost.GetExportTypes in Jellyfin 12.2 and 12.3).
+        foreach (var type in assembly.GetTypes().Where(type => type.IsClass && !type.IsAbstract && !type.IsGenericType))
         {
             var host = Ancestors(type).Concat(type.GetInterfaces()).Where(IsJellyfin).Select(Definition).Distinct().Order(StringComparer.Ordinal).ToArray();
             if (host.Length > 0) surface[type.FullName!] = host;
@@ -193,4 +193,14 @@ public sealed class BuiltAssemblyTests
     }
 
     private sealed class InheritedLinks : PlantedLinks;
+
+    // Abstract and generic types are never exported by the server, so they are not part of the surface.
+    private abstract class AbstractLinks : IExternalUrlProvider
+    {
+        public string Name => "abstract";
+
+        public IEnumerable<string> GetExternalUrls(BaseItem item) => [];
+    }
+
+    private class GenericLinks<T> : PlantedLinks;
 }
