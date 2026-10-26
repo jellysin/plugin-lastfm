@@ -36,7 +36,7 @@ function createSettingsHtml({ hash = '#/mypreferencesmenu', userId = 'user-1', i
   </script>
   <script type="module" src="/JellySin/Lastfm/Assets/entry.js"></script>
 </head>
-<body class="mainAnimatedPage">
+<body class="mainAnimatedPage" style="margin:0">
   ${headerHtml}
   <div class="libraryPage userPreferencesPage noSecondaryNavPage mainAnimatedPage">
     <div class="padded-left padded-right padded-bottom-page padded-top">
@@ -159,6 +159,50 @@ test('no dialog on other user settings page even with lastfm=open', async ({ pag
   await expect(dialog).toHaveCount(0);
   const row = page.locator('a.lnkJellySinLastfm');
   await expect(row).toHaveCount(0);
+});
+
+test('auto-open without header re-places dialog below header when header is inserted later', async ({ page }) => {
+  const html = createSettingsHtml({ hash: '#/mypreferencesmenu?lastfm=open', header: 'none' });
+  await setupPage(page, html);
+
+  const dialog = page.locator('div[role="dialog"][aria-label="Last.fm"]');
+  await expect(dialog).toBeVisible();
+
+  const initialBox = await dialog.boundingBox();
+  expect(initialBox?.y).toBe(0);
+
+  await page.evaluate(() => {
+    const header = globalThis.document.createElement('div');
+    header.className = 'skinHeader';
+    header.style.height = '60px';
+    globalThis.document.body.prepend(header);
+  });
+
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return box?.y;
+  }).toBe(60);
+
+  const geometry = await page.evaluate(() => {
+    const dialogEl = globalThis.document.querySelector('.jellysin-lastfm-dialog');
+    const headerEl = globalThis.document.querySelector('.skinHeader');
+    return {
+      dialogTop: dialogEl?.getBoundingClientRect().top,
+      headerBottom: headerEl?.getBoundingClientRect().bottom,
+    };
+  });
+  expect(geometry.headerBottom).toBe(60);
+  expect(geometry.dialogTop).toBe(60);
+  await expect(dialog.locator('button[aria-label="Close"]')).toBeVisible();
+
+  const hitMatchesClose = await page.evaluate(() => {
+    const btn = globalThis.document.querySelector('.jellysin-lastfm-close');
+    if (!btn) return false;
+    const rect = btn.getBoundingClientRect();
+    const hit = globalThis.document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return hit === btn || btn.contains(hit);
+  });
+  expect(hitMatchesClose).toBe(true);
 });
 
 test('warns once when user settings layout is not recognised', async ({ page }) => {
