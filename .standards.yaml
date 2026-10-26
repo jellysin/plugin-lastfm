@@ -43,3 +43,15 @@ register:
         kind: message
         format: json
         selector: invariants.*
+exceptions:
+  # Category D (120 days): the backend complexity policy differs from HISS-04 by design (#153).
+  - rule: HISS-04
+    glob: src/**/*.cs
+    category: D
+    entered: "2026-10-26"
+    expires: "2027-02-23"
+    reason: >-
+      Category D. tools/JellySin.CodePolicy enforces the backend function limits (120 lines,
+      60 statements, cognitive complexity 30 via Sonar S3776) in make verify-all; HISS-04
+      caps functions at 60 lines, 55 statements and cognitive complexity 15. Review the two
+      limits again at expiry (#153).
