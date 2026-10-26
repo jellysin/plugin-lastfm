@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Client, normalize, readJson } from '../../src/JellySin.Plugin.Lastfm/Web/client.js';
+import { parentSession, waitForParentSession } from '../../src/JellySin.Plugin.Lastfm/Web/embedded.js';
 
 const bootstrap = { basePath: '/jellyfin', serverId: 'test-server', version: '1.0.0' };
 const session = { accessToken: 'a'.repeat(32), serverId: 'test-server', user: { name: 'listener' } };
@@ -372,5 +373,141 @@ test('user media type rules can be read and updated', async context => {
   assert.equal(putResult[2].type, 'MusicVideos');
   assert.equal(putResult[2].isUserExcluded, true);
   assert.equal(putResult[2].isScrobbled, false);
+});
+
+test('parentSession reads session from parent window or returns undefined', () => {
+  const originalWindow = globalThis.window;
+  try {
+    globalThis.window = {
+      parent: {
+        ApiClient: {
+          accessToken() { return 'a'.repeat(32); },
+          serverId() { return 'test-server'; },
+        },
+      },
+    };
+    assert.deepEqual(parentSession('test-server'), {
+      accessToken: 'a'.repeat(32),
+      serverId: 'test-server',
+      user: { name: '' },
+    });
+    assert.equal(parentSession('different-server'), undefined);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('waitForParentSession returns session when it appears on 3rd try', async () => {
+  const originalWindow = globalThis.window;
+  let calls = 0;
+  try {
+    globalThis.window = {
+      parent: {
+        ApiClient: {
+          accessToken() {
+            calls++;
+            return calls >= 3 ? 'a'.repeat(32) : undefined;
+          },
+          serverId() { return 'test-server'; },
+        },
+      },
+    };
+    const session = await waitForParentSession('test-server', 5, 0);
+    assert.deepEqual(session, {
+      accessToken: 'a'.repeat(32),
+      serverId: 'test-server',
+      user: { name: '' },
+    });
+    assert.equal(calls, 3);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('waitForParentSession returns undefined after exactly attempts tries when session never appears', async () => {
+  const originalWindow = globalThis.window;
+  let calls = 0;
+  const attempts = 7;
+  try {
+    globalThis.window = {
+      parent: {
+        ApiClient: {
+          accessToken() {
+            calls++;
+            return undefined;
+          },
+          serverId() { return 'test-server'; },
+        },
+      },
+    };
+    const session = await waitForParentSession('test-server', attempts, 0);
+    assert.equal(session, undefined);
+    assert.equal(calls, attempts);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('waitForParentSession returns undefined without waiting when in top-level window', async () => {
+  const originalWindow = globalThis.window;
+  try {
+    const topWindow = {};
+    topWindow.parent = topWindow;
+    globalThis.window = topWindow;
+    const start = Date.now();
+    const session = await waitForParentSession('test-server', 50, 100);
+    const duration = Date.now() - start;
+    assert.equal(session, undefined);
+    assert.ok(duration < 80, `Expected immediate return without waiting, took ${duration}ms`);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('waitForParentSession returns undefined without retry when parent access throws', async () => {
+  const originalWindow = globalThis.window;
+  let accesses = 0;
+  try {
+    globalThis.window = {
+      get parent() {
+        accesses++;
+        throw new Error('Blocked cross-origin access');
+      },
+    };
+    const session = await waitForParentSession('test-server', 10, 100);
+    assert.equal(session, undefined);
+    assert.equal(accesses, 1);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
+
+test('waitForParentSession returns undefined on serverId mismatch', async () => {
+  const originalWindow = globalThis.window;
+  let calls = 0;
+  try {
+    globalThis.window = {
+      parent: {
+        ApiClient: {
+          accessToken() {
+            calls++;
+            return 'a'.repeat(32);
+          },
+          serverId() { return 'different-server'; },
+        },
+      },
+    };
+    const session = await waitForParentSession('test-server', 3, 0);
+    assert.equal(session, undefined);
+    assert.equal(calls, 3);
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
 });
 

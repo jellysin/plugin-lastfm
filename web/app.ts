@@ -1,5 +1,5 @@
 import { Client, readJson, type Bootstrap } from './client.js';
-import { parentSession } from './embedded.js';
+import { waitForParentSession } from './embedded.js';
 import { refreshAccount, setupAccount, takeRefusedReturn } from './account.js';
 import { setupMusic } from './music.js';
 import { setupFavourites } from './favourites.js';
@@ -15,7 +15,7 @@ async function start(): Promise<void> {
   const config = await readJson(response, 4096) as Bootstrap;
   // The page signs nobody in: it borrows the web client's session and keeps none of its own.
   const client = new Client(config, undefined);
-  const embedded = parentSession(config.serverId);
+  const embedded = await waitForParentSession(config.serverId);
   if (embedded) client.acceptSession(embedded);
   client.addEventListener('sessioncleared', () => {
     clearPrivateView();
