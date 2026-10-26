@@ -64,17 +64,6 @@ test('browser cookies are kept only for a request that asks for them', async con
   assert.deepEqual(modes, ['omit', 'same-origin', 'omit']);
 });
 
-test('Quick Connect secret is sent in a body, never a URL', async context => {
-  const client = new Client(bootstrap);
-  context.mock.method(globalThis, 'fetch', async (url, options) => {
-    assert.equal(url, '/jellyfin/JellySin/Lastfm/Auth/QuickConnect/Status');
-    assert.equal(options.method, 'POST');
-    assert.deepEqual(JSON.parse(options.body), { secret: 'test-secret' });
-    return Response.json({ Authenticated: false });
-  });
-  assert.equal((await client.api('Auth/QuickConnect/Status', 'POST', { secret: 'test-secret' })).authenticated, false);
-});
-
 test('expired sessions clear persisted state and do not render response secrets', async context => {
   const state = new Map();
   const storage = { getItem: key => state.get(key), setItem: (key, value) => state.set(key, value), removeItem: key => state.delete(key) };

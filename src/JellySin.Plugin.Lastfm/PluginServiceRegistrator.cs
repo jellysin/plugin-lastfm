@@ -24,7 +24,6 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         UserDataRegistration.Decorate(serviceCollection);
         serviceCollection.AddSingleton(TimeProvider.System);
-        serviceCollection.AddSingleton<JellySin.Plugin.Lastfm.Api.QuickConnectLimiter>();
         serviceCollection.AddSingleton<JellySin.Plugin.Lastfm.Api.ReturnLogLimiter>();
         // The key under which the host keeps the published server address (start option published-server-url).
         serviceCollection.AddSingleton(provider => new JellySin.Plugin.Lastfm.Api.ServerAddress(provider.GetRequiredService<IConfiguration>()[MediaBrowser.Controller.Extensions.ConfigurationExtensions.AddressOverrideKey],

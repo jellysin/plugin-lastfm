@@ -1,13 +1,9 @@
+using System.Reflection;
 using System.Text.Json;
 using JellySin.Plugin.Lastfm.Api;
-using JellySin.Plugin.Lastfm.Tests.Core;
 using MediaBrowser.Controller;
-using MediaBrowser.Controller.QuickConnect;
-using MediaBrowser.Model.QuickConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
-using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace JellySin.Plugin.Lastfm.Tests.Api;
@@ -19,7 +15,7 @@ public sealed class PublicSurfaceTests
     [InlineData("/jellyfin")]
     public void BootstrapAndRedirectPreserveReverseProxyBasePath(string prefix)
     {
-        var (controller, _) = Create();
+        var controller = Create();
         controller.Request.PathBase = prefix;
         controller.Request.Path = "/JellySin/Lastfm";
         var redirect = Assert.IsType<LocalRedirectResult>(controller.Page());
@@ -36,7 +32,7 @@ public sealed class PublicSurfaceTests
     [InlineData("style.css", "text/css; charset=utf-8")]
     public async Task EmbeddedAssetsHaveFixedContentTypesAndStrictSecurityHeaders(string asset, string contentType)
     {
-        var (controller, _) = Create();
+        var controller = Create();
         var file = Assert.IsType<FileStreamResult>(controller.Asset(asset));
         await using var stream = file.FileStream;
         Assert.True(stream.Length > 0);
@@ -56,7 +52,7 @@ public sealed class PublicSurfaceTests
             .Select(name => name[prefix.Length..])
             .ToArray();
         Assert.Contains("app.js", scripts);
-        var (controller, _) = Create();
+        var controller = Create();
         Assert.All(scripts, script => Assert.IsType<FileStreamResult>(controller.Asset(script)));
     }
 
@@ -66,14 +62,14 @@ public sealed class PublicSurfaceTests
     [InlineData("private.json")]
     public void UnknownResourcesCannotEscapeAllowList(string asset)
     {
-        var (controller, _) = Create();
+        var controller = Create();
         Assert.IsType<NotFoundResult>(controller.Asset(asset));
     }
 
     [Fact]
     public async Task CanonicalPageServesEmbeddedHtml()
     {
-        var (controller, _) = Create();
+        var controller = Create();
         controller.Request.Path = "/JellySin/Lastfm/";
         var page = Assert.IsType<FileStreamResult>(controller.Page());
         await using var stream = page.FileStream;
@@ -82,66 +78,23 @@ public sealed class PublicSurfaceTests
     }
 
     [Fact]
-    public void QuickConnectOnlyReturnsApprovalStateAndKeepsSecretOutOfUrlAndResult()
+    public void PublicControllerExposesNoPostAction()
     {
-        var (controller, quick) = Create();
-        var secret = "a-private-quick-connect-secret";
-        quick.SetupGet(value => value.IsEnabled).Returns(true);
-        quick.Setup(value => value.CheckRequestStatus(secret)).Returns(new QuickConnectResult(secret, "123456", new DateTime(2026, 9, 8), "device", "browser", "JellySin", "1.0.0") { Authenticated = true });
-        var input = new QuickConnectInput(secret);
-        var result = Assert.IsType<OkObjectResult>(controller.QuickConnectStatus(input));
-        Assert.Equal("{\"Authenticated\":true}", JsonSerializer.Serialize(result.Value));
-        Assert.DoesNotContain(secret, input.ToString(), StringComparison.Ordinal);
-        Assert.False(controller.Request.QueryString.HasValue);
-        var action = typeof(PublicController).GetMethod(nameof(PublicController.QuickConnectStatus))!;
-        Assert.Contains(action.GetCustomAttributes(false), attribute => attribute is HttpPostAttribute);
+        var postMethods = typeof(PublicController)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Where(method => method.GetCustomAttributes(typeof(HttpPostAttribute), inherit: true).Length > 0)
+            .ToArray();
+        Assert.Empty(postMethods);
     }
 
-    [Fact]
-    public void CrossOriginQuickConnectRequestsAreRejectedBeforeHostLookup()
-    {
-        var (controller, quick) = Create();
-        controller.Request.Headers.Origin = "https://evil.example";
-        Assert.Equal(403, Assert.IsType<StatusCodeResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value"))).StatusCode);
-        quick.Verify(value => value.CheckRequestStatus(It.IsAny<string>()), Times.Never);
-    }
-
-    // The sign-in page at the published address polls this while the server, behind a proxy that ends TLS, sees plain HTTP.
-    [Theory]
-    [InlineData("https://media.example", 404)]
-    [InlineData(null, 403)]
-    [InlineData("https://other.example", 403)]
-    public void QuickConnectAnswersThePageAtThePublishedAddress(string? published, int expected)
-    {
-        var (controller, _) = Create(published: published);
-        controller.Request.Scheme = "http";
-        controller.Request.Host = new HostString("jellyfin-internal:8096");
-        controller.Request.Headers.Origin = "https://media.example";
-        Assert.Equal(expected, Assert.IsAssignableFrom<IStatusCodeActionResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value"))).StatusCode);
-    }
-
-    [Fact]
-    public void QuickConnectRateGateIsGlobalAndRecoversAfterWindow()
-    {
-        var clock = TestTime.Clock();
-        var (controller, _) = Create(clock);
-        for (var index = 0; index < 60; index++) Assert.IsType<NotFoundResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value")));
-        Assert.Equal(429, Assert.IsType<StatusCodeResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value"))).StatusCode);
-        Assert.Equal("1", controller.Response.Headers.RetryAfter);
-        clock.Advance(1);
-        Assert.IsType<NotFoundResult>(controller.QuickConnectStatus(new QuickConnectInput("private-secret-value")));
-    }
-
-    private static (PublicController Controller, Mock<IQuickConnect> Quick) Create(TimeProvider? clock = null, string? published = null)
+    private static PublicController Create()
     {
         var host = new Mock<IServerApplicationHost>();
         host.SetupGet(value => value.SystemId).Returns("test-server");
-        var quick = new Mock<IQuickConnect>();
-        var controller = new PublicController(host.Object, quick.Object, new QuickConnectLimiter(clock ?? TimeProvider.System), new ServerAddress(published))
+        var controller = new PublicController(host.Object)
         { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
         controller.Request.Scheme = "https";
         controller.Request.Host = new HostString("jellyfin.example");
-        controller.Request.Method = "POST";
-        return (controller, quick);
+        return controller;
     }
 }

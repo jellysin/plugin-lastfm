@@ -51,7 +51,6 @@ public sealed class BuiltAssemblyTests
     // The services the plugin adds to the server, each with the number of its registrations.
     private static readonly string[] Services =
     [
-        "JellySin.Plugin.Lastfm.Api.QuickConnectLimiter x1",
         "JellySin.Plugin.Lastfm.Api.ReturnLogLimiter x1",
         "JellySin.Plugin.Lastfm.Api.ServerAddress x1",
         "JellySin.Plugin.Lastfm.Configuration.AccountService x1",

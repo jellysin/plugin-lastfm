@@ -2,11 +2,11 @@
 
 ## Account connection
 
-The dashboard lives at `/JellySin/Lastfm/`, prefixed by Jellyfin's configured base
-path. Sign in with Jellyfin credentials or Quick Connect, then select **Connect
-Last.fm**. The browser opens Last.fm; after you allow access it returns to the
-dashboard and the connection completes without a further step. You never send a
-Last.fm password to this plugin. An administrator can connect their own account
+The user page opens from the Last.fm row of Jellyfin's user settings using the
+web client session, or lives at `/JellySin/Lastfm/`, prefixed by Jellyfin's configured
+base path. Select **Connect Last.fm**. The browser opens Last.fm; after you allow access
+it returns to the page and the connection completes without a further step. You never
+send a Last.fm password to this plugin. An administrator can connect their own account
 the same way from the plugin's settings page in Jellyfin's web interface.
 
 A pending attempt belongs to one Jellyfin user and one browser, can be used once
@@ -115,57 +115,6 @@ fixes the application in the **Advanced** section of the settings page.
 Last.fm session keys are protected on the server and are not returned to the
 browser. Jellyfin sign-in remains subject to Jellyfin's own permissions. The
 dashboard does not bypass music-library access restrictions.
-
-## A link in Jellyfin's menu
-
-Jellyfin's web interface lists a plugin's pages for administrators only. An
-administrator can give every user a link to the dashboard through the
-`menuLinks` list in the web interface's `config.json`:
-
-```json
-"menuLinks": [
-  {
-    "name": "Last.fm",
-    "icon": "music_note",
-    "url": "/JellySin/Lastfm/"
-  }
-]
-```
-
-- `url` is the path of the dashboard on the server and starts with Jellyfin's
-  base path when one is set, for example `/jellyfin/JellySin/Lastfm/`.
-- Packages for Debian, Ubuntu, Fedora and CentOS keep the file at
-  `/usr/share/jellyfin/web/config.json`. Jellyfin's documentation states that
-  the Debian packages register it as a configuration file, so `apt` handles a
-  changed file on upgrade. After an update of the web interface, check that the
-  entry is still there.
-- The container image holds the file at `/jellyfin/jellyfin-web/config.json`.
-  A change made inside the container is gone with the next image. Mount a copy
-  instead: `--volume /path/to/web-config.json:/jellyfin/jellyfin-web/config.json`.
-  The copy must exist as a file before the first start and replaces the whole
-  default file, so start from the file of the image in use and compare it with
-  the new default after an update.
-- The link opens the dashboard in a new tab. The dashboard keeps its own
-  sign-in with Jellyfin credentials or Quick Connect.
-
-Checked on 2026-10-11 with the Jellyfin 12.2.0 container image under the base
-path `/jellyfin`, for an administrator and for an ordinary user: the link
-appears in the top bar of a wide window and in the side menu of a narrow one,
-and opens the dashboard.
-
-Checked on 2026-10-17 with Jellyfin's Debian 13 packages from Jellyfin's own
-repository, without a base path. `jellyfin-web` registers
-`/usr/share/jellyfin/web/config.json` as a configuration file, and the default
-file is the same in 12.0, 12.1 and 12.2. With the entry added, the upgrades from
-12.0 to 12.1 and from 12.1 to 12.2 kept it without a question. On 12.0, 12.1 and
-12.2 the link appeared for an administrator and for an ordinary user, in the top
-bar of a wide window and in the side menu of a narrow one, and opened the
-dashboard in a new tab; on 12.2 without the entry, no link appeared. `apt` asks
-about the file only when an update also changes the default file, which none of
-these updates did. Clients other than the web interface were not checked; the
-file locations are those of
-[Jellyfin's documentation](https://jellyfin.org/docs/general/clients/web-config/),
-read on 2026-10-11.
 
 ## Stored data
 
