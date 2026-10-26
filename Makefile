@@ -3,6 +3,7 @@
 # Edited: dotnet and npm run in the pinned SDK container (tools/sdk.sh), so the gate uses the CI toolchain.
 # Edited: the five projects restore and build as one solution, one SDK container each, so shared projects build once.
 # Edited: reuse-lint runs the REUSE 6 lint of the required "REUSE lint" CI check and the licence coverage check (tools/reuse-lint.sh) before push.
+# Edited: test runs tools/JellySin.CodePolicy like CI, because no Praetor scanner reads C# and HISS-04 holds no C# exception.
 # Praetor ships one binary under two names; resolve whichever is installed.
 PRAETORCTL ?= $(shell command -v praetorctl 2>/dev/null || command -v standardsctl 2>/dev/null || echo praetorctl)
 .PHONY: all verify-all compile-context compile-context-verify caveman-sources audit reuse-lint build test
@@ -27,6 +28,8 @@ reuse-lint:
 	@exec './tools/reuse-lint.sh'
 
 test: build
+	@exec './tools/sdk.sh' 'dotnet' 'run' '--project' 'tools/JellySin.CodePolicy' '-c' 'Release' '--no-build' '--' '--self-test'
+	@exec './tools/sdk.sh' 'dotnet' 'run' '--project' 'tools/JellySin.CodePolicy' '-c' 'Release' '--no-build' '--' 'src'
 	@exec './tools/sdk.sh' 'npm' 'run' 'check'
 	@exec './tools/sdk.sh' 'npm' 'run' 'test'
 	@exec './tools/sdk.sh' 'dotnet' 'test' './tests/JellySin.Plugin.Lastfm.Tests/JellySin.Plugin.Lastfm.Tests.csproj' '-c' 'Release' '--no-build'
