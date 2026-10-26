@@ -6,14 +6,13 @@ import { chromium } from '@playwright/test';
 
 const run = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const settingsPage = '/web/index.html#/configurationpage?name=jellysin-lastfm';
-const userPage = run.prefix + '/';
 const wait = 30_000;
 const approvalToken = 'stand-in-approval-token';
 
 class Refused extends Error {}
 const require = (condition, description) => { if (!condition) throw new Refused(description); };
-const text = async (page, selector) => ((await page.locator(selector).textContent()) ?? '').trim();
-const shot = (page, name, selector) => (selector ? page.locator(selector) : page).screenshot({ path: join(run.evidence, name + '.png') });
+const text = async (target, selector) => ((await target.locator(selector).textContent()) ?? '').trim();
+const shot = (target, name, selector) => (selector ? target.locator(selector) : target).screenshot({ path: join(run.evidence, name + '.png') });
 
 /** A context that reaches only the server under test. Last.fm's approval page approves at once and returns to the callback. */
 async function open(browser, errors) {
@@ -41,16 +40,21 @@ async function open(browser, errors) {
   return context;
 }
 
-/** The server's own web client, signed in the way it stores a session, on the plugin's settings page. */
-async function settings(context) {
+/** Writes stored web client credentials for an account and opens a page on that session. */
+async function session(context, account) {
   const credentials = { Servers: [{ Id: run.serverId, Name: 'Test', ManualAddress: run.origin, manualAddressOnly: true, LastConnectionMode: 2,
-    AccessToken: run.admin.token, UserId: run.admin.id, DateLastAccessed: Date.now() }] };
+    AccessToken: account.token, UserId: account.id, DateLastAccessed: Date.now() }] };
   await context.addInitScript(([stored, origin]) => {
     if (location.origin !== origin) return;
     localStorage.setItem('jellyfin_credentials', stored);
     localStorage.setItem('_deviceId2', 'page-check');
   }, [JSON.stringify(credentials), run.origin]);
-  const page = await context.newPage();
+  return context.newPage();
+}
+
+/** The server's own web client, signed in the way it stores a session, on the plugin's settings page. */
+async function settings(context) {
+  const page = await session(context, run.admin);
   await page.goto(run.origin + settingsPage);
   await page.locator('#jellysin-settings').waitFor({ state: 'visible', timeout: wait });
   return page;
@@ -85,46 +89,47 @@ const checks = {
     return `settings saved (${settingsStatus}), application saved (${applicationStatus}); status: ${JSON.stringify(await text(page, '#jellysin-application-status'))}; account: ${JSON.stringify(account)}`;
   },
   'ordinary user connects through the stand-in': async context => {
-    const page = await context.newPage();
-    await page.goto(run.origin + userPage);
-    await page.click('#sign-in summary');
-    await page.fill('#username', run.listener.name);
-    await page.fill('#password', run.listener.password);
-    await page.click('#login-submit');
-    await page.locator('#connect-lastfm').waitFor({ state: 'visible', timeout: wait });
-    await page.click('#connect-lastfm');
-    await page.locator('#connection-status', { hasText: `Connected as ${run.lastfmUser}` }).waitFor({ timeout: wait })
-      .catch(async () => { throw new Refused(`the page says ${JSON.stringify(await text(page, '#connection-status'))}; status ${JSON.stringify(await text(page, '#status'))}`); });
+    const page = await session(context, run.listener);
+    await page.goto(run.origin + '/web/index.html#/mypreferencesmenu?lastfm=open');
+    let frame = page.frameLocator('iframe[title="Last.fm"]');
+    await frame.locator('#connect-lastfm').waitFor({ state: 'visible', timeout: wait });
+    const callback = page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/JellySin/Lastfm/Callback'), { timeout: wait });
+    await frame.locator('#connect-lastfm').click();
+    await callback;
+    frame = page.frameLocator('iframe[title="Last.fm"]');
+    await frame.locator('#connection-status', { hasText: `Connected as ${run.lastfmUser}` }).waitFor({ timeout: wait })
+      .catch(async () => { throw new Refused(`the page says ${JSON.stringify(await text(frame, '#connection-status'))}; status ${JSON.stringify(await text(frame, '#status'))}`); });
     await shot(page, '2-connected');
     run.page = page;
-    return await text(page, '#connection-status');
+    run.frame = () => page.frameLocator('iframe[title="Last.fm"]');
+    return await text(frame, '#connection-status');
   },
   'charts': async () => {
-    const page = run.page;
-    await page.click('#charts-refresh');
-    await page.locator('#chart-artists', { hasText: run.artist }).waitFor({ timeout: wait });
-    for (const id of ['#chart-tracks', '#chart-albums']) require((await text(page, id)).length > 0, `${id} is empty`);
-    await shot(page, '3-charts', '#overview');
-    return `tracks: ${JSON.stringify((await text(page, '#chart-tracks')).slice(0, 80))}`;
+    const frame = run.frame();
+    await frame.locator('#charts-refresh').click();
+    await frame.locator('#chart-artists', { hasText: run.artist }).waitFor({ timeout: wait });
+    for (const id of ['#chart-tracks', '#chart-albums']) require((await text(frame, id)).length > 0, `${id} is empty`);
+    await shot(frame, '3-charts', '#overview');
+    return `tracks: ${JSON.stringify((await text(frame, '#chart-tracks')).slice(0, 80))}`;
   },
   'recent listens': async () => {
-    const page = run.page;
-    await page.click('#history-refresh');
-    await page.locator('#history-list', { hasText: run.seed }).waitFor({ timeout: wait });
-    await shot(page, '4-history', '#history');
-    return JSON.stringify((await text(page, '#history-list')).slice(0, 80));
+    const frame = run.frame();
+    await frame.locator('#history-refresh').click();
+    await frame.locator('#history-list', { hasText: run.seed }).waitFor({ timeout: wait });
+    await shot(frame, '4-history', '#history');
+    return JSON.stringify((await text(frame, '#history-list')).slice(0, 80));
   },
   'one discovery result': async () => {
-    const page = run.page;
-    await page.fill('#discovery-search', run.seed);
-    await page.click('#discovery-search-button');
-    await page.locator(`#discovery-seed option[value="${run.seedItemId}"]`).waitFor({ state: 'attached', timeout: wait });
-    await page.selectOption('#discovery-seed', run.seedItemId);
-    await page.click('#discovery-refresh');
-    await page.locator('#discovery-external', { hasText: run.similarRemote }).waitFor({ timeout: wait });
-    await page.locator('#discovery-local', { hasText: run.similarLocal }).waitFor({ timeout: wait });
-    await shot(page, '5-discovery', '#discovery');
-    return `in library: ${JSON.stringify((await text(page, '#discovery-local')).slice(0, 60))}; beyond: ${JSON.stringify((await text(page, '#discovery-external')).slice(0, 60))}`;
+    const frame = run.frame();
+    await frame.locator('#discovery-search').fill(run.seed);
+    await frame.locator('#discovery-search-button').click();
+    await frame.locator(`#discovery-seed option[value="${run.seedItemId}"]`).waitFor({ state: 'attached', timeout: wait });
+    await frame.locator('#discovery-seed').selectOption(run.seedItemId);
+    await frame.locator('#discovery-refresh').click();
+    await frame.locator('#discovery-external', { hasText: run.similarRemote }).waitFor({ timeout: wait });
+    await frame.locator('#discovery-local', { hasText: run.similarLocal }).waitFor({ timeout: wait });
+    await shot(frame, '5-discovery', '#discovery');
+    return `in library: ${JSON.stringify((await text(frame, '#discovery-local')).slice(0, 60))}; beyond: ${JSON.stringify((await text(frame, '#discovery-external')).slice(0, 60))}`;
   },
 };
 

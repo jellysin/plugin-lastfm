@@ -54,7 +54,6 @@ REFUSED = ("WRN", "Refused PUT JellySin/Lastfm/Me/Favourites: its origin is neit
 EXPECTED: dict[str, list[tuple[tuple[str, str], str, str, str]]] = {
     "published address, user page, ordinary user": [(BEGUN, "listener", "the music dashboard", "at")],
     "published address, user page, a saved preference": [],
-    "published address, user page, Quick Connect": [],
     "published address, settings page, administrator": [(BEGUN, "admin", "the settings page", "at")],
     "published address, settings page, a refused request names its status": [],
     "second address, user page, administrator": [(BEGUN, "admin", "the music dashboard", "not at"), (NOTED, "admin", "", "")],
@@ -99,7 +98,7 @@ def check_log(host: DockerHost, accounts: dict[str, Any], scenarios: list[str], 
     admin.request(PREFIX + "/Me/Connection/Refusal", "POST", {"Reason": "made-up"}, 400, raw=True)
     after = settled_lines(host, expected + [REFUSED])
     (report / "server-lines.txt").write_text("".join(f"[{level}] {text}\n" for level, text in after), encoding="utf-8")
-    secret = [accounts[who][key] for who in ("admin", "listener") for key in ("id", "password")] + [accounts["admin"]["token"]]
+    secret = [accounts[who][key] for who in ("admin", "listener") for key in ("id", "password", "token")]
     secret += [str(uuid.UUID(accounts[who]["id"])) for who in ("admin", "listener")] + [HOST, "127.0.0.1", "foreign.invalid", "made-up", "attempt=", "token="]
     passed = True
     for name, condition in (("the clicks left exactly the lines named for them", lines == expected),
@@ -195,13 +194,15 @@ def seed(host: DockerHost, configured: bool) -> dict[str, Any]:
     admin = Client(host.origin)
     admin_user = setup_server(admin, admin_password)
     listener_user = create_user(admin, listener_password)
+    listener = Client(host.origin)
+    listener.authenticate("SmokeListener", listener_password)
     if not configured:
         # The server only builds an address from the application; nothing here contacts Last.fm.
         admin.request(PREFIX + "/Admin/Application", "PUT", {"ApiKey": secrets.token_hex(16), "Secret": secrets.token_hex(16)}, 204)
     return {
         "serverId": Client(host.origin).request("/System/Info/Public")["id"],
         "admin": {"name": "SmokeAdmin", "password": admin_password, "id": admin_user["id"], "token": admin.token},
-        "listener": {"name": "SmokeListener", "password": listener_password, "id": listener_user["id"]},
+        "listener": {"name": "SmokeListener", "password": listener_password, "id": listener_user["id"], "token": listener.token},
     }
 
 
