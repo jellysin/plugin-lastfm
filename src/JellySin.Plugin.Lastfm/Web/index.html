@@ -12,24 +12,18 @@
   <a class="skip" href="#workspace" data-i18n="app_skip_to_music">Skip to music</a>
   <header class="shell topbar">
     <a class="brand" href="./"><span aria-hidden="true" class="mark">j.</span>JellySin <span class="muted">/ Last.fm</span></a>
-    <a id="jellyfin-link" href="../../web/index.html" data-i18n="app_back_to_jellyfin">Back to Jellyfin ↗</a>
+    <a id="jellyfin-link" href="../../web/index.html" target="_top" data-i18n="app_back_to_jellyfin">Back to Jellyfin ↗</a>
   </header>
   <main id="workspace" class="shell" aria-busy="false">
     <div class="intro"><p class="eyebrow" data-i18n="app_intro_eyebrow">YOUR MUSIC, CONNECTED</p><h1><span data-i18n="app_intro_title_1">A little more</span><br><span data-i18n="app_intro_title_2">from every listen.</span></h1><p id="account-label" class="muted" data-i18n="app_account_connect_prompt">Connect your music.</p></div>
     <p id="status" role="status" aria-live="polite"></p>
-    <section id="sign-in" class="card narrow" aria-labelledby="sign-in-heading">
-      <h2 id="sign-in-heading" data-i18n="auth_heading">Sign in to Jellyfin</h2>
-      <p class="muted" data-i18n="auth_desc">Use your existing Jellyfin account to manage your Last.fm connection.</p>
-      <button id="quick-connect" type="button" class="primary" data-i18n="auth_quick_connect">Use Quick Connect</button>
-      <div id="quick-instructions" hidden><p data-i18n="auth_quick_instructions">In an already signed-in Jellyfin app, open Settings → Quick Connect and enter:</p><p id="quick-code" class="code" aria-live="polite"></p><button id="quick-cancel" type="button" data-i18n="auth_cancel">Cancel</button></div>
-      <details><summary data-i18n="auth_password_summary">Sign in with a password</summary>
-        <form id="login-form"><label for="username" data-i18n="auth_username_label">Jellyfin username</label><input id="username" name="username" autocomplete="username" maxlength="256" required>
-          <label for="password" data-i18n="auth_password_label">Jellyfin password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="4096">
-          <button id="login-submit" type="submit" data-i18n="auth_sign_in_button">Sign in</button></form>
-      </details>
+    <section id="open-in-jellyfin" class="card narrow" hidden aria-labelledby="open-in-jellyfin-heading">
+      <h2 id="open-in-jellyfin-heading" data-i18n="open_in_jellyfin_heading">Open in Jellyfin</h2>
+      <p class="muted" data-i18n="open_in_jellyfin_desc">Manage your Last.fm connection directly inside the Jellyfin web client.</p>
+      <p><a id="open-in-jellyfin-link" href="../../web/index.html#/mypreferencesmenu" target="_top" data-i18n="open_in_jellyfin_button">Open user settings ↗</a></p>
     </section>
     <div id="signed-in" hidden>
-      <nav class="section-nav" aria-label="Music sections" data-i18n="auth_nav_sections_aria"><a href="#connection" data-i18n="auth_nav_connection">Connection</a><a href="#overview" data-needs-connection hidden data-i18n="auth_nav_overview">Your listening</a><a href="#history" data-needs-connection hidden data-i18n="auth_nav_history">History</a><a href="#favourites" data-needs-connection hidden data-i18n="auth_nav_favourites">Favourites</a><a href="#discovery" data-needs-connection hidden data-i18n="auth_nav_discovery">Discover</a><a href="#playlists" data-needs-connection hidden data-i18n="auth_nav_playlists">Playlists</a><button id="logout" type="button" data-i18n="auth_sign_out">Sign out</button></nav>
+      <nav class="section-nav" aria-label="Music sections" data-i18n="auth_nav_sections_aria"><a href="#connection" data-i18n="auth_nav_connection">Connection</a><a href="#overview" data-needs-connection hidden data-i18n="auth_nav_overview">Your listening</a><a href="#history" data-needs-connection hidden data-i18n="auth_nav_history">History</a><a href="#favourites" data-needs-connection hidden data-i18n="auth_nav_favourites">Favourites</a><a href="#discovery" data-needs-connection hidden data-i18n="auth_nav_discovery">Discover</a><a href="#playlists" data-needs-connection hidden data-i18n="auth_nav_playlists">Playlists</a></nav>
       <section id="connection" class="card" aria-labelledby="connection-heading">
         <div class="section-heading"><div><p class="eyebrow" data-i18n="connection_eyebrow">CONNECTED ACCOUNTS</p><h2 id="connection-heading" data-i18n="connection_heading">Your Last.fm</h2></div><p id="profile-link"></p></div>
         <p id="connection-status" data-i18n="connection_status_loading">Loading connection…</p>

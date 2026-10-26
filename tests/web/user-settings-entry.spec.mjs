@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 
 const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url);
 
-function createSettingsHtml({ hash = '#/mypreferencesmenu', userId = 'user-1', includePlayback = true, includeLinks = true } = {}) {
+function createSettingsHtml({ hash = '#/mypreferencesmenu', userId = 'user-1', includePlayback = true, includeLinks = true, includeHeader = true } = {}) {
+  const headerHtml = includeHeader ? '<div class="skinHeader" style="height:60px"></div>' : '';
   const playbackLink = includePlayback ? `
     <a class="lnkPlaybackPreferences listItem-border emby-button" style="display:block;margin:0;padding:0">
       <div class="listItem">
@@ -31,6 +32,7 @@ function createSettingsHtml({ hash = '#/mypreferencesmenu', userId = 'user-1', i
   <script type="module" src="/JellySin/Lastfm/Assets/entry.js"></script>
 </head>
 <body class="mainAnimatedPage">
+  ${headerHtml}
   <div class="libraryPage userPreferencesPage noSecondaryNavPage mainAnimatedPage">
     <div class="padded-left padded-right padded-bottom-page padded-top">
       <div class="readOnlyContent" style="margin:0 auto">
@@ -95,6 +97,61 @@ test('row is not inserted when viewing another user settings page', async ({ pag
   const html = createSettingsHtml({ hash: '#/mypreferencesmenu?userId=other-user', userId: 'user-1' });
   await setupPage(page, html);
 
+  const row = page.locator('a.lnkJellySinLastfm');
+  await expect(row).toHaveCount(0);
+});
+
+test('click row opens dialog with iframe src containing /JellySin/Lastfm/?embedded=1 and close button', async ({ page }) => {
+  const html = createSettingsHtml({ hash: '#/mypreferencesmenu', userId: 'user-1' });
+  await setupPage(page, html);
+
+  const row = page.locator('a.lnkJellySinLastfm');
+  await expect(row).toBeVisible();
+  await row.click();
+
+  const dialog = page.locator('div[role="dialog"][aria-label="Last.fm"]');
+  await expect(dialog).toBeVisible();
+  const iframe = dialog.locator('iframe[title="Last.fm"]');
+  await expect(iframe).toHaveAttribute('src', '/JellySin/Lastfm/?embedded=1');
+  const closeBtn = dialog.locator('button[aria-label="Close"]');
+  await expect(closeBtn).toBeVisible();
+  await expect(closeBtn).toHaveText('×');
+
+  await closeBtn.click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test('Escape closes the opened in-client dialog', async ({ page }) => {
+  const html = createSettingsHtml({ hash: '#/mypreferencesmenu', userId: 'user-1' });
+  await setupPage(page, html);
+
+  await page.locator('a.lnkJellySinLastfm').click();
+  const dialog = page.locator('div[role="dialog"][aria-label="Last.fm"]');
+  await expect(dialog).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
+test('auto-open from #/mypreferencesmenu with lastfm=open and connection=failed forwards to iframe and strips hash', async ({ page }) => {
+  const html = createSettingsHtml({ hash: '#/mypreferencesmenu?lastfm=open&connection=failed', userId: 'user-1' });
+  await setupPage(page, html);
+
+  const dialog = page.locator('div[role="dialog"][aria-label="Last.fm"]');
+  await expect(dialog).toBeVisible();
+  const iframe = dialog.locator('iframe[title="Last.fm"]');
+  await expect(iframe).toHaveAttribute('src', '/JellySin/Lastfm/?embedded=1&connection=failed');
+
+  const currentHash = await page.evaluate(() => globalThis.location.hash);
+  expect(currentHash).toBe('#/mypreferencesmenu');
+});
+
+test('no dialog on other user settings page even with lastfm=open', async ({ page }) => {
+  const html = createSettingsHtml({ hash: '#/mypreferencesmenu?userId=other-user&lastfm=open&connection=failed', userId: 'user-1' });
+  await setupPage(page, html);
+
+  const dialog = page.locator('div[role="dialog"][aria-label="Last.fm"]');
+  await expect(dialog).toHaveCount(0);
   const row = page.locator('a.lnkJellySinLastfm');
   await expect(row).toHaveCount(0);
 });

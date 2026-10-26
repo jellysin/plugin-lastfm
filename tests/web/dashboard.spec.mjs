@@ -4,12 +4,12 @@ import { readFile } from 'node:fs/promises';
 import { installServer, lastfmToken, passwordLogin, token } from './fixture.mjs';
 
 for (const prefix of ['', '/jellyfin']) {
-  test(`password access, safe discovery and private playlists at ${prefix || 'root'}`, async ({ page }) => {
+  test(`embedded access, safe discovery and private playlists at ${prefix || 'root'}`, async ({ page }) => {
     const state = await installServer(page, { prefix });
     await passwordLogin(page);
-    await expect(page.locator('#password')).toHaveValue('');
     await expect(page.locator('#administrator')).toBeHidden();
     await expect(page.locator('#jellyfin-link')).toHaveAttribute('href', `${prefix}/web/index.html`);
+    await expect(page.locator('#jellyfin-link')).toHaveAttribute('target', '_top');
     await page.getByRole('button', { name: 'Discover music', exact: true }).click();
     await expect(page.locator('#discovery-external')).toContainText('<img src=x onerror=alert(1)>');
     await expect(page.locator('#discovery-external img')).toHaveCount(0);
@@ -27,10 +27,8 @@ for (const prefix of ['', '/jellyfin']) {
     const playlist = state.requests.find(request => request.path === '/JellySin/Lastfm/Me/Playlists' && request.method === 'POST');
     expect(playlist.body.userId).toBeUndefined();
     expect(playlist.body.playlistId).toBeUndefined();
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await expect(page.locator('#sign-in')).toBeVisible();
-    await expect(page.locator('#discovery-external')).toBeEmpty();
-    await expect(page.locator('#playlist-list')).toBeEmpty();
+    await expect(page.locator('#signed-in')).toBeVisible();
+    await expect(page.locator('#open-in-jellyfin')).toBeHidden();
     expect(state.disconnected).toBe(false);
   });
 }
@@ -53,27 +51,28 @@ test('playlist form supports rotating recommendations with retention days', asyn
   await expect(page.locator('#playlist-list')).toContainText('rotates 14d');
 });
 
-test('Quick Connect exchanges secrets only in request bodies', async ({ page }) => {
-  const state = await installServer(page, { prefix: '/jellyfin' });
-  await page.getByRole('button', { name: 'Use Quick Connect' }).click();
-  await expect(page.locator('#quick-code')).toHaveText('123456');
-  await expect(page.locator('#signed-in')).toBeVisible({ timeout: 10_000 });
-  const checks = state.requests.filter(request => request.path.endsWith('QuickConnect/Status'));
-  expect(checks).toHaveLength(1);
-  expect(checks[0].body.secret).toBe('q'.repeat(32));
-  expect(state.requests.every(request => !request.url.includes('q'.repeat(32)))).toBe(true);
+test('not embedded shows open-in-jellyfin and no login form', async ({ page }) => {
+  await installServer(page, { embedded: false });
+  await expect(page.locator('#open-in-jellyfin')).toBeVisible();
+  await expect(page.locator('#open-in-jellyfin-link')).toHaveAttribute('href', /#\/mypreferencesmenu$/);
+  await expect(page.locator('#open-in-jellyfin-link')).toHaveAttribute('target', '_top');
+  await expect(page.locator('#login-form')).toHaveCount(0);
+  await expect(page.locator('#quick-connect')).toHaveCount(0);
+  await expect(page.locator('#sign-in')).toHaveCount(0);
+  await expect(page.locator('#signed-in')).toBeHidden();
 });
 
-test('password login cancels a pending Quick Connect attempt', async ({ page }) => {
-  const state = await installServer(page);
-  await page.clock.install();
-  await page.getByRole('button', { name: 'Use Quick Connect' }).click();
-  await expect(page.locator('#quick-code')).toHaveText('123456');
-  await passwordLogin(page);
-  await page.clock.fastForward(15_000);
-  await expect(page.locator('#quick-instructions')).toBeHidden();
-  expect(state.requests.filter(request => request.path.endsWith('AuthenticateWithQuickConnect'))).toHaveLength(0);
-  expect(state.requests.filter(request => request.path.endsWith('QuickConnect/Status'))).toHaveLength(0);
+test('mismatched serverId in parent session falls back to open-in-jellyfin', async ({ page }) => {
+  await installServer(page, { embedded: true, parentServerId: 'different-server' });
+  await expect(page.locator('#open-in-jellyfin')).toBeVisible();
+  await expect(page.locator('#signed-in')).toBeHidden();
+});
+
+test('parent session authenticates the dashboard and keeps session storage empty', async ({ page }) => {
+  await installServer(page, { embedded: true });
+  await expect(page.locator('#signed-in')).toBeVisible();
+  await expect(page.locator('#open-in-jellyfin')).toBeHidden();
+  expect(await page.evaluate(() => globalThis.sessionStorage.length)).toBe(0);
 });
 
 test('history changes are paged, resumable and only applied after confirmation', async ({ page }) => {
@@ -149,14 +148,13 @@ async function expectOffered(page, offered) {
 }
 
 test('without a Last.fm connection the page offers only Connect, until connected and again after Disconnect', async ({ page }) => {
-  const state = await installServer(page);
-  state.connected = false;
+  await installServer(page, { connected: false });
   // As delivered, before the server said anything about the account.
   for (const selector of needsConnection) await expect(page.locator(selector)).toHaveJSProperty('hidden', true);
   await passwordLogin(page);
   await expect(page.locator('#connection-status')).toHaveText('Connect Last.fm to start.');
   await expectOffered(page, false);
-  await expect(page.locator('#signed-in button:visible')).toHaveText(['Sign out', 'Connect Last.fm']);
+  await expect(page.locator('#signed-in button:visible')).toHaveText(['Connect Last.fm']);
 
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
   await expect(page.locator('#status')).toHaveText('Last.fm connected.');
@@ -177,20 +175,20 @@ test('an account that must reconnect keeps its sections', async ({ page }) => {
   await expectOffered(page, true);
 });
 
-test('signing out withdraws the sections before the next account is known', async ({ page }) => {
+test('session expiration withdraws the sections before the next account is known', async ({ page }) => {
   await installServer(page);
   await passwordLogin(page);
   await expectOffered(page, true);
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-  await expect(page.locator('#sign-in')).toBeVisible();
+  await page.route(/\/Me/, route => route.fulfill({ status: 401, body: 'Session expired' }));
+  await page.locator('#favourites-refresh').click();
+  await expect(page.locator('#open-in-jellyfin')).toBeVisible();
   // The next user's connection is unknown until the server answered; the mark itself must be withdrawn, not only its container.
   for (const selector of needsConnection) await expect(page.locator(selector)).toHaveJSProperty('hidden', true);
 });
 
 for (const prefix of ['', '/jellyfin']) {
   test(`one button connects Last.fm and returns to the page at ${prefix || 'root'}`, async ({ page }) => {
-    const state = await installServer(page, { prefix });
-    state.connected = false;
+    const state = await installServer(page, { prefix, connected: false });
     await passwordLogin(page);
     await expect(page.locator('#finish-connection, #finish-lastfm, #authorize-lastfm')).toHaveCount(0);
     await expect(page.locator('#connection button.primary')).toHaveCount(1);
@@ -216,8 +214,7 @@ for (const prefix of ['', '/jellyfin']) {
 }
 
 test('a return that Last.fm did not approve says so, starts nothing and leaves a clean address', async ({ page }) => {
-  const state = await installServer(page);
-  state.connected = false;
+  const state = await installServer(page, { connected: false });
   state.lastfmAnswer = 'none';
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
@@ -229,8 +226,7 @@ test('a return that Last.fm did not approve says so, starts nothing and leaves a
 });
 
 test('without a usable Last.fm application, connecting asks for an administrator instead of blaming the connection', async ({ page }) => {
-  const state = await installServer(page);
-  state.connected = false;
+  const state = await installServer(page, { connected: false });
   state.applicationMissing = true;
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
@@ -240,8 +236,7 @@ test('without a usable Last.fm application, connecting asks for an administrator
 });
 
 test('an approval that Last.fm then refuses is reported and not repeated', async ({ page }) => {
-  const state = await installServer(page);
-  state.connected = false;
+  const state = await installServer(page, { connected: false });
   state.finishFails = true;
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
@@ -273,8 +268,7 @@ const refusedAddresses = [
 for (const [reason, address, named] of refusedAddresses) {
   for (const administrator of named ? [false, true] : [false]) {
     test(administrator ? `an administrator reads why the page does not leave for ${reason}` : `the page does not leave for ${reason}`, async ({ page }) => {
-      const state = await installServer(page, { administrator });
-      state.connected = false;
+      const state = await installServer(page, { administrator, connected: false });
       state.authorizationUrl = address;
       await passwordLogin(page);
       await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
@@ -290,8 +284,7 @@ for (const [reason, address, named] of refusedAddresses) {
 }
 
 test('the page shows its refusal also when the server does not take the note of it', async ({ page }) => {
-  const state = await installServer(page);
-  state.connected = false;
+  const state = await installServer(page, { connected: false });
   state.authorizationUrl = refusedAddresses[0][1];
   state.refusalFails = true;
   await passwordLogin(page);
@@ -345,22 +338,9 @@ test('delivery warns once the oldest held play is seven days old', async ({ page
   await expect(page.locator('#delivery-status')).not.toContainText('14');
 });
 
-test('keyboard sign-in, disclosure controls and cancellation preserve focus', async ({ page }) => {
+test('disclosure controls and cancellation preserve focus', async ({ page }) => {
   await installServer(page);
-  await page.keyboard.press('Tab');
-  await expect(page.getByRole('link', { name: 'Skip to music' })).toBeFocused();
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#quick-connect')).toBeFocused();
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Enter');
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#username')).toBeFocused();
-  await page.keyboard.type('listener');
-  await page.keyboard.press('Tab');
-  await page.keyboard.type('fixture-password');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#signed-in')).toBeVisible();
+  await passwordLogin(page);
   await page.locator('#disconnect-lastfm').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#confirm-disconnect')).toBeFocused();
@@ -875,9 +855,9 @@ test('dashboard renders German UI when browser locale is de-DE', async ({ browse
   const context = await browser.newContext({ locale: 'de-DE' });
   const page = await context.newPage();
   try {
-    await installServer(page);
+    await installServer(page, { embedded: false });
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
-    await expect(page.locator('#quick-connect')).toHaveText('Quick Connect verwenden');
+    await expect(page.locator('#open-in-jellyfin-link')).toHaveText('Benutzereinstellungen öffnen ↗');
   } finally {
     await context.close();
   }
@@ -887,9 +867,9 @@ test('dashboard falls back to English when browser locale is fr-FR', async ({ br
   const context = await browser.newContext({ locale: 'fr-FR' });
   const page = await context.newPage();
   try {
-    await installServer(page);
+    await installServer(page, { embedded: false });
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.locator('#quick-connect')).toHaveText('Use Quick Connect');
+    await expect(page.locator('#open-in-jellyfin-link')).toHaveText('Open user settings ↗');
   } finally {
     await context.close();
   }

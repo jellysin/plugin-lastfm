@@ -12,8 +12,8 @@ const empty = () => ({ status: 204 });
 const forward = address => ({ status: 200, contentType: 'text/html', body: `<!doctype html><meta http-equiv="refresh" content="0;url=${address.replaceAll('&', '&amp;').replaceAll('"', '%22')}">` });
 const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url);
 
-export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0 } = {}) {
-  const state = { requests: [], lastfm: [], approvalPending: false, lastfmAnswer: 'token', prefix, administrator, connected: true, favourites: false, favouritesRunning: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
+export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0, embedded = true, parentToken = token, parentServerId = 'fixture-server', connected = true } = {}) {
+  const state = { requests: [], lastfm: [], approvalPending: false, lastfmAnswer: 'token', prefix, administrator, connected, favourites: false, favouritesRunning: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
     historyTracks: [track], delivery: { Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0, Rejected: 0, PendingPersistence: 0 },
     devices: [
       { Id: 'dev-1', Name: 'Living Room TV', CustomName: null, AppName: 'Android TV', DateLastActivity: '2026-10-15T12:00:00Z' },
@@ -23,6 +23,18 @@ export async function installServer(page, { prefix = '', administrator = false, 
     adminMediaTypes: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true },
     excludedMediaTypes: [], mediaTypesFail: false,
     scrobbleLogEnabled: false, scrobbleLogCount: 0 };
+  if (embedded) {
+    await page.addInitScript(({ tok, sId }) => {
+      const parentStub = {
+        ApiClient: {
+          accessToken: () => tok,
+          serverId: () => sId,
+          getCurrentUserId: () => 'listener',
+        },
+      };
+      Object.defineProperty(globalThis.window, 'parent', { value: parentStub, configurable: true });
+    }, { tok: parentToken, sId: parentServerId });
+  }
   await page.route('**/*', async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -178,9 +190,5 @@ function playlists(endpoint, method, body, state) {
 }
 
 export async function passwordLogin(page) {
-  await page.getByText('Sign in with a password', { exact: true }).click();
-  await page.getByLabel('Jellyfin username').fill('listener');
-  await page.getByLabel('Jellyfin password').fill('fixture-password');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.locator('#signed-in').waitFor({ state: 'visible' });
 }

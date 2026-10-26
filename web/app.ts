@@ -1,5 +1,5 @@
 import { Client, readJson, type Bootstrap } from './client.js';
-import { setupAuthentication } from './auth.js';
+import { parentSession } from './embedded.js';
 import { refreshAccount, setupAccount, takeRefusedReturn } from './account.js';
 import { setupMusic } from './music.js';
 import { setupFavourites } from './favourites.js';
@@ -13,9 +13,10 @@ async function start(): Promise<void> {
   const response = await fetch('./Bootstrap', { credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(90_000) });
   if (!response.ok) throw new Error(t('app_failed_config_load'));
   const config = await readJson(response, 4096) as Bootstrap;
-  let storage: Storage | undefined;
-  try { storage = sessionStorage; } catch { storage = undefined; /* Private browser settings may disable storage; the session then lives in memory only. */ }
-  const client = new Client(config, storage);
+  // The page signs nobody in: it borrows the web client's session and keeps none of its own.
+  const client = new Client(config, undefined);
+  const embedded = parentSession(config.serverId);
+  if (embedded) client.acceptSession(embedded);
   client.addEventListener('sessioncleared', () => {
     clearPrivateView();
     void refreshAccount(client);
@@ -25,7 +26,6 @@ async function start(): Promise<void> {
     try { await refreshAccount(client); }
     catch (error) { if (!client.signedIn) await refreshAccount(client); throw error; }
   };
-  setupAuthentication(client, refresh);
   setupAccount(client, refresh);
   setupMusic(client);
   setupFavourites(client);
@@ -47,6 +47,8 @@ async function start(): Promise<void> {
   });
   const jellyfin = element<HTMLAnchorElement>('jellyfin-link');
   jellyfin.href = `${client.root}/web/index.html`;
+  const openInJellyfin = element<HTMLAnchorElement>('open-in-jellyfin-link');
+  openInJellyfin.href = `${client.root}/web/index.html#/mypreferencesmenu`;
   bind('delivery-refresh', async () => {
     const state = await client.api<Delivery>('Me/Delivery');
     element('delivery-status').textContent = deliveryStatus(state);

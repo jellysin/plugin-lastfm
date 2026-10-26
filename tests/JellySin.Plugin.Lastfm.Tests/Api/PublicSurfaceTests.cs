@@ -42,7 +42,7 @@ public sealed class PublicSurfaceTests
         Assert.True(stream.Length > 0);
         Assert.Equal(contentType, file.ContentType);
         Assert.Contains("script-src 'self'", controller.Response.Headers.ContentSecurityPolicy.ToString(), StringComparison.Ordinal);
-        Assert.Contains("frame-ancestors 'none'", controller.Response.Headers.ContentSecurityPolicy.ToString(), StringComparison.Ordinal);
+        Assert.Contains("frame-ancestors 'self'", controller.Response.Headers.ContentSecurityPolicy.ToString(), StringComparison.Ordinal);
         Assert.Equal("nosniff", controller.Response.Headers["X-Content-Type-Options"]);
     }
 

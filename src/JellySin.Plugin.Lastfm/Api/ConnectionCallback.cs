@@ -8,6 +8,7 @@ internal static class ConnectionCallback
 {
     public const string Route = "JellySin/Lastfm/Callback";
     private const string SettingsPage = "/web/index.html#/configurationpage?name=jellysin-lastfm";
+    private const string UserPreferencesPage = "/web/index.html#/mypreferencesmenu?lastfm=open";
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
     /// <summary>The address Last.fm sends the browser back to: the server's published address when one is set, otherwise as this request reached the server.</summary>
@@ -31,11 +32,11 @@ internal static class ConnectionCallback
     public static void Release(HttpContext context, ServerAddress server)
         => context.Response.Cookies.Delete(CookieName(context.Request, server), Options(context.Request, server, null));
 
-    /// <summary>The page that began the attempt; the token from Last.fm is never part of this address.</summary>
+    /// <summary>The web client page that began the attempt; the token from Last.fm is never part of this address.</summary>
     public static string ReturnTarget(HttpRequest request, ConnectionApproval approval)
     {
         if (approval.ReturnToSettings) return $"{request.PathBase}{SettingsPage}{(approval.Accepted ? string.Empty : "&connection=failed")}";
-        return $"{request.PathBase}/JellySin/Lastfm/{(approval.Accepted ? string.Empty : "?connection=failed")}";
+        return $"{request.PathBase}{UserPreferencesPage}{(approval.Accepted ? string.Empty : "&connection=failed")}";
     }
 
     private static CookieOptions Options(HttpRequest request, ServerAddress server, TimeSpan? lifetime)
