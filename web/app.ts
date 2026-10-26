@@ -45,8 +45,6 @@ async function start(): Promise<void> {
     if (matches.length) select.selectedIndex = 1;
     message(matches.length ? t('app_search_choose_seed') : t('app_search_no_matches'));
   });
-  const jellyfin = element<HTMLAnchorElement>('jellyfin-link');
-  jellyfin.href = `${client.root}/web/index.html`;
   const openInJellyfin = element<HTMLAnchorElement>('open-in-jellyfin-link');
   openInJellyfin.href = `${client.root}/web/index.html#/mypreferencesmenu`;
   bind('delivery-refresh', async () => {

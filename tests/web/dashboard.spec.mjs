@@ -8,8 +8,7 @@ for (const prefix of ['', '/jellyfin']) {
     const state = await installServer(page, { prefix });
     await passwordLogin(page);
     await expect(page.locator('#administrator')).toBeHidden();
-    await expect(page.locator('#jellyfin-link')).toHaveAttribute('href', `${prefix}/web/index.html`);
-    await expect(page.locator('#jellyfin-link')).toHaveAttribute('target', '_top');
+    await expect(page.locator('#jellyfin-link')).toHaveCount(0);
     await page.getByRole('button', { name: 'Discover music', exact: true }).click();
     await expect(page.locator('#discovery-external')).toContainText('<img src=x onerror=alert(1)>');
     await expect(page.locator('#discovery-external img')).toHaveCount(0);
@@ -751,7 +750,7 @@ test('the settings page offers no sign-in that cannot return: no application, or
   await openSettings(elsewhere, { server: 'https://media.example' });
   await expect(elsewhere.locator('#jellysin-connection-status')).toHaveText('Last.fm is not connected. Connect from the music dashboard of this server.');
   await expect(elsewhere.locator('#jellysin-connect')).toBeHidden();
-  await expect(elsewhere.locator('#jellysin-dashboard-link')).toHaveAttribute('href', 'https://media.example/jellyfin/JellySin/Lastfm/');
+  await expect(elsewhere.locator('#jellysin-dashboard-link')).toHaveAttribute('href', '#/mypreferencesmenu');
 });
 
 for (const width of [320, 1280]) {

@@ -6,7 +6,7 @@
     <h2 data-i18n="admin_section_account">Your Last.fm account</h2>
     <p id="jellysin-connection-status" role="status" aria-live="polite" data-i18n="admin_checking_connection">Checking your Last.fm connection…</p>
     <button id="jellysin-connect" is="emby-button" type="button" class="raised button-submit block" hidden><span id="jellysin-connect-label" data-i18n="admin_connect_lastfm">Connect Last.fm</span></button>
-    <p><span data-i18n="admin_user_connect_intro">Each user connects their own Last.fm account. Other users do so from the music dashboard: </span><a id="jellysin-dashboard-link" class="button-link" target="_blank" rel="noopener noreferrer" data-i18n="admin_open_dashboard">Open JellySin Last.fm</a></p>
+    <p><span data-i18n="admin_user_connect_intro">Each user connects their own Last.fm account from Jellyfin's user settings: </span><a id="jellysin-dashboard-link" class="button-link" href="#/mypreferencesmenu" data-i18n="admin_open_dashboard">Settings → Last.fm</a></p>
     <h2 data-i18n="admin_section_server">Server settings</h2>
     <form id="jellysin-settings">
       <div class="checkboxContainer"><label><input id="jellysin-enabled" is="emby-checkbox" type="checkbox"><span data-i18n="admin_enable_plugin">Enable JellySin Last.fm</span></label></div>
@@ -272,7 +272,7 @@
         t = i18n.t;
         i18n.applyTranslations(byId('jellysin-admin'));
       } catch (error) { console.error('JellySin Last.fm: translations could not be loaded; the page stays in English.', error); }
-      byId('jellysin-dashboard-link').href = api('');
+      byId('jellysin-dashboard-link').href = '#/mypreferencesmenu';
       byId('jellysin-library-mode').addEventListener('change', updateLibraryGroupVisibility);
       try {
         const config = await ApiClient.getPluginConfiguration('2034650d-a290-4a16-b195-89fb44cfb932');
