@@ -10,6 +10,6 @@ internal static class ResponseSecurity
         response.Headers.CacheControl = "no-store";
         response.Headers["X-Content-Type-Options"] = "nosniff";
         response.Headers["Referrer-Policy"] = "no-referrer";
-        response.Headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+        response.Headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'; form-action 'self'";
     }
 }

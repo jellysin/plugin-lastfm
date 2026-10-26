@@ -282,9 +282,9 @@ def check_plugin(client: Client) -> None:
     require(b"JellySin" in page and b"Assets/app.js" in page, "Plugin page or compiled application entrypoint is absent.")
     require(headers.get("cache-control") == "no-store", "Plugin page must not be cached.")
     require(headers.get("x-content-type-options") == "nosniff", "Plugin page must reject MIME sniffing.")
-    require("frame-ancestors 'none'" in headers.get("content-security-policy", ""), "Plugin page CSP is missing.")
+    require("frame-ancestors 'self'" in headers.get("content-security-policy", ""), "Plugin page CSP is missing.")
     require(headers.get("referrer-policy") == "no-referrer", "Plugin page must prevent referrer leakage.")
-    for asset in ("app.js", "client.js", "auth.js", "account.js", "music.js", "favourites.js", "playlists.js", "view.js", "style.css"):
+    for asset in ("app.js", "client.js", "embedded.js", "account.js", "music.js", "favourites.js", "playlists.js", "view.js", "style.css", "entry.js"):
         data, _, _ = client.request(PREFIX + "/Assets/" + asset, raw=True)
         require(len(data) > 0, "A required embedded asset is empty.")
     client.request(PREFIX + "/Assets/not-a-real-file.js", expected=404, raw=True)
@@ -371,7 +371,7 @@ def check_return_address(client: Client) -> None:
     """A return from Last.fm that no browser began on this server is refused, and its token is not passed on."""
     status, headers = unfollowed(client, PREFIX + "/Callback?attempt=" + "0" * 32 + "&token=smoke-return-token")
     require(status == 302, "The return address of the Last.fm sign-in must answer without a Jellyfin sign-in.")
-    require(headers.get("location") == client.base_path + PREFIX + "/?connection=failed",
+    require(headers.get("location") == client.base_path + "/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed",
             "A return nobody began must lead to the page under the configured base path, marked as refused and without its token.")
     require(headers.get("cache-control") == "no-store", "The answer of the return address must not be cached.")
     require(headers.get("referrer-policy") == "no-referrer", "The answer of the return address must prevent referrer leakage.")

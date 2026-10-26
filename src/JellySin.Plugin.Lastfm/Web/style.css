@@ -56,6 +56,7 @@ summary { cursor: pointer; font-weight: 600; }
 .notice { padding: 1rem; margin-top: 1rem; border-left: 3px solid #ffb4ab; background: #30222e; }
 #status { min-height: 1.6rem; color: #c4f1d0; }
 #status.error { color: #ffb4ab; }
+main { min-height: 100vh; }
 footer { font-size: .85rem; padding-block: 2rem; }
 .skip { position: absolute; top: -5rem; padding: 1rem; background: #211529; z-index: 2; }
 .skip:focus { top: .5rem; }

@@ -47,8 +47,8 @@ public sealed class ConnectionCallbackTests
     }
 
     [Theory]
-    [InlineData("https", "", false, "/JellySin/Lastfm/")]
-    [InlineData("https", "/jellyfin", false, "/jellyfin/JellySin/Lastfm/")]
+    [InlineData("https", "", false, "/web/index.html#/mypreferencesmenu?lastfm=open")]
+    [InlineData("https", "/jellyfin", false, "/jellyfin/web/index.html#/mypreferencesmenu?lastfm=open")]
     [InlineData("http", "/jellyfin", true, "/jellyfin/web/index.html#/configurationpage?name=jellysin-lastfm")]
     public async Task ReturnFromLastfmParksTheTokenAndLeavesItOutOfTheNextAddress(string scheme, string prefix, bool settings, string target)
     {
@@ -73,7 +73,7 @@ public sealed class ConnectionCallbackTests
     }
 
     [Theory]
-    [InlineData(false, "/jellyfin/JellySin/Lastfm/?connection=failed")]
+    [InlineData(false, "/jellyfin/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed")]
     [InlineData(true, "/jellyfin/web/index.html#/configurationpage?name=jellysin-lastfm&connection=failed")]
     public async Task ARefusedReturnGoesBackToThePageThatStartedItWithoutAnApproval(bool settings, string target)
     {
@@ -106,14 +106,14 @@ public sealed class ConnectionCallbackTests
         foreach (var cookie in new[] { null, theirs })
         {
             var redirect = Assert.IsType<LocalRedirectResult>(await Callback(fixture, "https", "", cookie).Approve(attempt, Token, TestContext.Current.CancellationToken));
-            Assert.Equal("/JellySin/Lastfm/?connection=failed", redirect.Url);
+            Assert.Equal("/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed", redirect.Url);
         }
         // The binding issued for an HTTPS address carries the host-only name; a plain HTTP return does not read it.
-        Assert.Equal("/JellySin/Lastfm/?connection=failed",
+        Assert.Equal("/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed",
             Assert.IsType<LocalRedirectResult>(await Callback(fixture, "http", "", issued).Approve(attempt, Token, TestContext.Current.CancellationToken)).Url);
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
         Assert.False((await fixture.Accounts.GetStatusAsync(other, TestContext.Current.CancellationToken)).ApprovalPending);
-        Assert.Equal("/JellySin/Lastfm/",
+        Assert.Equal("/web/index.html#/mypreferencesmenu?lastfm=open",
             Assert.IsType<LocalRedirectResult>(await Callback(fixture, "https", "", issued).Approve(attempt, Token, TestContext.Current.CancellationToken)).Url);
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
         Assert.False((await fixture.Accounts.GetStatusAsync(other, TestContext.Current.CancellationToken)).ApprovalPending);
@@ -158,7 +158,7 @@ public sealed class ConnectionCallbackTests
         // The return arrives the same way as the start did: the cookie is found under the name the published scheme gave it.
         var returned = Callback(fixture, scheme, prefix, issued, published, host);
         var redirect = Assert.IsType<LocalRedirectResult>(await returned.Approve(CoreFixture.AttemptOf(start.AuthorizationUrl), Token, TestContext.Current.CancellationToken));
-        Assert.Equal($"{prefix}/JellySin/Lastfm/", redirect.Url);
+        Assert.Equal($"{prefix}/web/index.html#/mypreferencesmenu?lastfm=open", redirect.Url);
         AssertCleared(returned, issued);
         Assert.True((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ApprovalPending);
     }
@@ -203,7 +203,7 @@ public sealed class ConnectionCallbackTests
         Assert.DoesNotContain("media.example", line, StringComparison.Ordinal);
         // The anonymous return answers as for any attempt that never began.
         var returned = new CallbackController(fixture.Accounts, server, new ReturnLogLimiter(fixture.Clock), new FakeLogger<CallbackController>()) { ControllerContext = new ControllerContext { HttpContext = Request("GET", "https", "", "jellyfin.example") } };
-        Assert.Equal("/JellySin/Lastfm/?connection=failed",
+        Assert.Equal("/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed",
             Assert.IsType<LocalRedirectResult>(await returned.Approve("0123456789abcdef0123456789abcdef", Token, TestContext.Current.CancellationToken)).Url);
     }
 

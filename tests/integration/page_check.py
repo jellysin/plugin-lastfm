@@ -122,9 +122,11 @@ def prepare_server(host: DockerHost) -> dict[str, Any]:
     similar = next(item["id"] for item in tracks if item["name"] == SIMILAR_LOCAL)
     listener = admin.request("/Users/New", "POST", {"Name": LISTENER, "Password": listener_password})
     require(not listener["policy"]["isadministrator"], "The ordinary user unexpectedly has administrator rights.")
+    listener_client = Client(host.origin)
+    listener_client.authenticate(LISTENER, listener_password)
     return {"direct": host.origin, "serverId": admin.request("/System/Info/Public")["id"],
             "admin": {"id": admin_user["id"], "token": admin.token},
-            "listener": {"name": LISTENER, "password": listener_password}, "seedItemId": seed, "similarItemId": similar,
+            "listener": {"name": LISTENER, "password": listener_password, "id": listener["id"], "token": listener_client.token}, "seedItemId": seed, "similarItemId": similar,
             "lastfmUser": LASTFM_USER, "artist": ARTIST, "seed": SEED, "similarLocal": SIMILAR_LOCAL, "similarRemote": SIMILAR_REMOTE}
 
 

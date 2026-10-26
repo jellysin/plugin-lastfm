@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { installServer, passwordLogin, token, track } from './fixture.mjs';
+import { installServer, passwordLogin, track } from './fixture.mjs';
 
 function deferred() {
   let resolve;
@@ -7,58 +7,23 @@ function deferred() {
   return { promise, resolve };
 }
 
-test('Quick Connect supersedes a pending password response', async ({ page }) => {
-  const state = await installServer(page);
-  await page.clock.install();
-  const requested = deferred();
-  const reply = deferred();
-  await page.route('**/Users/AuthenticateByName', async route => {
-    requested.resolve();
-    await reply.promise;
-    await route.fulfill({ json: { AccessToken: 'b'.repeat(32), ServerId: 'fixture-server', User: { Name: 'old-account' } } });
-  });
-  await page.getByText('Sign in with a password', { exact: true }).click();
-  await page.getByLabel('Jellyfin username').fill('old-account');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await requested.promise;
-  await page.getByRole('button', { name: 'Use Quick Connect' }).click();
-  await expect(page.locator('#quick-code')).toHaveText('123456');
-  reply.resolve();
-  await expect(page.locator('#signed-in')).toBeHidden();
-  await page.clock.fastForward(3000);
-  await expect(page.locator('#signed-in')).toBeVisible();
-  await expect(page.locator('#account-label')).toHaveText('listener');
-  expect(state.requests.filter(request => request.path.endsWith('/Me')).every(request => request.headers.authorization.includes(token))).toBe(true);
-  expect(state.requests.filter(request => request.path.endsWith('AuthenticateWithQuickConnect'))).toHaveLength(1);
-});
-
-test('sign out clears private views before a delayed server revocation finishes', async ({ page }) => {
+test('session expiration clears private views before a delayed request finishes', async ({ page }) => {
   const state = await installServer(page);
   await passwordLogin(page);
   const historyRequested = deferred();
   const historyReply = deferred();
-  const logoutRequested = deferred();
-  const logoutReply = deferred();
   await page.route('**/Me/History?*', async route => {
     historyRequested.resolve();
     await historyReply.promise;
     await route.fulfill({ json: { Tracks: [{ ...track, Title: 'Previous private listen' }], Page: 1, TotalPages: 1, Complete: true } });
   });
-  await page.route('**/Sessions/Logout', async route => {
-    expect(route.request().headers().authorization).toContain(token);
-    logoutRequested.resolve();
-    await logoutReply.promise;
-    await route.fulfill({ status: 204 });
-  });
   await page.locator('#history-refresh').click();
   await historyRequested.promise;
-  await page.locator('#logout').click();
-  await logoutRequested.promise;
-  await expect(page.locator('#sign-in')).toBeVisible();
+  await page.route('**/Me/Favourites*', route => route.fulfill({ status: 401, body: 'Session expired' }));
+  await page.locator('#favourites-refresh').click();
+  await expect(page.locator('#open-in-jellyfin')).toBeVisible();
   await expect(page.locator('#history-list')).toBeEmpty();
-  expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
   historyReply.resolve();
-  logoutReply.resolve();
   await expect(page.locator('#workspace')).toHaveAttribute('aria-busy', 'false');
   await expect(page.locator('#history-list')).toBeEmpty();
   expect(state.disconnected).toBe(false);

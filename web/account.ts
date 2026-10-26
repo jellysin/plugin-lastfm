@@ -11,17 +11,18 @@ interface UserLibrariesResponse { mode: string; libraries: LibraryItem[] }
 let administrator = false;
 
 export async function refreshAccount(client: Client): Promise<void> {
-  element('sign-in').hidden = client.signedIn;
-  element('signed-in').hidden = !client.signedIn;
-  if (!client.signedIn) { element('account-label').textContent = t('app_account_connect_prompt'); return; }
+  element('open-in-jellyfin').hidden = client.signedIn;
+  if (!client.signedIn) { element('signed-in').hidden = true; element('account-label').textContent = t('app_account_connect_prompt'); return; }
   const me = await client.api<Me>('Me');
-  if (!me.connection.approvalPending) { show(client, me); return; }
+  // The page opens straight into the account, so it appears only once its sections are known, without a layout shift.
+  if (!me.connection.approvalPending) { show(client, me); element('signed-in').hidden = false; return; }
   // The browser came back from Last.fm with an approval: complete it without a further step.
   let confirmed = true;
   try { await client.api('Me/Connection/Finish', 'POST'); }
   catch (error) { if (!client.signedIn) throw error; confirmed = false; }
   client.resetAccount();
   show(client, await client.api<Me>('Me'));
+  element('signed-in').hidden = false;
   if (!confirmed) throw new Error(t('account_unconfirmed'));
   message(t('account_connected_notice'));
 }
@@ -95,7 +96,7 @@ export function setupAccount(client: Client, refresh: () => Promise<void>): void
       throw error;
     }
     message(t('account_opening_lastfm'));
-    location.assign(target);
+    (window.top ?? window).location.assign(target);
   });
   bind('disconnect-lastfm', async () => {
     element('disconnect-confirmation').hidden = false;

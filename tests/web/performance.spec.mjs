@@ -49,15 +49,12 @@ for (const width of [320, 1280]) {
     await page.addInitScript(observePerformance);
     const state = await installServer(page, { prefix: '/jellyfin', latencyMs: 80 });
     state.historyTracks = Array.from({ length: 200 }, (_, index) => ({ ...track, Title: `History track ${index}` }));
-    await expect(page.locator('#quick-connect')).toBeEnabled();
-    await expect.poll(() => page.evaluate(() => globalThis.jellysinLabMetrics.lcpMilliseconds)).toBeGreaterThan(0);
     await passwordLogin(page);
+    await expect.poll(() => page.evaluate(() => globalThis.jellysinLabMetrics.lcpMilliseconds)).toBeGreaterThan(0);
     for (const id of ['history-refresh', 'charts-refresh', 'discovery-refresh', 'favourites-refresh', 'playlists-refresh']) {
       await page.locator(`#${id}`).click();
       await expect(page.locator('#workspace')).toHaveAttribute('aria-busy', 'false');
     }
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await expect(page.locator('#sign-in')).toBeVisible();
     // Event timing entries arrive after the next presentation frame.
     await page.evaluate(() => new Promise(resolve => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))));
     const metrics = await page.evaluate(() => globalThis.jellysinLabMetrics);

@@ -197,7 +197,7 @@ class ConflictMarkTests(unittest.TestCase):
             smoke.check_conflict_marks(self.MARKED, self.MARKED)
 
 
-REFUSED = {"Location": "/jellyfin/JellySin/Lastfm/?connection=failed", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+REFUSED = {"Location": "/jellyfin/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 def returned(status, headers):
@@ -399,8 +399,11 @@ class ReturnAddressTests(unittest.TestCase):
                 returned(status, REFUSED)
 
     def test_refuses_a_token_passed_on_a_lost_base_path_or_a_missing_refusal(self):
-        for location in ("/jellyfin/JellySin/Lastfm/?connection=failed&token=smoke-return-token", "/JellySin/Lastfm/?connection=failed",
-                         "/jellyfin/JellySin/Lastfm/", "https://attacker.example/JellySin/Lastfm/?connection=failed"):
+        for location in ("/jellyfin/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed&token=smoke-return-token",
+                         "/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed",
+                         "/jellyfin/web/index.html#/mypreferencesmenu?lastfm=open",
+                         "https://attacker.example/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed",
+                         "/jellyfin/JellySin/Lastfm/?connection=failed"):
             with self.subTest(location=location), self.assertRaisesRegex(SmokeFailure, "marked as refused and without its token"):
                 returned(302, REFUSED | {"Location": location})
 
