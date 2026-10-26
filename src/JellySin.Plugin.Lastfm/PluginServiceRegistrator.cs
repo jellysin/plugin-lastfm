@@ -11,6 +11,7 @@ using MediaBrowser.Controller.Events;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -56,6 +57,8 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddHostedService(provider => provider.GetRequiredService<DeliveryService>());
         // Jellyfin arms a fresh task's interval an hour out; this re-arms it after the task's first run.
         serviceCollection.AddHostedService<JellySin.Plugin.Lastfm.Tasks.TaskTriggerRearm>();
+        // Wrap the web pipeline to inject the Last.fm entry script into served web client pages.
+        serviceCollection.AddSingleton<IStartupFilter, JellySin.Plugin.Lastfm.Api.WebClientEntry>();
         serviceCollection.AddLastfmFeatures();
     }
 }

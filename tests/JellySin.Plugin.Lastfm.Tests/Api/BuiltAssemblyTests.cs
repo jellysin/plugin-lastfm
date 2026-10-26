@@ -83,6 +83,7 @@ public sealed class BuiltAssemblyTests
         "MediaBrowser.Controller.Events.IEventConsumer<UserDeletedEventArgs> x1",
         "MediaBrowser.Controller.Events.IEventConsumer<UserLockedOutEventArgs> x1",
         "MediaBrowser.Controller.Events.IEventConsumer<UserUpdatedEventArgs> x1",
+        "Microsoft.AspNetCore.Hosting.IStartupFilter x1",
         "Microsoft.Extensions.Hosting.IHostedService x5",
         "System.TimeProvider x1",
     ];
