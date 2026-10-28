@@ -1,13 +1,12 @@
 """A file the whole-tree REUSE table would license without a declaration, or would label
 EUPL-1.2 only although it names an MIT origin, fails the licence coverage check."""
 
-import contextlib
-import io
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+import console
 from tools.licence_coverage import CoverageError, main, mit_unlabelled, pattern, undeclared
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -37,10 +36,7 @@ SPDX-License-Identifier = "{licence}"
 
 
 def run(arguments):
-    output, errors = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-        code = main(arguments)
-    return code, output.getvalue(), errors.getvalue()
+    return console.run(main, arguments)
 
 
 class RepositoryTests(unittest.TestCase):

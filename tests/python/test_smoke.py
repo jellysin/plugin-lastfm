@@ -203,14 +203,32 @@ class ConflictMarkTests(unittest.TestCase):
 REFUSED = {"Location": "/jellyfin/web/index.html#/mypreferencesmenu?lastfm=open&connection=failed", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
+class Quiet(http.server.BaseHTTPRequestHandler):
+    """A request handler that suppresses server logging."""
+
+    def log_message(self, _format, *arguments):
+        pass
+
+
+@contextlib.contextmanager
+def serving(handler):
+    """Serve requests with the handler on a loopback port and yield its origin address."""
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def returned(status, headers):
     """Run the return-address check against a local server that gives the planted answer; return what it was asked."""
     asked = []
 
-    class Planted(http.server.BaseHTTPRequestHandler):
-        def log_message(self, _format, *arguments):
-            pass
-
+    class Planted(Quiet):
         def do_GET(self):
             asked.append((self.path, self.headers.get("Authorization"), self.headers.get("Cookie")))
             self.send_response(status)
@@ -219,15 +237,8 @@ def returned(status, headers):
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
-    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-    thread.start()
-    try:
-        smoke.check_return_address(smoke.Client(f"http://127.0.0.1:{server.server_address[1]}", "/jellyfin", token="a" * 32))
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+    with serving(Planted) as origin:
+        smoke.check_return_address(smoke.Client(origin, "/jellyfin", token="a" * 32))
     return asked
 
 
@@ -235,10 +246,7 @@ def began(back, cookie, published="", configured=True, asked=None):
     """Run the sign-in check against a local server that names the planted return and cookie; return what it was asked."""
     asked = [] if asked is None else asked
 
-    class Planted(http.server.BaseHTTPRequestHandler):
-        def log_message(self, _format, *arguments):
-            pass
-
+    class Planted(Quiet):
         def answer(self):
             asked.append((self.command, self.path))
             self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -254,17 +262,9 @@ def began(back, cookie, published="", configured=True, asked=None):
 
         do_POST = do_PUT = do_DELETE = answer
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
-    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-    thread.start()
-    origin = f"http://127.0.0.1:{server.server_address[1]}"
-    try:
+    with serving(Planted) as origin:
         client = smoke.Client(origin, "/jellyfin", token="a" * 32)
         smoke.check_sign_in_address(client, client, published, configured)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
     return asked
 
 
@@ -272,10 +272,7 @@ def wrote(accepts, published=""):
     """Run the page-origin check against a local server that accepts a write by the planted rule; return what it was asked."""
     asked = []
 
-    class Planted(http.server.BaseHTTPRequestHandler):
-        def log_message(self, _format, *arguments):
-            pass
-
+    class Planted(Quiet):
         def do_PUT(self):
             self.rfile.read(int(self.headers.get("Content-Length", 0)))
             own = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -287,15 +284,8 @@ def wrote(accepts, published=""):
             self.end_headers()
             self.wfile.write(body)
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
-    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-    thread.start()
-    try:
-        smoke.check_page_origin(smoke.Client(f"http://127.0.0.1:{server.server_address[1]}", "/jellyfin", token="a" * 32), published)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+    with serving(Planted) as origin:
+        smoke.check_page_origin(smoke.Client(origin, "/jellyfin", token="a" * 32), published)
     return asked
 
 
@@ -440,10 +430,7 @@ def authenticated(adapter_status=404):
     """Run check_authentication against a local server with the planted adapter status; return what it was asked."""
     asked = []
 
-    class Planted(http.server.BaseHTTPRequestHandler):
-        def log_message(self, _format, *arguments):
-            pass
-
+    class Planted(Quiet):
         def answer(self):
             asked.append((self.command, self.path))
             self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -455,18 +442,10 @@ def authenticated(adapter_status=404):
 
         do_GET = do_POST = do_PUT = do_DELETE = answer
 
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Planted)
-    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-    thread.start()
-    try:
-        origin = f"http://127.0.0.1:{server.server_address[1]}"
+    with serving(Planted) as origin:
         admin = smoke.Client(origin, "/jellyfin", token="admin-token")
         listener = smoke.Client(origin, "/jellyfin", token="listener-token")
         smoke.check_authentication(admin, listener, True)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
     return asked
 
 
