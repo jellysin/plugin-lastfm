@@ -7,6 +7,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
+import console
 from tools import dependency_audit
 from tools.dependency_audit import MARKER, TITLE, AuditError, Finding, audit, forge, main, plan, render, tracked
 
@@ -126,11 +127,9 @@ class MainTests(unittest.TestCase):
                 raise forge_result
             return "[]" if arguments[1] == "list" else "https://example.invalid/issues/1\n"
 
-        output, errors = io.StringIO(), io.StringIO()
         with patch.object(dependency_audit, "audit", return_value=found), patch.object(dependency_audit, "forge", side_effect=fake_forge):
-            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-                status = main(["--repository", REPOSITORY, "--revision", "0123abc", *arguments])
-        return status, calls, output.getvalue(), errors.getvalue()
+            status, output, errors = console.run(main, ["--repository", REPOSITORY, "--revision", "0123abc", *arguments])
+        return status, calls, output, errors
 
     def test_findings_open_the_issue_and_fail_the_run(self):
         status, calls, output, _ = self.run_main([], [FINDING], None)

@@ -1,14 +1,13 @@
 """A canary is main only, carries the application, stays below every release and is never published."""
 
-import contextlib
 import hashlib
-import io
 import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
+import console
 from tools.canary import WORKFLOW, CanaryError, main, package, plan, require_credentials, workflow_violations
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,10 +19,7 @@ KEYS = {"LASTFM_API_KEY": "a" * 32, "LASTFM_SHARED_SECRET": "B" * 32}
 
 
 def run(arguments):
-    output, errors = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-        code = main(arguments)
-    return code, output.getvalue(), errors.getvalue()
+    return console.run(main, arguments)
 
 
 class PlanTests(unittest.TestCase):

@@ -1,13 +1,12 @@
 """No commit message and no pull request text credits a model or coding tool; people and bots keep their lines."""
 
-import contextlib
-import io
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+import console
 from tools.attribution import MAX_EVENT_BYTES, AttributionError, check, credits_tool, event_texts, history, main, scan
 
 MODEL = "Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -16,14 +15,21 @@ IDENTITY = ("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c
 
 
 def run(arguments):
-    output, errors = io.StringIO(), io.StringIO()
-    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-        code = main(arguments)
-    return code, output.getvalue(), errors.getvalue()
+    return console.run(main, arguments)
 
 
 def git(directory, *arguments):
     subprocess.run(["git", "-C", str(directory), *arguments], check=True, capture_output=True)
+
+
+def scratch_repository(case, *init):
+    scratch = tempfile.TemporaryDirectory()
+    case.addCleanup(scratch.cleanup)
+    root = Path(scratch.name)
+    repository = root / "repository"
+    repository.mkdir()
+    git(repository, "init", "--quiet", *init)
+    return root, repository
 
 
 class LineTests(unittest.TestCase):
@@ -87,12 +93,7 @@ class LineTests(unittest.TestCase):
 
 class HistoryTests(unittest.TestCase):
     def setUp(self):
-        scratch = tempfile.TemporaryDirectory()
-        self.addCleanup(scratch.cleanup)
-        self.root = Path(scratch.name)
-        self.repository = self.root / "repository"
-        self.repository.mkdir()
-        git(self.repository, "init", "--quiet", "--initial-branch=main")
+        self.root, self.repository = scratch_repository(self, "--initial-branch=main")
 
     def commit(self, message):
         git(self.repository, *IDENTITY, "commit", "--quiet", "--allow-empty", "--no-verify", "-m", message)
@@ -134,12 +135,7 @@ class HistoryTests(unittest.TestCase):
 
 class EventTests(unittest.TestCase):
     def setUp(self):
-        scratch = tempfile.TemporaryDirectory()
-        self.addCleanup(scratch.cleanup)
-        self.root = Path(scratch.name)
-        self.repository = self.root / "repository"
-        self.repository.mkdir()
-        git(self.repository, "init", "--quiet")
+        self.root, self.repository = scratch_repository(self)
         git(self.repository, *IDENTITY, "commit", "--quiet", "--allow-empty", "-m", "feat: first")
 
     def event(self, content):
