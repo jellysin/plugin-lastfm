@@ -7,22 +7,78 @@ import { readdir, readFile } from 'node:fs/promises';
 // in installServer's `initial` option, which applies them before the page loads.
 const webTests = new URL('./', import.meta.url);
 
-// Any write to the fixture state: plain, nested or bracketed assignment, compound assignment, increment, a mutating
-// method on a nested value, or Object.assign onto it.
-const stateWrite = /^\s*(?:(?:\+\+|--)\s*state\b|state(?:\.[A-Za-z_$][\w$]*|\[[^\]]+\])+\s*(?:[-+*/%&|^]?=(?!=)|\+\+|--|\.(?:push|pop|shift|unshift|splice|set|delete|clear|add)\()|Object\.assign\(\s*state\b)/;
+// Writes are found by a plain character scan, not a regular expression: no backtracking, linear in the line length.
+const ASSIGNMENTS = ['**=', '??=', '||=', '&&=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '++', '--'];
+const MUTATORS = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'set', 'delete', 'clear', 'add', 'fill', 'sort']);
+const isIdentifierChar = char => char !== undefined && /[\w$]/.test(char);
 const indentOf = line => line.length - line.trimStart().length;
+
+// End of the member chain that starts at `start` (`.name` and `[...]` segments) and the last `.name` in it.
+function memberChain(line, start) {
+  let end = start;
+  let last = '';
+  for (let guard = 0; guard < line.length && end < line.length; guard += 1) {
+    if (line[end] === '.' && isIdentifierChar(line[end + 1])) {
+      let next = end + 1;
+      while (next < line.length && isIdentifierChar(line[next])) next += 1;
+      last = line.slice(end + 1, next);
+      end = next;
+    } else if (line[end] === '[') {
+      const close = line.indexOf(']', end);
+      if (close < 0) break;
+      last = '';
+      end = close + 1;
+    } else break;
+  }
+  return { end, last };
+}
+
+// True when the `state` at `at` is written: assigned (plain, nested, bracketed, compound), incremented, or mutated.
+function writesAt(line, at) {
+  const { end, last } = memberChain(line, at + 'state'.length);
+  if (end === at + 'state'.length) return false;
+  const rest = line.slice(end).trimStart();
+  if (rest.startsWith('=') && !rest.startsWith('==') && !rest.startsWith('=>')) return true;
+  if (ASSIGNMENTS.some(operator => rest.startsWith(operator))) return true;
+  if (rest.startsWith('(') && MUTATORS.has(last)) return true;
+  const before = line.slice(0, at).trimEnd();
+  return before.endsWith('++') || before.endsWith('--');
+}
+
+// True when the line writes the fixture state anywhere, inline conditionals included.
+export function writesState(line) {
+  if (line.replaceAll(' ', '').includes('Object.assign(state')) return true;
+  for (let at = line.indexOf('state'); at >= 0; at = line.indexOf('state', at + 1)) {
+    const previous = line[at - 1];
+    if (!isIdentifierChar(previous) && previous !== '.' && writesAt(line, at)) return true;
+  }
+  return false;
+}
+
+// Parenthesis balance of a line, from `from` on; only the installServer call's own arguments need it.
+function parenBalance(line, from) {
+  let depth = 0;
+  for (const char of line.slice(from)) depth += char === '(' ? 1 : char === ')' ? -1 : 0;
+  return depth;
+}
 
 export function racyAssignments(source) {
   const findings = [];
-  // Indentation of the open installServer call, or -1 outside one. The region ends at passwordLogin or where the
-  // enclosing block closes, never at a nested callback's `});`.
+  // openIndent: indentation of the open installServer statement, or -1 outside one. callDepth: unclosed parentheses
+  // of its call; its arguments (an `initial` callback) run before the page loads and are not checked. The region ends
+  // at passwordLogin or where the enclosing block closes, never at a nested callback's `});`.
   let openIndent = -1;
+  let callDepth = 0;
   source.split('\n').forEach((line, index) => {
-    if (line.includes('await installServer(')) openIndent = indentOf(line);
-    else if (openIndent < 0) return;
+    const call = line.indexOf('await installServer(');
+    if (call >= 0) {
+      openIndent = indentOf(line);
+      callDepth = parenBalance(line, call);
+    } else if (openIndent < 0) return;
+    else if (callDepth > 0) callDepth += parenBalance(line, 0);
     else if (line.includes('await passwordLogin(')) openIndent = -1;
     else if (line.trim().startsWith('}') && indentOf(line) < openIndent) openIndent = -1;
-    else if (stateWrite.test(line)) findings.push(index + 1);
+    else if (writesState(line)) findings.push(index + 1);
   });
   return findings;
 }
@@ -51,10 +107,35 @@ test('the check finds planted late writes of every form', () => {
     '  state.scrobbleLogCount += 1;',
     '  state.scrobbleLogCount++;',
     '  Object.assign(state, { connected: true });',
+    '  if (slow) state.latencyMs = 500;',
+    '  ++state.scrobbleLogCount;',
     '  await passwordLogin(page);',
     '});',
   ].join('\n');
-  assert.deepEqual(racyAssignments(planted), [6, 7, 8, 9, 10, 11, 12]);
+  assert.deepEqual(racyAssignments(planted), [6, 7, 8, 9, 10, 11, 12, 13, 14]);
+});
+
+test('the check skips the installServer call arguments and checks from the line after the call', () => {
+  const source = [
+    'test(\'x\', async ({ page }) => {',
+    '  const state = await installServer(page, {',
+    '    initial: state => {',
+    '      state.needsReconnect = true;',
+    '      return {};',
+    '    },',
+    '  });',
+    '  state.deviceFail = true;',
+    '  await passwordLogin(page);',
+    '});',
+  ].join('\n');
+  assert.deepEqual(racyAssignments(source), [8]);
+});
+
+test('the write scan stays linear on a long hostile line', () => {
+  const line = `state${'.a'.repeat(50000)}${'['.repeat(50000)} == 1`;
+  const started = performance.now();
+  assert.equal(writesState(line), false);
+  assert.ok(performance.now() - started < 1000, 'scan took longer than a second');
 });
 
 test('the check accepts the initial option, comparisons and writes after sign-in or after the test', () => {
