@@ -1,5 +1,8 @@
 # JellySin Last.fm
 
+[![CodeRabbit reviews](https://img.shields.io/coderabbit/prs/github/jellysin/plugin-lastfm)](https://coderabbit.ai)
+[![Codacy grade](https://app.codacy.com/project/badge/Grade/0fb5f6413ce34af6984aecaac7ace613)](https://app.codacy.com/gh/jellysin/plugin-lastfm/dashboard)
+
 <!-- praetor:readme-governance:start -->
 [![HISS Adopted][praetor-hiss-badge]][praetor-hiss-agents]
 
