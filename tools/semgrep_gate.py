@@ -71,11 +71,16 @@ def pinned_version(text: str) -> str:
 
 
 def launcher(version: str) -> list[str]:
-    """Return the command that starts the pinned Semgrep; uvx first, pipx second, and say which one runs."""
-    if shutil.which("uvx"):
-        command = ["uvx", "--quiet", "--from", f"semgrep=={version}", "semgrep"]
-    elif shutil.which("pipx"):
-        command = ["pipx", "run", "--spec", f"semgrep=={version}", "semgrep"]
+    """Return the command that starts the pinned Semgrep; uvx first, pipx second, and say which one runs.
+
+    Only these two launchers are accepted, each resolved once to an absolute path on PATH, the same trust any
+    developer tool on the machine gets; the version comes from the committed requirements file.
+    """
+    uvx, pipx = shutil.which("uvx"), shutil.which("pipx")
+    if uvx:
+        command = [uvx, "--quiet", "--from", f"semgrep=={version}", "semgrep"]
+    elif pipx:
+        command = [pipx, "run", "--spec", f"semgrep=={version}", "semgrep"]
     else:
         raise GateError("neither uvx nor pipx found; install uv (https://docs.astral.sh/uv/) to run Semgrep")
     print(f"semgrep-gate: semgrep {version} via {command[0]}", file=sys.stderr)
@@ -83,14 +88,22 @@ def launcher(version: str) -> list[str]:
 
 
 def scanned(paths: list[str]) -> list[str]:
-    """Return the paths with a scanned suffix, in order, refusing a list longer than MAX_TARGETS."""
+    """Return the paths with a scanned suffix, in order.
+
+    Targets are files of this repository (staged or tracked names): a path that resolves outside the repository, or a
+    list longer than MAX_TARGETS, is refused. They reach Semgrep after `--`, as list elements without a shell, so a
+    name cannot become an option or a command.
+    """
     if len(paths) > MAX_TARGETS:
         raise GateError(f"{len(paths)} targets exceed the bound of {MAX_TARGETS}")
+    outside = [path for path in paths if not (ROOT / path).resolve().is_relative_to(ROOT)]
+    if outside:
+        raise GateError(f"targets outside the repository: {', '.join(outside[:5])}")
     return [path for path in paths if Path(path).suffix in SUFFIXES]
 
 
 def tracked() -> list[str]:
-    """Return every tracked file of the repository."""
+    """Return every tracked file of the repository; git is resolved once to an absolute path on PATH."""
     executable = shutil.which("git")
     if executable is None:
         raise GateError("git not found; the tracked files cannot be listed")

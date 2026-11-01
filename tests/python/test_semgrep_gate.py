@@ -37,6 +37,14 @@ class TargetTests(unittest.TestCase):
     def test_empty_list_scans_nothing(self):
         self.assertEqual(scanned([]), [])
 
+    def test_refuses_a_path_outside_the_repository(self):
+        for path in ("../outside.py", "/etc/passwd.py", "src/../../outside.cs"):
+            with self.subTest(path=path), self.assertRaises(GateError):
+                scanned(["tools/a.py", path])
+
+    def test_keeps_a_dash_name_inside_the_repository(self):
+        self.assertEqual(scanned(["-rf.py"]), ["-rf.py"])
+
     def test_refuses_more_than_the_bound(self):
         with self.assertRaises(GateError):
             scanned(["a.py"] * (semgrep_gate.MAX_TARGETS + 1))
@@ -45,11 +53,11 @@ class TargetTests(unittest.TestCase):
 class LauncherTests(unittest.TestCase):
     def test_prefers_uvx_and_pins_the_release(self):
         with mock.patch.object(semgrep_gate.shutil, "which", side_effect=lambda name: f"/bin/{name}"):
-            self.assertEqual(launcher("1.2.3")[:4], ["uvx", "--quiet", "--from", "semgrep==1.2.3"])
+            self.assertEqual(launcher("1.2.3")[:4], ["/bin/uvx", "--quiet", "--from", "semgrep==1.2.3"])
 
     def test_falls_back_to_pipx_by_name(self):
         with mock.patch.object(semgrep_gate.shutil, "which", side_effect=lambda name: "/bin/pipx" if name == "pipx" else None):
-            self.assertEqual(launcher("1.2.3")[:4], ["pipx", "run", "--spec", "semgrep==1.2.3"])
+            self.assertEqual(launcher("1.2.3")[:4], ["/bin/pipx", "run", "--spec", "semgrep==1.2.3"])
 
     def test_fails_without_a_launcher(self):
         with mock.patch.object(semgrep_gate.shutil, "which", return_value=None), self.assertRaises(GateError):
