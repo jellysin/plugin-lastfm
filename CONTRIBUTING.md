@@ -73,7 +73,8 @@ job (staged files), `make verify-all` and the CI scanners job (every tracked fil
 scanned suffix). All three use the release pinned in `.config/semgrep/requirements.txt`, the registry packs
 CI used before and the local rules in `.config/semgrep/`, which repeat before CI the
 classes Codacy reported, starting with ReDoS-prone regular expressions. It starts
-Semgrep with `uvx`, or `pipx` when uv is missing, and says which one ran. Files that
+Semgrep on Python 3.14 with `uvx`, or `pipx` 1.5.0 or newer when uv is missing, and
+says which one ran. Files that
 Semgrep parses only in part, such as C# primary constructors, are listed, not passed
 silently. `--self-test` writes planted cases to a temporary directory and fails when a
 rule misses one or reports an unmarked line.

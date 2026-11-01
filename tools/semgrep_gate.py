@@ -88,7 +88,7 @@ def launcher(version: str) -> list[str]:
     if uvx:
         command = [uvx, "--quiet", "--python", SEMGREP_PYTHON, "--from", f"semgrep=={version}", "semgrep"]
     elif pipx:
-        command = [pipx, "run", "--python", SEMGREP_PYTHON, "--fetch-python=missing", "--spec", f"semgrep=={version}", "semgrep"]
+        command = [pipx, "run", "--python", SEMGREP_PYTHON, "--fetch-missing-python", "--spec", f"semgrep=={version}", "semgrep"]
     else:
         raise GateError("neither uvx nor pipx found; install uv (https://docs.astral.sh/uv/) to run Semgrep")
     print(f"semgrep-gate: semgrep {version} on Python {SEMGREP_PYTHON} via {command[0]}", file=sys.stderr)
