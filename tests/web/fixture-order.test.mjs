@@ -55,28 +55,50 @@ export function writesState(line) {
   return false;
 }
 
-// Parenthesis balance of a line, from `from` on; only the installServer call's own arguments need it.
-function parenBalance(line, from) {
-  let depth = 0;
-  for (const char of line.slice(from)) depth += char === '(' ? 1 : char === ')' ? -1 : 0;
-  return depth;
+// Walks the installServer call's parentheses from `from` with `depth` already open, skipping quoted text. Returns the
+// depth left open at the end of the line and the text after the call closes ('' while it is still open).
+export function callTail(line, from, depth) {
+  let open = depth;
+  let quote = '';
+  for (let at = from; at < line.length; at += 1) {
+    const char = line[at];
+    if (quote) {
+      if (char === '\\') at += 1;
+      else if (char === quote) quote = '';
+    } else if (char === '\'' || char === '"' || char === '`') quote = char;
+    else if (char === '(') open += 1;
+    else if (char === ')') {
+      open -= 1;
+      if (open === 0) return { depth: 0, tail: line.slice(at + 1) };
+    }
+  }
+  return { depth: open, tail: '' };
 }
 
 export function racyAssignments(source) {
   const findings = [];
   // openIndent: indentation of the open installServer statement, or -1 outside one. callDepth: unclosed parentheses
-  // of its call; its arguments (an `initial` callback) run before the page loads and are not checked. The region ends
-  // at passwordLogin or where the enclosing block closes, never at a nested callback's `});`.
+  // of its call; its arguments (an `initial` callback) run before the page loads and are not checked, but the text
+  // after the call closes is. The region ends at passwordLogin or where the enclosing block closes, never at a nested
+  // callback's `});`.
   let openIndent = -1;
   let callDepth = 0;
+  const checkTail = (tail, index) => {
+    if (writesState(tail)) findings.push(index + 1);
+  };
   source.split('\n').forEach((line, index) => {
     const call = line.indexOf('await installServer(');
     if (call >= 0) {
       openIndent = indentOf(line);
-      callDepth = parenBalance(line, call);
+      const { depth, tail } = callTail(line, call, 0);
+      callDepth = depth;
+      checkTail(tail, index);
     } else if (openIndent < 0) return;
-    else if (callDepth > 0) callDepth += parenBalance(line, 0);
-    else if (line.includes('await passwordLogin(')) openIndent = -1;
+    else if (callDepth > 0) {
+      const { depth, tail } = callTail(line, 0, callDepth);
+      callDepth = depth;
+      checkTail(tail, index);
+    } else if (line.includes('await passwordLogin(')) openIndent = -1;
     else if (line.trim().startsWith('}') && indentOf(line) < openIndent) openIndent = -1;
     else if (writesState(line)) findings.push(index + 1);
   });
@@ -129,6 +151,33 @@ test('the check skips the installServer call arguments and checks from the line 
     '});',
   ].join('\n');
   assert.deepEqual(racyAssignments(source), [8]);
+});
+
+test('the check ignores quoted parentheses and checks the text after the call on the same line', () => {
+  const source = [
+    'test(\'x\', async ({ page }) => {',
+    '  const state = await installServer(page, { initial: { title: \'(\', note: "a)b", tag: `(` } });',
+    '  state.deviceFail = true;',
+    '  await passwordLogin(page);',
+    '});',
+    'test(\'y\', async ({ page }) => {',
+    '  const state = await installServer(page); state.needsReconnect = true;',
+    '  await passwordLogin(page);',
+    '});',
+    'test(\'z\', async ({ page }) => {',
+    '  const state = await installServer(page, {',
+    '    initial: { title: \'it\\\'s (\' },',
+    '  }); state.latencyMs = 500;',
+    '  await passwordLogin(page);',
+    '});',
+  ].join('\n');
+  assert.deepEqual(racyAssignments(source), [3, 7, 13]);
+});
+
+test('the call walk returns the depth left open and the text after the call', () => {
+  assert.deepEqual(callTail('await installServer(page, { a: \')\' });', 0, 0), { depth: 0, tail: ';' });
+  assert.deepEqual(callTail('await installServer(page, {', 0, 0), { depth: 1, tail: '' });
+  assert.deepEqual(callTail('}); x = 1', 0, 1), { depth: 0, tail: '; x = 1' });
 });
 
 test('the write scan stays linear on a long hostile line', () => {
