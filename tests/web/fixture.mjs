@@ -12,7 +12,7 @@ const empty = () => ({ status: 204 });
 const forward = address => ({ status: 200, contentType: 'text/html', body: `<!doctype html><meta http-equiv="refresh" content="0;url=${address.replaceAll('&', '&amp;').replaceAll('"', '%22')}">` });
 const webRoot = new URL('../../src/JellySin.Plugin.Lastfm/Web/', import.meta.url);
 
-export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0, embedded = true, parentToken = token, parentServerId = 'fixture-server', connected = true } = {}) {
+export async function installServer(page, { prefix = '', administrator = false, latencyMs = 0, embedded = true, parentToken = token, parentServerId = 'fixture-server', connected = true, initial = {} } = {}) {
   const state = { requests: [], lastfm: [], approvalPending: false, lastfmAnswer: 'token', prefix, administrator, connected, favourites: false, favouritesRunning: false, removed: false, recipes: [], imported: false, preview: false, disconnected: false,
     historyTracks: [track], delivery: { Pending: 3, Blocked: 1, LegacyPluginDetected: false, DroppedSnapshots: 0, FailedWrites: 0, Rejected: 0, PendingPersistence: 0 },
     devices: [
@@ -23,6 +23,8 @@ export async function installServer(page, { prefix = '', administrator = false, 
     adminMediaTypes: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true },
     excludedMediaTypes: [], mediaTypesFail: false,
     scrobbleLogEnabled: false, scrobbleLogCount: 0 };
+  // Values the first page load must already see: the embedded page signs in and loads the account before goto returns.
+  Object.assign(state, typeof initial === 'function' ? initial(state) : initial);
   if (embedded) {
     await page.addInitScript(({ tok, sId }) => {
       const parentStub = {

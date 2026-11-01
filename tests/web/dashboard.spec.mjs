@@ -120,8 +120,7 @@ test('favourite removals and disconnect need explicit review', async ({ page }) 
 });
 
 test('favourite synchronization reports running server state', async ({ page }) => {
-  const state = await installServer(page);
-  state.favouritesRunning = true;
+  await installServer(page, { initial: { favouritesRunning: true } });
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Refresh review' }).click();
   await expect(page.locator('#favourites-status')).toHaveText('Synchronization is running on the server. Select Refresh review to see the result.');
@@ -165,9 +164,7 @@ test('without a Last.fm connection the page offers only Connect, until connected
 });
 
 test('an account that must reconnect keeps its sections', async ({ page }) => {
-  const state = await installServer(page);
-  state.connected = true;
-  state.needsReconnect = true;
+  await installServer(page, { initial: { connected: true, needsReconnect: true } });
   await passwordLogin(page);
   await expect(page.locator('#connection-status')).toContainText('reconnect required');
   await expectOffered(page, true);
@@ -212,8 +209,7 @@ for (const prefix of ['', '/jellyfin']) {
 }
 
 test('a return that Last.fm did not approve says so, starts nothing and leaves a clean address', async ({ page }) => {
-  const state = await installServer(page, { connected: false });
-  state.lastfmAnswer = 'none';
+  const state = await installServer(page, { connected: false, initial: { lastfmAnswer: 'none' } });
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
   await expect(page.locator('#status')).toHaveText('Last.fm did not connect. Start again.');
@@ -224,8 +220,7 @@ test('a return that Last.fm did not approve says so, starts nothing and leaves a
 });
 
 test('without a usable Last.fm application, connecting asks for an administrator instead of blaming the connection', async ({ page }) => {
-  const state = await installServer(page, { connected: false });
-  state.applicationMissing = true;
+  await installServer(page, { connected: false, initial: { applicationMissing: true } });
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
   await expect(page.locator('#status')).toHaveText('This server has no usable Last.fm application. Ask a server administrator.');
@@ -234,8 +229,7 @@ test('without a usable Last.fm application, connecting asks for an administrator
 });
 
 test('an approval that Last.fm then refuses is reported and not repeated', async ({ page }) => {
-  const state = await installServer(page, { connected: false });
-  state.finishFails = true;
+  const state = await installServer(page, { connected: false, initial: { finishFails: true } });
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
   await expect(page.locator('#status')).toHaveText('Last.fm did not confirm the connection. Start again.');
@@ -266,8 +260,7 @@ const refusedAddresses = [
 for (const [reason, address, named] of refusedAddresses) {
   for (const administrator of named ? [false, true] : [false]) {
     test(administrator ? `an administrator reads why the page does not leave for ${reason}` : `the page does not leave for ${reason}`, async ({ page }) => {
-      const state = await installServer(page, { administrator, connected: false });
-      state.authorizationUrl = address;
+      const state = await installServer(page, { administrator, connected: false, initial: { authorizationUrl: address } });
       await passwordLogin(page);
       await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
       const text = !named ? notStarted : administrator ? namedReturn(named, 'http://127.0.0.1:4177/JellySin/Lastfm/Callback') : askAdministrator;
@@ -282,9 +275,7 @@ for (const [reason, address, named] of refusedAddresses) {
 }
 
 test('the page shows its refusal also when the server does not take the note of it', async ({ page }) => {
-  const state = await installServer(page, { connected: false });
-  state.authorizationUrl = refusedAddresses[0][1];
-  state.refusalFails = true;
+  const state = await installServer(page, { connected: false, initial: { authorizationUrl: refusedAddresses[0][1], refusalFails: true } });
   await passwordLogin(page);
   await page.getByRole('button', { name: 'Connect Last.fm', exact: true }).click();
   await expect(page.locator('#status')).toHaveText(notStarted);
@@ -300,8 +291,7 @@ test('administrators open native Jellyfin settings from the user page', async ({
 });
 
 test('delivery exposes retained daily limits, rejected submissions and pending disk writes', async ({ page }) => {
-  const state = await installServer(page);
-  state.delivery = { ...state.delivery, LastIgnoredCode: 5, Rejected: 2, LastRejectedCode: 3, PendingPersistence: 1 };
+  const state = await installServer(page, { initial: state => ({ delivery: { ...state.delivery, LastIgnoredCode: 5, Rejected: 2, LastRejectedCode: 3, PendingPersistence: 1 } }) });
   await passwordLogin(page);
   await page.getByText('Delivery status', { exact: true }).click();
   await page.locator('#delivery-refresh').click();
@@ -312,8 +302,7 @@ test('delivery exposes retained daily limits, rejected submissions and pending d
 });
 
 test('delivery explains that a play time ahead of Last.fm retries by itself', async ({ page }) => {
-  const state = await installServer(page);
-  state.delivery = { ...state.delivery, Pending: 2, Blocked: 1, LastIgnoredCode: 4 };
+  await installServer(page, { initial: state => ({ delivery: { ...state.delivery, Pending: 2, Blocked: 1, LastIgnoredCode: 4 } }) });
   await passwordLogin(page);
   await page.getByText('Delivery status', { exact: true }).click();
   await page.locator('#delivery-refresh').click();
@@ -323,8 +312,7 @@ test('delivery explains that a play time ahead of Last.fm retries by itself', as
 });
 
 test('delivery warns once the oldest held play is seven days old', async ({ page }) => {
-  const state = await installServer(page);
-  state.delivery = { ...state.delivery, Pending: 3, OldestPendingDays: 6 };
+  const state = await installServer(page, { initial: state => ({ delivery: { ...state.delivery, Pending: 3, OldestPendingDays: 6 } }) });
   await passwordLogin(page);
   await page.getByText('Delivery status', { exact: true }).click();
   await page.locator('#delivery-refresh').click();
@@ -350,9 +338,8 @@ test('disclosure controls and cancellation preserve focus', async ({ page }) => 
 });
 
 test('an interrupted playlist can be reviewed and cancelled without deleting the playlist', async ({ page }) => {
-  const state = await installServer(page);
   const operationId = '33333333-3333-4333-8333-333333333333';
-  state.pendingPlaylist = { OperationId: operationId, Name: 'Evening listening', ItemCount: 20, Status: 'A track is no longer accessible.' };
+  const state = await installServer(page, { initial: { pendingPlaylist: { OperationId: operationId, Name: 'Evening listening', ItemCount: 20, Status: 'A track is no longer accessible.' } } });
   await passwordLogin(page);
   await page.locator('#playlists-refresh').click();
   await expect(page.locator('#playlist-pending')).toContainText('no longer accessible');
@@ -787,8 +774,7 @@ test('toggling a device scrobble checkbox updates the excluded devices list', as
 });
 
 test('admin-blocked media type is rendered disabled and unchecked with admin text', async ({ page }) => {
-  const state = await installServer(page);
-  state.adminMediaTypes = { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true };
+  await installServer(page, { initial: { adminMediaTypes: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true } } });
   await passwordLogin(page);
 
   await expect(page.locator('#media-type-exclusions-list label')).toHaveCount(3);
@@ -803,17 +789,14 @@ test('admin-blocked media type is rendered disabled and unchecked with admin tex
 });
 
 test('device load failure displays safe load failure text', async ({ page }) => {
-  const state = await installServer(page);
-  state.deviceFail = true;
+  await installServer(page, { initial: { deviceFail: true } });
   await passwordLogin(page);
 
   await expect(page.locator('#device-exclusions-summary')).toHaveText('Could not load devices.');
 });
 
 test('saving media types keeps the user exclusion of a type the administrator turned off', async ({ page }) => {
-  const state = await installServer(page);
-  state.adminMediaTypes = { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true };
-  state.excludedMediaTypes = ['Audiobooks'];
+  const state = await installServer(page, { initial: { adminMediaTypes: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true }, excludedMediaTypes: ['Audiobooks'] } });
   await passwordLogin(page);
 
   await page.locator('input[data-media-type="MusicVideos"]').uncheck();
@@ -822,9 +805,7 @@ test('saving media types keeps the user exclusion of a type the administrator tu
 });
 
 test('saving media types does not exclude a type the administrator turned off that the user kept', async ({ page }) => {
-  const state = await installServer(page);
-  state.adminMediaTypes = { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true };
-  state.excludedMediaTypes = [];
+  const state = await installServer(page, { initial: { adminMediaTypes: { ScrobbleMusic: true, ScrobbleAudiobooks: false, ScrobbleMusicVideos: true }, excludedMediaTypes: [] } });
   await passwordLogin(page);
 
   await page.locator('input[data-media-type="MusicVideos"]').uncheck();
