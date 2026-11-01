@@ -20,7 +20,9 @@ REQUIREMENTS = ROOT / ".config" / "semgrep" / "requirements.txt"
 LOCAL_RULES = ROOT / ".config" / "semgrep"
 PACKS = ("p/csharp", "p/typescript", "p/javascript", "p/python", "p/github-actions")
 SUFFIXES = {".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"}
-SCAN_TIMEOUT_SECONDS = 900
+# Two scans (self-test, then the tree) plus the earlier steps fit the CI scanners job's 15 minutes; both took 25 s
+# together on ubuntu-24.04 (run 41312005329).
+SCAN_TIMEOUT_SECONDS = 300
 MAX_TARGETS = 20000
 MARK = "planted"
 
