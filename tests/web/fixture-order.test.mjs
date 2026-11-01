@@ -83,8 +83,11 @@ export function racyAssignments(source) {
   // callback's `});`.
   let openIndent = -1;
   let callDepth = 0;
-  const checkTail = (tail, index) => {
-    if (writesState(tail)) findings.push(index + 1);
+  // Checks the text that runs before sign-in; a passwordLogin call in it closes the region after the text before it.
+  const check = (text, index) => {
+    const login = text.indexOf('await passwordLogin(');
+    if (writesState(login >= 0 ? text.slice(0, login) : text)) findings.push(index + 1);
+    if (login >= 0) openIndent = -1;
   };
   source.split('\n').forEach((line, index) => {
     const call = line.indexOf('await installServer(');
@@ -92,15 +95,14 @@ export function racyAssignments(source) {
       openIndent = indentOf(line);
       const { depth, tail } = callTail(line, call, 0);
       callDepth = depth;
-      checkTail(tail, index);
+      check(tail, index);
     } else if (openIndent < 0) return;
     else if (callDepth > 0) {
       const { depth, tail } = callTail(line, 0, callDepth);
       callDepth = depth;
-      checkTail(tail, index);
-    } else if (line.includes('await passwordLogin(')) openIndent = -1;
-    else if (line.trim().startsWith('}') && indentOf(line) < openIndent) openIndent = -1;
-    else if (writesState(line)) findings.push(index + 1);
+      check(tail, index);
+    } else if (line.trim().startsWith('}') && indentOf(line) < openIndent) openIndent = -1;
+    else check(line, index);
   });
   return findings;
 }
@@ -172,6 +174,25 @@ test('the check ignores quoted parentheses and checks the text after the call on
     '});',
   ].join('\n');
   assert.deepEqual(racyAssignments(source), [3, 7, 13]);
+});
+
+test('a passwordLogin call on the same line ends the region after the text before it', () => {
+  const source = [
+    'test(\'x\', async ({ page }) => {',
+    '  const state = await installServer(page); await passwordLogin(page); state.deviceFail = true;',
+    '  state.needsReconnect = true;',
+    '});',
+    'test(\'y\', async ({ page }) => {',
+    '  const state = await installServer(page); state.latencyMs = 500; await passwordLogin(page);',
+    '  state.deviceFail = true;',
+    '});',
+    'test(\'z\', async ({ page }) => {',
+    '  const state = await installServer(page);',
+    '  state.recipes.push({}); await passwordLogin(page); state.deviceFail = true;',
+    '  state.needsReconnect = true;',
+    '});',
+  ].join('\n');
+  assert.deepEqual(racyAssignments(source), [6, 11]);
 });
 
 test('the call walk returns the depth left open and the text after the call', () => {
