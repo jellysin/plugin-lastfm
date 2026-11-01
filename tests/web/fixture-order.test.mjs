@@ -75,6 +75,30 @@ export function callTail(line, from, depth) {
   return { depth: open, tail: '' };
 }
 
+// The line with string contents and comments blanked to spaces (same length), so a passwordLogin call is found only in
+// code: a commented-out or quoted call does not end the region.
+export function codeOf(line) {
+  let code = '';
+  let quote = '';
+  for (let at = 0; at < line.length; at += 1) {
+    const char = line[at];
+    if (quote) {
+      if (char === '\\') { code += '  '; at += 1; continue; }
+      if (char === quote) { quote = ''; code += char; } else code += ' ';
+    } else if (char === '/' && line[at + 1] === '/') return code + ' '.repeat(line.length - at);
+    else if (char === '/' && line[at + 1] === '*') {
+      const close = line.indexOf('*/', at + 2);
+      const end = close < 0 ? line.length : close + 2;
+      code += ' '.repeat(end - at);
+      at = end - 1;
+    } else {
+      if (char === '\'' || char === '"' || char === '`') quote = char;
+      code += char;
+    }
+  }
+  return code;
+}
+
 export function racyAssignments(source) {
   const findings = [];
   // openIndent: indentation of the open installServer statement, or -1 outside one. callDepth: unclosed parentheses
@@ -83,9 +107,9 @@ export function racyAssignments(source) {
   // callback's `});`.
   let openIndent = -1;
   let callDepth = 0;
-  // Checks the text that runs before sign-in; a passwordLogin call in it closes the region after the text before it.
+  // Checks the text that runs before sign-in; a passwordLogin call in its code closes the region after the text before it.
   const check = (text, index) => {
-    const login = text.indexOf('await passwordLogin(');
+    const login = codeOf(text).indexOf('await passwordLogin(');
     if (writesState(login >= 0 ? text.slice(0, login) : text)) findings.push(index + 1);
     if (login >= 0) openIndent = -1;
   };
@@ -193,6 +217,21 @@ test('a passwordLogin call on the same line ends the region after the text befor
     '});',
   ].join('\n');
   assert.deepEqual(racyAssignments(source), [6, 11]);
+});
+
+test('a commented-out or quoted passwordLogin call does not end the region', () => {
+  const source = [
+    'test(\'x\', async ({ page }) => {',
+    '  const state = await installServer(page);',
+    '  // await passwordLogin(page);',
+    '  state.deviceFail = true;',
+    '  /* await passwordLogin(page); */ state.latencyMs = 500;',
+    '  const note = \'await passwordLogin(page)\'; state.needsReconnect = true;',
+    '  await passwordLogin(page);',
+    '});',
+  ].join('\n');
+  assert.deepEqual(racyAssignments(source), [4, 5, 6]);
+  assert.equal(codeOf('a(\'x\\\'y\'); // z'), 'a(\'    \');     ');
 });
 
 test('the call walk returns the depth left open and the text after the call', () => {
