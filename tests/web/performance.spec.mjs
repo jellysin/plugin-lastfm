@@ -47,8 +47,7 @@ for (const width of [320, 1280]) {
     await protocol.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     await page.setViewportSize({ width, height: 900 });
     await page.addInitScript(observePerformance);
-    const state = await installServer(page, { prefix: '/jellyfin', latencyMs: 80 });
-    state.historyTracks = Array.from({ length: 200 }, (_, index) => ({ ...track, Title: `History track ${index}` }));
+    await installServer(page, { prefix: '/jellyfin', latencyMs: 80, initial: { historyTracks: Array.from({ length: 200 }, (_, index) => ({ ...track, Title: `History track ${index}` })) } });
     await passwordLogin(page);
     await expect.poll(() => page.evaluate(() => globalThis.jellysinLabMetrics.lcpMilliseconds)).toBeGreaterThan(0);
     for (const id of ['history-refresh', 'charts-refresh', 'discovery-refresh', 'favourites-refresh', 'playlists-refresh']) {
