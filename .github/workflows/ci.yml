@@ -224,4 +224,6 @@ jobs:
           tar -xzf "$RUNNER_TEMP/trivy.tar.gz" -C "$RUNNER_TEMP" trivy
           "$RUNNER_TEMP/trivy" fs --scanners vuln,secret,misconfig --severity HIGH,CRITICAL --exit-code 1 --no-progress .
       - name: No blocking static analysis finding (semgrep)
-        run: pipx run --spec semgrep==1.180.0 semgrep scan --config p/csharp --config p/typescript --config p/javascript --config p/python --config p/github-actions --metrics=off --error --disable-version-check
+        run: |
+          python3 tools/semgrep_gate.py --self-test
+          python3 tools/semgrep_gate.py

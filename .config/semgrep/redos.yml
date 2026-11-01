@@ -1,0 +1,52 @@
+# Local static-analysis rules run by tools/semgrep.sh in `make verify-all` and the lefthook pre-commit job. They
+# repeat, before CI, the finding classes Codacy reported on pull requests. Every rule has planted cases under
+# tests/semgrep/ that tools/semgrep.sh --self-test requires it to report.
+rules:
+  - id: redos-regex-javascript
+    message: >-
+      Regular expression `$REDOS` can backtrack catastrophically (nested or overlapping quantifiers), so a long input
+      takes exponential time (ReDoS, CWE-1333). Rewrite it without nested quantifiers or replace it with a plain scan.
+    metadata:
+      cwe: ["CWE-1333: Inefficient Regular Expression Complexity"]
+      references: ["https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS"]
+    languages: [javascript, typescript]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: /$REDOS/
+          - pattern: new RegExp("$REDOS", ...)
+          - pattern: RegExp("$REDOS", ...)
+      - metavariable-analysis:
+          analyzer: redos
+          metavariable: $REDOS
+  - id: redos-regex-python
+    message: >-
+      Regular expression `$REDOS` can backtrack catastrophically (nested or overlapping quantifiers), so a long input
+      takes exponential time (ReDoS, CWE-1333). Rewrite it without nested quantifiers or replace it with a plain scan.
+    metadata:
+      cwe: ["CWE-1333: Inefficient Regular Expression Complexity"]
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern: re.$FUNC("$REDOS", ...)
+      - metavariable-analysis:
+          analyzer: redos
+          metavariable: $REDOS
+  - id: redos-regex-csharp
+    message: >-
+      Regular expression `$REDOS` can backtrack catastrophically (nested or overlapping quantifiers), so a long input
+      takes exponential time (ReDoS, CWE-1333). Use RegexOptions.NonBacktracking or rewrite it without nested
+      quantifiers.
+    metadata:
+      cwe: ["CWE-1333: Inefficient Regular Expression Complexity"]
+    languages: [csharp]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: new Regex("$REDOS", ...)
+          - pattern: Regex.$FUNC($INPUT, "$REDOS", ...)
+      - pattern-not: new Regex("$REDOS", <... RegexOptions.NonBacktracking ...>, ...)
+      - pattern-not: Regex.$FUNC($INPUT, "$REDOS", <... RegexOptions.NonBacktracking ...>, ...)
+      - metavariable-analysis:
+          analyzer: redos
+          metavariable: $REDOS
