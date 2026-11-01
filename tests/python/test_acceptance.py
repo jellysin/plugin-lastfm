@@ -2,25 +2,30 @@
 
 import contextlib
 import io
+import json
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.acceptance import ROWS, check, main
+from tools.acceptance import MAX_LINES, MAX_TOKENS_PER_ROW, ROWS, check, main
 
 
 class AcceptanceTests(unittest.TestCase):
     def setUp(self):
+        """Initialize temporary directory root for test isolation."""
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
     def make_valid_fixture(self) -> str:
+        """Create valid fixture files and return acceptance markdown content."""
         dummy_code = self.root / "tests" / "dummy.cs"
         dummy_code.parent.mkdir(parents=True, exist_ok=True)
         dummy_code.write_text("class Dummy { void TestMethod() {} }", encoding="utf-8")
@@ -49,9 +54,11 @@ class AcceptanceTests(unittest.TestCase):
         return "\n".join(lines) + "\n"
 
     def test_committed_acceptance_passes(self):
+        """Ensure default committed acceptance criteria passes verification."""
         self.assertEqual(0, main([]))
 
     def test_planted_missing_path(self):
+        """Ensure non-existent evidence path is reported on check and CLI."""
         text = self.make_valid_fixture().replace("tests/dummy.cs", "tests/missing.cs")
         doc_path = self.root / "docs" / "acceptance.md"
         doc_path.write_text(text, encoding="utf-8")
@@ -64,11 +71,140 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("tests/missing.cs", stderr.getvalue())
 
     def test_planted_symbol_absent(self):
+        """Ensure missing method declaration in evidence is detected."""
         text = self.make_valid_fixture().replace("::TestMethod", "::NoSuchMethod")
         errors = check(text, self.root)
         self.assertTrue(any("NoSuchMethod" in err for err in errors))
 
+    def test_planted_symbol_only_in_comment(self):
+        """Ensure symbol appearing only in comment is refused."""
+        dummy_code = self.root / "tests" / "dummy.cs"
+        text = self.make_valid_fixture()
+        dummy_code.write_text("class Dummy { // TestMethod\n }", encoding="utf-8")
+        errors = check(text, self.root)
+        self.assertTrue(any("symbol 'TestMethod' not found" in err for err in errors))
+
+    def test_planted_symbol_only_in_string(self):
+        """Ensure symbol appearing only in string literal is refused."""
+        dummy_code = self.root / "tests" / "dummy.cs"
+        text = self.make_valid_fixture()
+        dummy_code.write_text('class Dummy { string s = "TestMethod"; }', encoding="utf-8")
+        errors = check(text, self.root)
+        self.assertTrue(any("symbol 'TestMethod' not found" in err for err in errors))
+
+    def test_planted_symbol_prefix_only(self):
+        """Ensure symbol appearing only as prefix of identifier is refused."""
+        dummy_code = self.root / "tests" / "dummy.cs"
+        text = self.make_valid_fixture()
+        dummy_code.write_text("class Dummy { void NotTestMethod() {} void TestMethodExtra() {} }", encoding="utf-8")
+        errors = check(text, self.root)
+        self.assertTrue(any("symbol 'TestMethod' not found" in err for err in errors))
+
+    def test_planted_symbol_empty_name(self):
+        """Ensure empty symbol name after :: is refused."""
+        text = self.make_valid_fixture().replace("::TestMethod", "::")
+        errors = check(text, self.root)
+        self.assertTrue(any("empty test name" in err for err in errors))
+
+    def test_planted_symbol_unsupported_suffix(self):
+        """Ensure test name on unsupported file suffix is refused."""
+        text = self.make_valid_fixture().replace(
+            "tests/dummy.cs::TestMethod", "docs/validation.md::TestMethod"
+        )
+        errors = check(text, self.root)
+        expected = "test names are only checked in .cs, .py, .mjs, .js, .ts files"
+        self.assertTrue(any(expected in err for err in errors))
+
+    def test_python_symbol_declaration(self):
+        """Ensure Python def and async def match declaration syntax."""
+        text = self.make_valid_fixture()
+        py_code = self.root / "tests" / "dummy.py"
+        py_code.write_text("def TestMethod():\n    pass\n", encoding="utf-8")
+        text = text.replace("tests/dummy.cs::TestMethod", "tests/dummy.py::TestMethod")
+        self.assertEqual([], check(text, self.root))
+
+    def test_js_symbol_declaration(self):
+        """Ensure JS/TS test('title', ...) matches exact title string."""
+        text = self.make_valid_fixture()
+        js_code = self.root / "tests" / "dummy.mjs"
+        js_code.write_text("test('TestMethod', () => {});\n", encoding="utf-8")
+        text = text.replace("tests/dummy.cs::TestMethod", "tests/dummy.mjs::TestMethod")
+        self.assertEqual([], check(text, self.root))
+
+    def test_planted_file_lines_cap_exceeded(self):
+        """Ensure file exceeding MAX_LINES returns error rather than truncation."""
+        extra_lines = ["<!-- padding -->"] * (MAX_LINES + 5)
+        text = self.make_valid_fixture() + "\n" + "\n".join(extra_lines)
+        errors = check(text, self.root)
+        self.assertTrue(any(f"File exceeds {MAX_LINES} lines limit" in err for err in errors))
+
+    def test_planted_evidence_tokens_cap_exceeded(self):
+        """Ensure row exceeding MAX_TOKENS_PER_ROW returns error rather than truncation."""
+        tokens = " ".join(f"`tests/dummy.cs::TestMethod`" for _ in range(MAX_TOKENS_PER_ROW + 2))
+        lines = [
+            (f"| D1 | Criterion | {tokens} | |" if l.startswith("| D1 |") else l)
+            for l in self.make_valid_fixture().splitlines()
+        ]
+        errors = check("\n".join(lines) + "\n", self.root)
+        self.assertTrue(any(f"evidence tokens count exceeds limit of {MAX_TOKENS_PER_ROW}" in err for err in errors))
+
+    def test_planted_empty_criterion_error(self):
+        """Ensure empty or whitespace Criterion cell is refused."""
+        lines = [
+            ("| D1 |    | `tests/dummy.cs::TestMethod` | |" if l.startswith("| D1 |") else l)
+            for l in self.make_valid_fixture().splitlines()
+        ]
+        errors = check("\n".join(lines) + "\n", self.root)
+        self.assertTrue(any("Criterion must not be empty" in err or "empty Criterion" in err for err in errors))
+
+    def test_evidence_only_separators_empty_gap_error(self):
+        """Ensure evidence cell with only separators and empty gap returns error."""
+        lines = [
+            ("| D1 | Criterion |  ; ;   | |" if l.startswith("| D1 |") else l)
+            for l in self.make_valid_fixture().splitlines()
+        ]
+        errors = check("\n".join(lines) + "\n", self.root)
+        self.assertTrue(any("needs evidence or a gap" in err for err in errors))
+
+    def test_fenced_code_block_strips_rows(self):
+        """Ensure table rows inside fenced code blocks are ignored as table structure."""
+        text = self.make_valid_fixture()
+        lines = text.splitlines()
+        wrapped = ["```"] + [l for l in lines if l.startswith("| D1 |")] + ["```"]
+        remaining = [l for l in lines if not l.startswith("| D1 |")]
+        modified = "\n".join(remaining + wrapped) + "\n"
+        errors = check(modified, self.root)
+        self.assertTrue(any("Missing row: D1" in err for err in errors))
+
+    def test_fenced_code_block_strips_headings(self):
+        """Ensure headings inside fenced code blocks are ignored during anchor checking."""
+        text = self.make_valid_fixture()
+        dummy_doc = self.root / "docs" / "validation.md"
+        dummy_doc.write_text("# Validation\n\n```\n## The Run\n```\n", encoding="utf-8")
+        errors = check(text, self.root)
+        self.assertTrue(any("anchor 'the-run' not found" in err for err in errors))
+
+    def test_github_duplicate_heading_slugs(self):
+        """Ensure duplicate heading slugs append -1, -2 disambiguation."""
+        text = self.make_valid_fixture().replace(
+            "docs/validation.md#the-run", "docs/validation.md#the-run-1"
+        )
+        dummy_doc = self.root / "docs" / "validation.md"
+        dummy_doc.write_text("# Validation\n\n## The Run\n\n## The Run\n", encoding="utf-8")
+        self.assertEqual([], check(text, self.root))
+
+        dummy_doc.write_text("# Validation\n\n## The Run\n", encoding="utf-8")
+        errors = check(text, self.root)
+        self.assertTrue(any("anchor 'the-run-1' not found" in err for err in errors))
+
+        text_3rd = self.make_valid_fixture().replace(
+            "docs/validation.md#the-run", "docs/validation.md#the-run-2"
+        )
+        dummy_doc.write_text("# Validation\n\n## The Run\n\n## The Run\n\n## The Run\n", encoding="utf-8")
+        self.assertEqual([], check(text_3rd, self.root))
+
     def test_planted_missing_row_one_error(self):
+        """Ensure missing row triggers single missing row error."""
         text = self.make_valid_fixture()
         lines = [line for line in text.splitlines() if not line.startswith("| D2 |")]
         errors = check("\n".join(lines) + "\n", self.root)
@@ -76,6 +212,7 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("Missing row: D2", errors[0])
 
     def test_planted_duplicate_row_one_error(self):
+        """Ensure duplicated row triggers single duplicate row error."""
         text = self.make_valid_fixture()
         lines = text.splitlines()
         for idx, line in enumerate(lines):
@@ -87,6 +224,7 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("Duplicate row: D1", errors[0])
 
     def test_planted_unknown_row_one_error(self):
+        """Ensure unknown row identifier is reported."""
         text = self.make_valid_fixture()
         lines = text.splitlines()
         lines.append("| X9 | Criterion | `tests/dummy.cs` | |")
@@ -95,6 +233,7 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("Unknown row: X9", errors[0])
 
     def test_planted_wrong_order_one_error(self):
+        """Ensure disordered rows trigger order mismatch error."""
         text = self.make_valid_fixture()
         lines = text.splitlines()
         d1_idx = next(i for i, l in enumerate(lines) if l.startswith("| D1 |"))
@@ -105,46 +244,53 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("Rows out of order", errors[0])
 
     def test_empty_evidence_with_empty_gap_error(self):
+        """Ensure row with empty evidence and empty gap is refused."""
         text = self.make_valid_fixture()
         lines = [
             ("| D1 | Criterion | | |" if l.startswith("| D1 |") else l)
             for l in text.splitlines()
         ]
         errors = check("\n".join(lines) + "\n", self.root)
-        self.assertTrue(any("empty Evidence must have a non-empty Gap" in err for err in errors))
+        self.assertTrue(any("needs evidence or a gap" in err for err in errors))
 
     def test_empty_evidence_with_gap_boundary_passes(self):
+        """Ensure row with empty evidence but valid gap explanation passes."""
         text = self.make_valid_fixture()
         errors = check(text, self.root)
         self.assertEqual([], errors)
 
     def test_parent_traversal_path_error(self):
+        """Ensure relative path traversing above root is rejected."""
         text = self.make_valid_fixture().replace("tests/dummy.cs", "../dummy.cs")
         errors = check(text, self.root)
         self.assertTrue(any("must not contain '..'" in err for err in errors))
 
     def test_absolute_path_error(self):
-        text = self.make_valid_fixture().replace("tests/dummy.cs", "/tmp/dummy.cs")
+        """Ensure absolute paths are rejected even within repository."""
+        abs_path = str(self.root.resolve() / "tests/dummy.cs")
+        text = self.make_valid_fixture().replace("tests/dummy.cs", abs_path)
         errors = check(text, self.root)
         self.assertTrue(any("must not be absolute" in err for err in errors))
 
     def test_bad_anchor_error(self):
+        """Ensure reference to non-existent markdown heading anchor fails."""
         text = self.make_valid_fixture().replace(
             "docs/validation.md#the-run", "docs/validation.md#bad-anchor"
         )
         errors = check(text, self.root)
         self.assertTrue(any("anchor 'bad-anchor' not found" in err for err in errors))
 
-
     RUN = "https://github.com/jellysin/plugin-lastfm/actions/runs/1/job/2#step:3:1"
 
     def test_run_link_counts_as_evidence(self):
+        """Ensure GitHub actions job step link is accepted as evidence."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
         )
         self.assertEqual([], check(text, self.root))
 
     def test_link_outside_this_repository_actions_is_refused(self):
+        """Ensure links outside target repository actions are refused."""
         foreign = "https://github.com/other/repo/actions/runs/1/job/2#step:3:1"
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({foreign}) | |"
@@ -152,10 +298,110 @@ class AcceptanceTests(unittest.TestCase):
         self.assertTrue(any("neither a path nor a run link" in err for err in check(text, self.root)))
 
     def test_bare_prose_evidence_is_refused(self):
+        """Ensure unformatted prose in evidence cell is rejected."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", "| O4 | Criterion for O4 | checked by hand | |"
         )
         self.assertTrue(any("neither a path nor a run link" in err for err in check(text, self.root)))
+
+    def _mock_job_response(self, run_id=1, conclusion="success", step_conclusion="success", step_num=3):
+        """Create mock response context manager for urllib.request.urlopen."""
+        payload = {
+            "run_id": run_id,
+            "conclusion": conclusion,
+            "steps": [{"number": step_num, "conclusion": step_conclusion}],
+        }
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(payload).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        return mock_resp
+
+    def test_check_links_good_job_passes(self):
+        """Ensure --check-links passes when job and step succeed."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        mock_resp = self._mock_job_response()
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            errors = check(text, self.root, check_links=True)
+        self.assertEqual([], errors)
+
+    def test_check_links_wrong_run_id_refused(self):
+        """Ensure --check-links refuses mismatching run_id."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        mock_resp = self._mock_job_response(run_id=999)
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            errors = check(text, self.root, check_links=True)
+        self.assertTrue(any("run_id mismatch" in err for err in errors))
+
+    def test_check_links_failed_step_refused(self):
+        """Ensure --check-links refuses job with failing step."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        mock_resp = self._mock_job_response(step_conclusion="failure")
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            errors = check(text, self.root, check_links=True)
+        self.assertTrue(any("step 3" in err for err in errors))
+
+    def test_check_links_missing_step_refused(self):
+        """Ensure --check-links refuses job when step number is absent."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        mock_resp = self._mock_job_response(step_num=99)
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            errors = check(text, self.root, check_links=True)
+        self.assertTrue(any("step 3" in err for err in errors))
+
+    def test_check_links_http_error_refused(self):
+        """Ensure --check-links reports HTTP error and names URL."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        http_err = urllib.error.HTTPError("https://api.github.com/...", 404, "Not Found", {}, None)
+        self.addCleanup(http_err.close)
+        with patch("urllib.request.urlopen", side_effect=http_err):
+            errors = check(text, self.root, check_links=True)
+        self.assertTrue(any(self.RUN in err for err in errors))
+
+    def test_check_links_auth_header_sent(self):
+        """Ensure Authorization Bearer is sent when GITHUB_TOKEN is present."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        mock_resp = self._mock_job_response()
+        captured_requests = []
+
+        def fake_urlopen(req, timeout=15):
+            """Capture request for assertion and return mock response."""
+            captured_requests.append(req)
+            return mock_resp
+
+        with patch.dict("os.environ", {"GITHUB_TOKEN": "token-xyz"}):
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                errors = check(text, self.root, check_links=True)
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(captured_requests))
+        self.assertEqual("Bearer token-xyz", captured_requests[0].get_header("Authorization"))
+
+    def test_check_links_cli_failure_exit_1(self):
+        """Ensure main CLI with --check-links exits 1 on link failure."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        doc_path = self.root / "docs" / "acceptance.md"
+        doc_path.write_text(text, encoding="utf-8")
+        http_err = urllib.error.HTTPError("https://api.github.com/...", 500, "Server Error", {}, None)
+        self.addCleanup(http_err.close)
+        stderr = io.StringIO()
+        with patch("urllib.request.urlopen", side_effect=http_err):
+            with contextlib.redirect_stderr(stderr):
+                code = main([str(doc_path), "--root", str(self.root), "--check-links"])
+        self.assertEqual(1, code)
+        self.assertIn(self.RUN, stderr.getvalue())
 
 
 if __name__ == "__main__":

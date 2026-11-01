@@ -1,8 +1,12 @@
 """Verify acceptance criteria table structure, evidence tokens and gap declarations."""
 
 import argparse
+import json
+import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROWS = (
@@ -28,9 +32,14 @@ MAX_FILE_BYTES = 1024 * 1024
 MAX_LINES = 10_000
 MAX_ROWS = 200
 MAX_TOKENS_PER_ROW = 50
+MAX_STEPS = 200
+
 # A recorded run is a link to one step of a GitHub Actions job of this repository.
 RUN_LINK = re.compile(
     r"\[[^\]\n]+\]\(https://github\.com/jellysin/plugin-lastfm/actions/runs/\d+/job/\d+#step:\d+:1\)"
+)
+RUN_LINK_URL = re.compile(
+    r"https://github\.com/jellysin/plugin-lastfm/actions/runs/(?P<run_id>\d+)/job/(?P<job_id>\d+)#step:(?P<step>\d+):1"
 )
 TOKEN = re.compile(r"`([^`]+)`")
 
@@ -43,22 +52,53 @@ def github_slug(heading: str) -> str:
     return re.sub(r"\s+", "-", slug)
 
 
+def strip_fences_and_comments(text: str) -> str:
+    """Remove fenced code blocks (``` and ~~~) and <!-- --> comments from markdown."""
+    clean_text = re.sub(r"<!--[\s\S]*?-->", "", text)
+    result_lines: list[str] = []
+    in_fence: tuple[str, int] | None = None
+    lines = clean_text.splitlines()
+    for line in lines[:MAX_LINES]:
+        stripped = line.strip()
+        if in_fence is None:
+            match = re.match(r"^(`{3,}|~{3,})", stripped)
+            if match:
+                chars = match.group(1)
+                in_fence = (chars[0], len(chars))
+                continue
+            result_lines.append(line)
+        else:
+            match = re.match(r"^(`{3,}|~{3,})\s*$", stripped)
+            if match and match.group(1)[0] == in_fence[0] and len(match.group(1)) >= in_fence[1]:
+                in_fence = None
+    return "\n".join(result_lines)
+
+
 def extract_markdown_slugs(content: str) -> set[str]:
-    """Collect heading slugs from markdown source text."""
-    slugs = set()
-    for line in content.splitlines()[:MAX_LINES]:
+    """Collect heading slugs from markdown source with duplicate disambiguation."""
+    stripped_content = strip_fences_and_comments(content)
+    slugs: set[str] = set()
+    counts: dict[str, int] = {}
+    lines = stripped_content.splitlines()
+    for line in lines[:MAX_LINES]:
         stripped = line.strip()
         if stripped.startswith("#"):
             match = re.match(r"^#{1,6}\s+(.+)$", stripped)
             if match:
-                slugs.add(github_slug(match.group(1)))
+                base = github_slug(match.group(1))
+                count = counts.get(base, 0)
+                slug = base if count == 0 else f"{base}-{count}"
+                counts[base] = count + 1
+                slugs.add(slug)
     return slugs
 
 
 def parse_table_rows(text: str) -> list[tuple[str, str, str, str]]:
     """Parse table rows into (row_id, criterion, evidence, gap) tuples."""
+    stripped_text = strip_fences_and_comments(text)
     rows: list[tuple[str, str, str, str]] = []
-    for line in text.splitlines()[:MAX_LINES]:
+    lines = stripped_text.splitlines()
+    for line in lines[:MAX_LINES]:
         stripped = line.strip()
         if not (stripped.startswith("|") and stripped.endswith("|")):
             continue
@@ -86,23 +126,46 @@ def check_row_structure(row_ids: list[str]) -> list[str]:
         seen.add(r)
 
     unknown = [r for r in row_ids[:MAX_ROWS] if r not in ROWS]
-    missing = [r for r in ROWS if r not in seen]
+    missing = [r for r in ROWS[:MAX_ROWS] if r not in seen]
 
-    for u in unknown:
+    for u in unknown[:MAX_ROWS]:
         errors.append(f"Unknown row: {u}")
-    for d in duplicates:
+    for d in duplicates[:MAX_ROWS]:
         errors.append(f"Duplicate row: {d}")
-    for m in missing:
+    for m in missing[:MAX_ROWS]:
         errors.append(f"Missing row: {m}")
 
-    if not unknown and not duplicates and not missing:
-        if tuple(row_ids) != ROWS:
-            errors.append(f"Rows out of order: {', '.join(row_ids)}")
+    if not unknown and not duplicates and not missing and tuple(row_ids) != ROWS:
+        errors.append(f"Rows out of order: {', '.join(row_ids)}")
     return errors
 
 
+def check_symbol_declaration(row_id: str, path_str: str, name: str, content: str) -> list[str]:
+    """Verify symbol declaration matches expected language syntax by file extension."""
+    if not name:
+        return [f"Row {row_id}: empty test name in evidence token '{path_str}::{name}'"]
+
+    suffix = Path(path_str).suffix.lower()
+    escaped = re.escape(name)
+    if suffix == ".cs":
+        pattern = rf"\b(?:void|Task)\s+{escaped}\s*\("
+        if not re.search(pattern, content):
+            return [f"Row {row_id}: symbol '{name}' not found in '{path_str}'"]
+    elif suffix == ".py":
+        pattern = rf"^\s*(?:async\s+)?def\s+{escaped}\s*\("
+        if not re.search(pattern, content, re.MULTILINE):
+            return [f"Row {row_id}: symbol '{name}' not found in '{path_str}'"]
+    elif suffix in {".mjs", ".js", ".ts"}:
+        pattern = rf"\btest\(\s*(['\"`]){escaped}\1"
+        if not re.search(pattern, content):
+            return [f"Row {row_id}: symbol '{name}' not found in '{path_str}'"]
+    else:
+        return [f"Row {row_id}: test names are only checked in .cs, .py, .mjs, .js, .ts files"]
+    return []
+
+
 def check_token(row_id: str, token: str, root: Path) -> list[str]:
-    """Validate one backtick evidence token against disk files and anchors."""
+    """Validate one backtick evidence token against disk files, anchors and declarations."""
     errors: list[str] = []
     if "::" in token and "#" in token:
         return [f"Row {row_id}: invalid evidence token '{token}'"]
@@ -139,8 +202,11 @@ def check_token(row_id: str, token: str, root: Path) -> list[str]:
     except (OSError, UnicodeDecodeError) as exc:
         return [f"Row {row_id}: failed to read '{path_str}': {exc}"]
 
-    if name is not None and name not in content:
-        errors.append(f"Row {row_id}: symbol '{name}' not found in '{path_str}'")
+    if len(content.splitlines()) > MAX_LINES:
+        return [f"Row {row_id}: target file '{path_str}' exceeds {MAX_LINES} lines limit"]
+
+    if name is not None:
+        errors.extend(check_symbol_declaration(row_id, path_str, name, content))
     if anchor is not None:
         slugs = extract_markdown_slugs(content)
         if anchor not in slugs:
@@ -148,10 +214,73 @@ def check_token(row_id: str, token: str, root: Path) -> list[str]:
     return errors
 
 
-def check(text: str, root: Path) -> list[str]:
+def fetch_job_data(job_id: str, job_cache: dict[str, dict]) -> dict:
+    """Fetch GitHub Actions job metadata from API with in-memory caching."""
+    if job_id in job_cache:
+        return job_cache[job_id]
+
+    url = f"https://api.github.com/repos/jellysin/plugin-lastfm/actions/jobs/{job_id}"
+    req = urllib.request.Request(url)
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("User-Agent", "plugin-lastfm-acceptance-checker")
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("API response is not a JSON object")
+        job_cache[job_id] = data
+        return data
+
+
+def check_run_link(row_id: str, link_url: str, job_cache: dict[str, dict]) -> list[str]:
+    """Validate a single GitHub Actions run link via API."""
+    match = RUN_LINK_URL.search(link_url)
+    if not match:
+        return [f"Row {row_id}: invalid run link '{link_url}'"]
+
+    expected_run = match.group("run_id")
+    job_id = match.group("job_id")
+    expected_step = match.group("step")
+
+    try:
+        data = fetch_job_data(job_id, job_cache)
+    except urllib.error.HTTPError as exc:
+        return [f"Row {row_id}: link '{link_url}' HTTP error: {exc.code} {exc.reason}"]
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        return [f"Row {row_id}: link '{link_url}' network error: {type(exc).__name__}"]
+
+    if str(data.get("run_id")) != expected_run:
+        return [f"Row {row_id}: link '{link_url}' run_id mismatch: expected {expected_run}, got {data.get('run_id')}"]
+
+    if data.get("conclusion") != "success":
+        return [f"Row {row_id}: link '{link_url}' job conclusion is '{data.get('conclusion')}', expected 'success'"]
+
+    steps = data.get("steps", [])
+    step_match = None
+    for step in steps[:MAX_STEPS]:
+        if str(step.get("number")) == expected_step:
+            step_match = step
+            break
+
+    if step_match is None:
+        return [f"Row {row_id}: link '{link_url}' step {expected_step} not found"]
+    if step_match.get("conclusion") != "success":
+        return [f"Row {row_id}: link '{link_url}' step {expected_step} conclusion is '{step_match.get('conclusion')}', expected 'success'"]
+
+    return []
+
+
+def check(text: str, root: Path, check_links: bool = False) -> list[str]:
     """Check acceptance criteria markdown text against repository root."""
     if len(text.encode("utf-8")) > MAX_FILE_BYTES:
         return ["File exceeds 1 MiB limit"]
+
+    lines = text.splitlines()
+    if len(lines) > MAX_LINES:
+        return [f"File exceeds {MAX_LINES} lines limit"]
 
     rows = parse_table_rows(text)
     if len(rows) > MAX_ROWS:
@@ -161,13 +290,19 @@ def check(text: str, root: Path) -> list[str]:
     row_ids = [r[0] for r in rows]
     errors.extend(check_row_structure(row_ids))
 
-    for row_id, _criterion, evidence_cell, gap_cell in rows[:MAX_ROWS]:
+    job_cache: dict[str, dict] = {}
+    for row_id, criterion, evidence_cell, gap_cell in rows[:MAX_ROWS]:
+        raw_criterion = criterion.strip()
         raw_evidence = evidence_cell.strip()
         raw_gap = gap_cell.strip()
 
-        if not raw_evidence:
+        if not raw_criterion:
+            errors.append(f"Row {row_id}: Criterion must not be empty")
+
+        clean_evidence = raw_evidence.replace(";", "").strip()
+        if not clean_evidence:
             if not raw_gap:
-                errors.append(f"Row {row_id}: empty Evidence must have a non-empty Gap")
+                errors.append(f"Row {row_id}: needs evidence or a gap")
             continue
 
         tokens = TOKEN.findall(raw_evidence)
@@ -176,8 +311,17 @@ def check(text: str, root: Path) -> list[str]:
             errors.append(f"Row {row_id}: Evidence holds text that is neither a path nor a run link: {residue}")
             continue
 
+        if len(tokens) > MAX_TOKENS_PER_ROW:
+            errors.append(f"Row {row_id}: evidence tokens count exceeds limit of {MAX_TOKENS_PER_ROW}")
+            continue
+
         for token in tokens[:MAX_TOKENS_PER_ROW]:
             errors.extend(check_token(row_id, token, root))
+
+        if check_links:
+            run_matches = list(RUN_LINK_URL.finditer(raw_evidence))[:MAX_TOKENS_PER_ROW]
+            for match in run_matches:
+                errors.extend(check_run_link(row_id, match.group(0), job_cache))
 
     return errors
 
@@ -187,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", nargs="?", default="docs/acceptance.md")
     parser.add_argument("--root", default=None)
+    parser.add_argument("--check-links", action="store_true", default=False)
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parent.parent
@@ -209,9 +354,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{args.file}: failed to read: {exc}", file=sys.stderr)
         return 1
 
-    errors = check(text, root)
+    errors = check(text, root, check_links=args.check_links)
     if errors:
-        for error in errors:
+        for error in errors[:MAX_LINES]:
             print(f"{args.file}: {error}", file=sys.stderr)
         return 1
     return 0
