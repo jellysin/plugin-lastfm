@@ -68,6 +68,15 @@ is declared there, in another `REUSE.toml` table, or in its own SPDX header.
 A file that names an MIT origin, such as an adapted skill under `.agents/skills`,
 must also be labelled MIT by a `REUSE.toml` table or its own header. `LICENSES/MIT.txt`
 holds the licence text; each skill keeps its upstream notice in its own `LICENSE` file.
+Semgrep runs through `tools/semgrep_gate.py` in three places: the lefthook pre-commit
+job (staged files), `make verify-all` and the CI scanners job (every tracked file). All
+three use the release pinned in `.config/semgrep/requirements.txt`, the registry packs
+CI used before and the local rules in `.config/semgrep/`, which repeat before CI the
+classes Codacy reported, starting with ReDoS-prone regular expressions. It starts
+Semgrep with `uvx`, or `pipx` when uv is missing, and says which one ran. Files that
+Semgrep parses only in part, such as C# primary constructors, are listed, not passed
+silently. `--self-test` writes planted cases to a temporary directory and fails when a
+rule misses one or reports an unmarked line.
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,

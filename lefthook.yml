@@ -27,6 +27,9 @@ pre-commit:
       run: sh .config/lefthook/engine.sh compile-context --verify
     hiss-audit:
       run: sh .config/lefthook/engine.sh audit --offline
+    semgrep:
+      glob: "*.{cs,js,mjs,cjs,ts,mts,py,yml,yaml}"
+      run: sh .config/lefthook/python.sh tools/semgrep_gate.py {staged_files}
 
 post-commit:
   commands:
