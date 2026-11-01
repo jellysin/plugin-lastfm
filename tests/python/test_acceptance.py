@@ -6,7 +6,6 @@ import json
 import sys
 import tempfile
 import unittest
-import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -140,7 +139,7 @@ class AcceptanceTests(unittest.TestCase):
 
     def test_planted_evidence_tokens_cap_exceeded(self):
         """Ensure row exceeding MAX_TOKENS_PER_ROW returns error rather than truncation."""
-        tokens = " ".join(f"`tests/dummy.cs::TestMethod`" for _ in range(MAX_TOKENS_PER_ROW + 2))
+        tokens = " ".join("`tests/dummy.cs::TestMethod`" for _ in range(MAX_TOKENS_PER_ROW + 2))
         lines = [
             (f"| D1 | Criterion | {tokens} | |" if l.startswith("| D1 |") else l)
             for l in self.make_valid_fixture().splitlines()
@@ -304,88 +303,146 @@ class AcceptanceTests(unittest.TestCase):
         )
         self.assertTrue(any("neither a path nor a run link" in err for err in check(text, self.root)))
 
-    def _mock_job_response(self, run_id=1, conclusion="success", step_conclusion="success", step_num=3):
-        """Create mock response context manager for urllib.request.urlopen."""
+    def _mock_job_response(
+        self,
+        run_id=1,
+        conclusion="success",
+        step_conclusion="success",
+        step_num=3,
+        status=200,
+        reason="OK",
+    ):
+        """Create mock HTTPResponse with status, reason and JSON payload."""
         payload = {
             "run_id": run_id,
             "conclusion": conclusion,
             "steps": [{"number": step_num, "conclusion": step_conclusion}],
         }
         mock_resp = MagicMock()
+        mock_resp.status = status
+        mock_resp.reason = reason
         mock_resp.read.return_value = json.dumps(payload).encode("utf-8")
-        mock_resp.__enter__.return_value = mock_resp
         return mock_resp
+
+    def _mock_connection(self, mock_resp=None, side_effect=None):
+        """Create mock HTTPSConnection with getresponse, request and close."""
+        mock_conn = MagicMock()
+        if side_effect is not None:
+            mock_conn.request.side_effect = side_effect
+            mock_conn.getresponse.side_effect = side_effect
+        elif mock_resp is not None:
+            mock_conn.getresponse.return_value = mock_resp
+        return mock_conn
 
     def test_check_links_good_job_passes(self):
         """Ensure --check-links passes when job and step succeed."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
         )
-        mock_resp = self._mock_job_response()
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        mock_conn = self._mock_connection(self._mock_job_response())
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
             errors = check(text, self.root, check_links=True)
         self.assertEqual([], errors)
+        mock_conn.close.assert_called_once()
 
     def test_check_links_wrong_run_id_refused(self):
         """Ensure --check-links refuses mismatching run_id."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
         )
-        mock_resp = self._mock_job_response(run_id=999)
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        mock_conn = self._mock_connection(self._mock_job_response(run_id=999))
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
             errors = check(text, self.root, check_links=True)
         self.assertTrue(any("run_id mismatch" in err for err in errors))
+        mock_conn.close.assert_called_once()
+
+    def test_check_links_failed_job_refused(self):
+        """Ensure --check-links refuses job with failing conclusion."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        mock_conn = self._mock_connection(self._mock_job_response(conclusion="failure"))
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
+            errors = check(text, self.root, check_links=True)
+        self.assertTrue(any("job conclusion is 'failure'" in err for err in errors))
+        mock_conn.close.assert_called_once()
 
     def test_check_links_failed_step_refused(self):
         """Ensure --check-links refuses job with failing step."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
         )
-        mock_resp = self._mock_job_response(step_conclusion="failure")
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        mock_conn = self._mock_connection(self._mock_job_response(step_conclusion="failure"))
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
             errors = check(text, self.root, check_links=True)
         self.assertTrue(any("step 3" in err for err in errors))
+        mock_conn.close.assert_called_once()
 
     def test_check_links_missing_step_refused(self):
         """Ensure --check-links refuses job when step number is absent."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
         )
-        mock_resp = self._mock_job_response(step_num=99)
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        mock_conn = self._mock_connection(self._mock_job_response(step_num=99))
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
             errors = check(text, self.root, check_links=True)
         self.assertTrue(any("step 3" in err for err in errors))
+        mock_conn.close.assert_called_once()
 
-    def test_check_links_http_error_refused(self):
-        """Ensure --check-links reports HTTP error and names URL."""
+    def test_check_links_non_200_refused(self):
+        """Ensure --check-links reports HTTP error on 404 status."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
         )
-        http_err = urllib.error.HTTPError("https://api.github.com/...", 404, "Not Found", {}, None)
-        self.addCleanup(http_err.close)
-        with patch("urllib.request.urlopen", side_effect=http_err):
+        mock_conn = self._mock_connection(self._mock_job_response(status=404, reason="Not Found"))
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
             errors = check(text, self.root, check_links=True)
+        self.assertTrue(any("HTTP error: 404 Not Found" in err for err in errors))
         self.assertTrue(any(self.RUN in err for err in errors))
+        mock_conn.close.assert_called_once()
+
+    def test_check_links_os_error_refused(self):
+        """Ensure --check-links reports network error on OSError."""
+        text = self.make_valid_fixture().replace(
+            "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
+        )
+        mock_conn = self._mock_connection(side_effect=OSError("network unreachable"))
+        with patch("http.client.HTTPSConnection", return_value=mock_conn):
+            errors = check(text, self.root, check_links=True)
+        self.assertTrue(any("network error: OSError" in err for err in errors))
+        self.assertTrue(any(self.RUN in err for err in errors))
+        mock_conn.close.assert_called_once()
 
     def test_check_links_auth_header_sent(self):
         """Ensure Authorization Bearer is sent when GITHUB_TOKEN is present."""
         text = self.make_valid_fixture().replace(
             "| O4 | Criterion for O4 | | Gap explanation |", f"| O4 | Criterion for O4 | [CI run]({self.RUN}) | |"
         )
-        mock_resp = self._mock_job_response()
-        captured_requests = []
-
-        def fake_urlopen(req, timeout=15):
-            """Capture request for assertion and return mock response."""
-            captured_requests.append(req)
-            return mock_resp
-
-        with patch.dict("os.environ", {"GITHUB_TOKEN": "token-xyz"}):
-            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
-                errors = check(text, self.root, check_links=True)
+        mock_conn = self._mock_connection(self._mock_job_response())
+        fake_value = "x" * 8
+        with (
+            patch.dict("os.environ", {"GITHUB_TOKEN": fake_value}),
+            patch("http.client.HTTPSConnection", return_value=mock_conn),
+        ):
+            errors = check(text, self.root, check_links=True)
         self.assertEqual([], errors)
-        self.assertEqual(1, len(captured_requests))
-        self.assertEqual("Bearer token-xyz", captured_requests[0].get_header("Authorization"))
+        mock_conn.close.assert_called_once()
+        mock_conn.request.assert_called_once()
+        call_kwargs = mock_conn.request.call_args.kwargs
+        headers = call_kwargs.get("headers", {})
+        self.assertEqual(f"Bearer {fake_value}", headers.get("Authorization"))
+        for err in errors:
+            self.assertNotIn(fake_value, err)
+
+        mock_conn_err = self._mock_connection(self._mock_job_response(status=401, reason="Unauthorized"))
+        with (
+            patch.dict("os.environ", {"GITHUB_TOKEN": fake_value}),
+            patch("http.client.HTTPSConnection", return_value=mock_conn_err),
+        ):
+            err_list = check(text, self.root, check_links=True)
+        self.assertTrue(len(err_list) > 0)
+        for err in err_list:
+            self.assertNotIn(fake_value, err)
 
     def test_check_links_cli_failure_exit_1(self):
         """Ensure main CLI with --check-links exits 1 on link failure."""
@@ -394,14 +451,17 @@ class AcceptanceTests(unittest.TestCase):
         )
         doc_path = self.root / "docs" / "acceptance.md"
         doc_path.write_text(text, encoding="utf-8")
-        http_err = urllib.error.HTTPError("https://api.github.com/...", 500, "Server Error", {}, None)
-        self.addCleanup(http_err.close)
+        mock_conn = self._mock_connection(self._mock_job_response(status=500, reason="Server Error"))
         stderr = io.StringIO()
-        with patch("urllib.request.urlopen", side_effect=http_err):
-            with contextlib.redirect_stderr(stderr):
-                code = main([str(doc_path), "--root", str(self.root), "--check-links"])
+        with (
+            patch("http.client.HTTPSConnection", return_value=mock_conn),
+            contextlib.redirect_stderr(stderr),
+        ):
+            code = main([str(doc_path), "--root", str(self.root), "--check-links"])
         self.assertEqual(1, code)
         self.assertIn(self.RUN, stderr.getvalue())
+        self.assertIn("500 Server Error", stderr.getvalue())
+        mock_conn.close.assert_called_once()
 
 
 if __name__ == "__main__":

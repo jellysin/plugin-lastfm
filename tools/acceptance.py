@@ -1,12 +1,11 @@
 """Verify acceptance criteria table structure, evidence tokens and gap declarations."""
 
 import argparse
+import http.client
 import json
 import os
 import re
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 ROWS = (
@@ -164,12 +163,19 @@ def check_symbol_declaration(row_id: str, path_str: str, name: str, content: str
     return []
 
 
-def check_token(row_id: str, token: str, root: Path) -> list[str]:
-    """Validate one backtick evidence token against disk files, anchors and declarations."""
-    errors: list[str] = []
-    if "::" in token and "#" in token:
-        return [f"Row {row_id}: invalid evidence token '{token}'"]
+class HTTPError(Exception):
+    """HTTP response error holding status code and reason."""
 
+    def __init__(self, code: int, reason: str) -> None:
+        super().__init__(f"{code} {reason}")
+        self.code = code
+        self.reason = reason
+
+
+def parse_token(row_id: str, token: str) -> tuple[tuple[str, str | None, str | None] | None, str | None]:
+    """Parse evidence token into (path, name, anchor) or return validation error."""
+    if "::" in token and "#" in token:
+        return None, f"Row {row_id}: invalid evidence token '{token}'"
     if "::" in token:
         path_str, name = token.split("::", 1)
         anchor = None
@@ -177,34 +183,55 @@ def check_token(row_id: str, token: str, root: Path) -> list[str]:
         path_str, anchor = token.split("#", 1)
         name = None
     else:
-        path_str = token
-        name = None
-        anchor = None
-
+        path_str, name, anchor = token, None, None
     if not path_str:
-        return [f"Row {row_id}: empty path in evidence token '{token}'"]
-    if path_str.startswith("/") or Path(path_str).is_absolute():
-        return [f"Row {row_id}: evidence path '{path_str}' must not be absolute"]
-    if ".." in Path(path_str).parts:
-        return [f"Row {row_id}: evidence path '{path_str}' must not contain '..'"]
+        return None, f"Row {row_id}: empty path in evidence token '{token}'"
+    return (path_str, name, anchor), None
 
+
+def validate_path(row_id: str, path_str: str, root: Path) -> tuple[Path | None, str | None]:
+    """Validate evidence path bounds and existence relative to repository root."""
+    if path_str.startswith("/") or Path(path_str).is_absolute():
+        return None, f"Row {row_id}: evidence path '{path_str}' must not be absolute"
+    if ".." in Path(path_str).parts:
+        return None, f"Row {row_id}: evidence path '{path_str}' must not contain '..'"
     target_file = root / path_str
     try:
         target_file.resolve().relative_to(root.resolve())
     except ValueError:
-        return [f"Row {row_id}: evidence path '{path_str}' escapes repository root"]
-
+        return None, f"Row {row_id}: evidence path '{path_str}' escapes repository root"
     if not target_file.is_file():
-        return [f"Row {row_id}: evidence path does not exist: {path_str}"]
+        return None, f"Row {row_id}: evidence path does not exist: {path_str}"
+    return target_file, None
 
+
+def read_target_content(row_id: str, path_str: str, target_file: Path) -> tuple[str | None, str | None]:
+    """Read target file content with line limit check."""
     try:
         content = target_file.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return [f"Row {row_id}: failed to read '{path_str}': {exc}"]
-
+        return None, f"Row {row_id}: failed to read '{path_str}': {exc}"
     if len(content.splitlines()) > MAX_LINES:
-        return [f"Row {row_id}: target file '{path_str}' exceeds {MAX_LINES} lines limit"]
+        return None, f"Row {row_id}: target file '{path_str}' exceeds {MAX_LINES} lines limit"
+    return content, None
 
+
+def check_token(row_id: str, token: str, root: Path) -> list[str]:
+    """Validate one backtick evidence token against disk files, anchors and declarations."""
+    parsed, parse_err = parse_token(row_id, token)
+    if parse_err is not None or parsed is None:
+        return [parse_err] if parse_err else []
+    path_str, name, anchor = parsed
+
+    target_file, path_err = validate_path(row_id, path_str, root)
+    if path_err is not None or target_file is None:
+        return [path_err] if path_err else []
+
+    content, read_err = read_target_content(row_id, path_str, target_file)
+    if read_err is not None or content is None:
+        return [read_err] if read_err else []
+
+    errors: list[str] = []
     if name is not None:
         errors.extend(check_symbol_declaration(row_id, path_str, name, content))
     if anchor is not None:
@@ -219,20 +246,27 @@ def fetch_job_data(job_id: str, job_cache: dict[str, dict]) -> dict:
     if job_id in job_cache:
         return job_cache[job_id]
 
-    url = f"https://api.github.com/repos/jellysin/plugin-lastfm/actions/jobs/{job_id}"
-    req = urllib.request.Request(url)
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("User-Agent", "plugin-lastfm-acceptance-checker")
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "plugin-lastfm-acceptance-checker",
+    }
     token = os.environ.get("GITHUB_TOKEN", "").strip()
     if token:
-        req.add_header("Authorization", f"Bearer {token}")
+        headers["Authorization"] = f"Bearer {token}"
 
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    conn = http.client.HTTPSConnection("api.github.com", timeout=15)
+    try:
+        conn.request("GET", f"/repos/jellysin/plugin-lastfm/actions/jobs/{job_id}", headers=headers)
+        resp = conn.getresponse()
+        if resp.status != 200:
+            raise HTTPError(resp.status, resp.reason)
+        data = json.loads(resp.read(MAX_FILE_BYTES).decode("utf-8"))
         if not isinstance(data, dict):
-            raise ValueError("API response is not a JSON object")
+            raise TypeError
         job_cache[job_id] = data
         return data
+    finally:
+        conn.close()
 
 
 def check_run_link(row_id: str, link_url: str, job_cache: dict[str, dict]) -> list[str]:
@@ -247,9 +281,9 @@ def check_run_link(row_id: str, link_url: str, job_cache: dict[str, dict]) -> li
 
     try:
         data = fetch_job_data(job_id, job_cache)
-    except urllib.error.HTTPError as exc:
+    except HTTPError as exc:
         return [f"Row {row_id}: link '{link_url}' HTTP error: {exc.code} {exc.reason}"]
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+    except (http.client.HTTPException, TimeoutError, OSError, ValueError, TypeError) as exc:
         return [f"Row {row_id}: link '{link_url}' network error: {type(exc).__name__}"]
 
     if str(data.get("run_id")) != expected_run:
@@ -273,6 +307,41 @@ def check_run_link(row_id: str, link_url: str, job_cache: dict[str, dict]) -> li
     return []
 
 
+def check_row_evidence(
+    row_id: str,
+    raw_evidence: str,
+    raw_gap: str,
+    root: Path,
+    check_links: bool,
+    job_cache: dict[str, dict],
+) -> list[str]:
+    """Validate evidence cell tokens and run links for a single row."""
+    clean_evidence = raw_evidence.replace(";", "").strip()
+    if not clean_evidence:
+        if not raw_gap:
+            return [f"Row {row_id}: needs evidence or a gap"]
+        return []
+
+    tokens = TOKEN.findall(raw_evidence)
+    residue = RUN_LINK.sub("", TOKEN.sub("", raw_evidence)).replace(";", "").strip()
+    if residue:
+        return [f"Row {row_id}: Evidence holds text that is neither a path nor a run link: {residue}"]
+
+    if len(tokens) > MAX_TOKENS_PER_ROW:
+        return [f"Row {row_id}: evidence tokens count exceeds limit of {MAX_TOKENS_PER_ROW}"]
+
+    errors: list[str] = []
+    for token in tokens[:MAX_TOKENS_PER_ROW]:
+        errors.extend(check_token(row_id, token, root))
+
+    if check_links:
+        run_matches = list(RUN_LINK_URL.finditer(raw_evidence))[:MAX_TOKENS_PER_ROW]
+        for match in run_matches:
+            errors.extend(check_run_link(row_id, match.group(0), job_cache))
+
+    return errors
+
+
 def check(text: str, root: Path, check_links: bool = False) -> list[str]:
     """Check acceptance criteria markdown text against repository root."""
     if len(text.encode("utf-8")) > MAX_FILE_BYTES:
@@ -293,35 +362,19 @@ def check(text: str, root: Path, check_links: bool = False) -> list[str]:
     job_cache: dict[str, dict] = {}
     for row_id, criterion, evidence_cell, gap_cell in rows[:MAX_ROWS]:
         raw_criterion = criterion.strip()
-        raw_evidence = evidence_cell.strip()
-        raw_gap = gap_cell.strip()
-
         if not raw_criterion:
             errors.append(f"Row {row_id}: Criterion must not be empty")
 
-        clean_evidence = raw_evidence.replace(";", "").strip()
-        if not clean_evidence:
-            if not raw_gap:
-                errors.append(f"Row {row_id}: needs evidence or a gap")
-            continue
-
-        tokens = TOKEN.findall(raw_evidence)
-        residue = RUN_LINK.sub("", TOKEN.sub("", raw_evidence)).replace(";", "").strip()
-        if residue:
-            errors.append(f"Row {row_id}: Evidence holds text that is neither a path nor a run link: {residue}")
-            continue
-
-        if len(tokens) > MAX_TOKENS_PER_ROW:
-            errors.append(f"Row {row_id}: evidence tokens count exceeds limit of {MAX_TOKENS_PER_ROW}")
-            continue
-
-        for token in tokens[:MAX_TOKENS_PER_ROW]:
-            errors.extend(check_token(row_id, token, root))
-
-        if check_links:
-            run_matches = list(RUN_LINK_URL.finditer(raw_evidence))[:MAX_TOKENS_PER_ROW]
-            for match in run_matches:
-                errors.extend(check_run_link(row_id, match.group(0), job_cache))
+        errors.extend(
+            check_row_evidence(
+                row_id,
+                evidence_cell.strip(),
+                gap_cell.strip(),
+                root,
+                check_links,
+                job_cache,
+            )
+        )
 
     return errors
 
