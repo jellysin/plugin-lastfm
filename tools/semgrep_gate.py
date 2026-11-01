@@ -10,7 +10,7 @@ committed, so the repository's own scanners never see them.
 import argparse
 import json
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
@@ -109,7 +109,11 @@ def tracked() -> list[str]:
     executable = shutil.which("git")
     if executable is None:
         raise GateError("git not found; the tracked files cannot be listed")
-    result = subprocess.run([executable, "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True, timeout=60)
+    # Fixed arguments, absolute executable path, no shell.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+    result = subprocess.run(  # nosec B603
+        [executable, "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True, timeout=60
+    )
     return [name for name in result.stdout.decode().split("\0") if name]
 
 
@@ -120,7 +124,10 @@ def run(command: list[str], targets: list[str], packs: tuple[str, ...]) -> list[
         *command, "scan", "--metrics=off", "--disable-version-check", "--quiet", "--json",
         "--config", str(LOCAL_RULES), *configs, "--", *targets,
     ]
-    result = subprocess.run(
+    # The launcher is uvx or pipx at an absolute path, the version comes from the committed requirements file, and the
+    # targets are repository paths (scanned() refuses any other) after `--`; no shell. Tests: TargetTests, LauncherTests.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+    result = subprocess.run(  # nosec B603
         arguments, check=False, cwd=ROOT, capture_output=True, text=True, timeout=SCAN_TIMEOUT_SECONDS
     )
     if result.returncode not in (0, 1):
