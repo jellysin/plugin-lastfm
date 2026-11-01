@@ -60,6 +60,12 @@ PLANTED = {
 }
 
 
+# Semgrep 1.183.0 publishes wheels tagged cp310 to cp314 only (PyPI file list); the repository's .python-version is
+# newer, and without a wheel the launcher builds the sdist, which has no semgrep-core binary. Raise this together with
+# the version in the requirements file once a release ships wheels for a newer interpreter.
+SEMGREP_PYTHON = "3.14"
+
+
 class GateError(RuntimeError):
     """Semgrep did not run to completion, or the self-test found the rules wrong."""
 
@@ -80,12 +86,12 @@ def launcher(version: str) -> list[str]:
     """
     uvx, pipx = shutil.which("uvx"), shutil.which("pipx")
     if uvx:
-        command = [uvx, "--quiet", "--from", f"semgrep=={version}", "semgrep"]
+        command = [uvx, "--quiet", "--python", SEMGREP_PYTHON, "--from", f"semgrep=={version}", "semgrep"]
     elif pipx:
-        command = [pipx, "run", "--spec", f"semgrep=={version}", "semgrep"]
+        command = [pipx, "run", "--python", SEMGREP_PYTHON, "--fetch-python=missing", "--spec", f"semgrep=={version}", "semgrep"]
     else:
         raise GateError("neither uvx nor pipx found; install uv (https://docs.astral.sh/uv/) to run Semgrep")
-    print(f"semgrep-gate: semgrep {version} via {command[0]}", file=sys.stderr)
+    print(f"semgrep-gate: semgrep {version} on Python {SEMGREP_PYTHON} via {command[0]}", file=sys.stderr)
     return command
 
 

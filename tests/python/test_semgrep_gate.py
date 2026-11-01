@@ -53,11 +53,14 @@ class TargetTests(unittest.TestCase):
 class LauncherTests(unittest.TestCase):
     def test_prefers_uvx_and_pins_the_release(self):
         with mock.patch.object(semgrep_gate.shutil, "which", side_effect=lambda name: f"/bin/{name}"):
-            self.assertEqual(launcher("1.2.3")[:4], ["/bin/uvx", "--quiet", "--from", "semgrep==1.2.3"])
+            self.assertEqual(launcher("1.2.3")[:6], ["/bin/uvx", "--quiet", "--python", "3.14", "--from", "semgrep==1.2.3"])
 
     def test_falls_back_to_pipx_by_name(self):
         with mock.patch.object(semgrep_gate.shutil, "which", side_effect=lambda name: "/bin/pipx" if name == "pipx" else None):
-            self.assertEqual(launcher("1.2.3")[:4], ["/bin/pipx", "run", "--spec", "semgrep==1.2.3"])
+            self.assertEqual(
+                launcher("1.2.3")[:7],
+                ["/bin/pipx", "run", "--python", "3.14", "--fetch-python=missing", "--spec", "semgrep==1.2.3"],
+            )
 
     def test_fails_without_a_launcher(self):
         with mock.patch.object(semgrep_gate.shutil, "which", return_value=None), self.assertRaises(GateError):
