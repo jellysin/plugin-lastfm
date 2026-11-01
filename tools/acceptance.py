@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 import re
+import ssl
 import sys
 from pathlib import Path
 
@@ -254,7 +255,11 @@ def fetch_job_data(job_id: str, job_cache: dict[str, dict]) -> dict:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    conn = http.client.HTTPSConnection("api.github.com", timeout=15)
+    # Fixed host, verified TLS context; the audit rule flags every HTTPSConnection
+    # because pre-3.4.3 Python skipped certificate checks, which 3.14+ does not.
+    conn = http.client.HTTPSConnection(  # nosemgrep: python.lang.security.audit.httpsconnection-detected.httpsconnection-detected
+        "api.github.com", timeout=15, context=ssl.create_default_context()
+    )
     try:
         conn.request("GET", f"/repos/jellysin/plugin-lastfm/actions/jobs/{job_id}", headers=headers)
         resp = conn.getresponse()
