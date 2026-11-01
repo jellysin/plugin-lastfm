@@ -6,11 +6,11 @@
 # Edited: test runs tools/JellySin.CodePolicy like CI, because no Praetor scanner reads C# and HISS-04 holds no C# exception.
 # Praetor ships one binary under two names; resolve whichever is installed.
 PRAETORCTL ?= $(shell command -v praetorctl 2>/dev/null || command -v standardsctl 2>/dev/null || echo praetorctl)
-.PHONY: all verify-all compile-context compile-context-verify caveman-sources audit reuse-lint build test
+.PHONY: all verify-all compile-context compile-context-verify caveman-sources audit reuse-lint semgrep build test
 
 all: build
 
-verify-all: compile-context-verify caveman-sources audit reuse-lint test
+verify-all: compile-context-verify caveman-sources audit reuse-lint semgrep test
 
 compile-context:
 	@$(PRAETORCTL) compile-context
@@ -26,6 +26,10 @@ audit:
 
 reuse-lint:
 	@exec './tools/reuse-lint.sh'
+
+semgrep:
+	@python3 tools/semgrep_gate.py --self-test
+	@exec python3 tools/semgrep_gate.py
 
 test: build
 	@exec './tools/sdk.sh' 'dotnet' 'run' '--project' 'tools/JellySin.CodePolicy' '-c' 'Release' '--no-build' '--' '--self-test'
