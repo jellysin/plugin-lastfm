@@ -7,13 +7,22 @@ import { readdir, readFile } from 'node:fs/promises';
 // in installServer's `initial` option, which applies them before the page loads.
 const webTests = new URL('./', import.meta.url);
 
+// Any write to the fixture state: plain, nested or bracketed assignment, compound assignment, increment, a mutating
+// method on a nested value, or Object.assign onto it.
+const stateWrite = /^\s*(?:(?:\+\+|--)\s*state\b|state(?:\.[A-Za-z_$][\w$]*|\[[^\]]+\])+\s*(?:[-+*/%&|^]?=(?!=)|\+\+|--|\.(?:push|pop|shift|unshift|splice|set|delete|clear|add)\()|Object\.assign\(\s*state\b)/;
+const indentOf = line => line.length - line.trimStart().length;
+
 export function racyAssignments(source) {
   const findings = [];
-  let opened = false;
+  // Indentation of the open installServer call, or -1 outside one. The region ends at passwordLogin or where the
+  // enclosing block closes, never at a nested callback's `});`.
+  let openIndent = -1;
   source.split('\n').forEach((line, index) => {
-    if (/await installServer\(/.test(line)) opened = true;
-    else if (/await passwordLogin\(|^\s*\}\);/.test(line)) opened = false;
-    else if (opened && /^\s*state\.[A-Za-z]+\s*=/.test(line)) findings.push(index + 1);
+    if (line.includes('await installServer(')) openIndent = indentOf(line);
+    else if (openIndent < 0) return;
+    else if (line.includes('await passwordLogin(')) openIndent = -1;
+    else if (line.trim().startsWith('}') && indentOf(line) < openIndent) openIndent = -1;
+    else if (stateWrite.test(line)) findings.push(index + 1);
   });
   return findings;
 }
@@ -28,9 +37,38 @@ test('no spec changes fixture state between opening the page and signing in', as
   assert.deepEqual(findings, [], 'set these through installServer(page, { initial: { ... } })');
 });
 
-test('the check finds a planted late assignment and accepts the initial option', () => {
-  const planted = 'const state = await installServer(page);\n  state.needsReconnect = true;\n  await passwordLogin(page);\n';
-  assert.deepEqual(racyAssignments(planted), [2]);
-  const fixed = 'const state = await installServer(page, { initial: { needsReconnect: true } });\n  await passwordLogin(page);\n  state.deviceFail = true;\n';
+test('the check finds planted late writes of every form', () => {
+  const planted = [
+    'test(\'x\', async ({ page }) => {',
+    '  const state = await installServer(page);',
+    '  await page.route(/x/, route => {',
+    '    route.continue();',
+    '  });',
+    '  state.needsReconnect = true;',
+    '  state.delivery.Pending = 2;',
+    '  state[\'deviceFail\'] = true;',
+    '  state.recipes.push({});',
+    '  state.scrobbleLogCount += 1;',
+    '  state.scrobbleLogCount++;',
+    '  Object.assign(state, { connected: true });',
+    '  await passwordLogin(page);',
+    '});',
+  ].join('\n');
+  assert.deepEqual(racyAssignments(planted), [6, 7, 8, 9, 10, 11, 12]);
+});
+
+test('the check accepts the initial option, comparisons and writes after sign-in or after the test', () => {
+  const fixed = [
+    'test(\'x\', async ({ page }) => {',
+    '  const state = await installServer(page, { initial: { needsReconnect: true } });',
+    '  expect(state.connected === true).toBe(true);',
+    '  await passwordLogin(page);',
+    '  state.deviceFail = true;',
+    '});',
+    'test(\'y\', async ({ page }) => {',
+    '  const state = await installServer(page);',
+    '});',
+    'state.unrelated = 1;',
+  ].join('\n');
   assert.deepEqual(racyAssignments(fixed), []);
 });
