@@ -255,15 +255,23 @@ The same configuration then goes through three steps, and each one must keep wha
 
 ```sh
 python tests/integration/state_carryover.py \
-  --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll
+  --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
+  --previous-release --report build/state-carryover.json
 ```
 
 It needs Docker and `openssl`, and removes its servers, volumes and the stand-in
 afterwards. Against a build before the unreadable-override handling, the server
 without its key ring did not start: reading the override threw while Jellyfin
-loaded the plugin. That defect is what the last step guards. An upgrade from a
-published plugin release is not part of the check, since no release has been
-published yet. The check stays manual.
+loaded the plugin. That defect is what the last step guards. `--previous-release`
+downloads published release v0.5.0, verifies its pinned SHA-256 and runs the initial
+connection on it before upgrading to the build under test on the newest Jellyfin 12.
+The version, address and checksum are pinned in `PREVIOUS_RELEASE_*` at the top of
+the script; after a release is published, the next change moves the pin to it.
+`--plant drop-keys` drops the key ring during configuration copy on restore, which
+the check must refuse at `require_connected` ("After the restore..."). `--report`
+writes the JSON record of steps, images, versions, and pass/fail verdict. CI job
+`carryover` runs this check with `--previous-release` and enforces refusal of
+`--plant drop-keys` via `tools/expect_refusal.py`.
 
 ## A release installed over a canary
 
@@ -294,8 +302,8 @@ python tests/integration/catalog_over_canary.py --canary build/canary-shape/Jell
 `--plant keys` removes the key ring before the restart; the run must then fail
 because the account asks for a new connection. The plugin creates an empty key ring
 at start, so only the love with the stored session key shows that the ring was kept.
-The record in `docs/operations.md` comes from this check. It stays manual, like the
-carry-over check.
+The record in `docs/operations.md` comes from this check. CI job `carryover` runs this
+check and enforces refusal of `--plant keys` via `tools/expect_refusal.py`.
 
 ## What a removal leaves behind
 
@@ -330,4 +338,21 @@ python tests/integration/removal_leftovers.py --build src/JellySin.Plugin.Lastfm
 ```
 
 `--plant skip-remove` skips the removal API call; the run must then fail because the
-assembly is still present in the plugin directory. The check stays manual, like the carry-over check.
+assembly is still present in the plugin directory. CI job `carryover` runs both the
+copy and repository sources, and enforces refusal of `--plant skip-remove` via
+`tools/expect_refusal.py`.
+
+## Expecting planted refusal
+
+`tools/expect_refusal.py` runs a planted test command, deleting any stale report
+first, and passes only when the subprocess exits with code 1, the report JSON exists
+with no truthy `passed` attribute, and its `failure` field contains a specified
+substring:
+
+```sh
+python tools/expect_refusal.py --report build/state-carryover-planted.json \
+  --expect "After the restore the account reads" \
+  -- python tests/integration/state_carryover.py \
+  --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll \
+  --plant drop-keys --report build/state-carryover-planted.json
+```

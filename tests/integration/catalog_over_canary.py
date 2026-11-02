@@ -20,33 +20,47 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import secrets
 import sys
 import tempfile
 import time
-from typing import Any
 import urllib.parse
 import zipfile
+from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from page_check import STAND_IN_IMAGE, StandInContainer  # noqa: E402
-from smoke import (  # noqa: E402
-    PLUGIN_ID, PREFIX, Client, DockerHost, SmokeFailure, add_library, add_server_options, chosen_image, create_user, docker,
-    fixture_music, remove_container, require, setup_server,
+from page_check import STAND_IN_IMAGE, StandInContainer
+from smoke import (
+    PLUGIN_ID,
+    PREFIX,
+    Client,
+    DockerHost,
+    SmokeFailure,
+    add_library,
+    add_server_options,
+    chosen_image,
+    create_user,
+    docker,
+    fixture_music,
+    remove_container,
+    require,
+    setup_server,
 )
-from state_carryover import approve, love, require_connected, signed_in  # noqa: E402
+from state_carryover import approve, love, require_connected, signed_in
 
 DESCRIPTOR = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
 # The folder a canary is copied into; the same name the other checks mount the plugin under.
 CANARY_FOLDER = "JellySin.Lastfm"
-RELEASE_VERSION = "0.1.0.0"
+# The release shape carries the version of version.txt, as Directory.Build.props stamps it on the assembly.
+PLUGIN_VERSION = (ROOT / "version.txt").read_text(encoding="utf-8").strip()
+RELEASE_VERSION = PLUGIN_VERSION + ".0"
 REPOSITORY_ALIAS = "plugin-repository"
 REPOSITORY_PORT = 8080
 MANIFEST_URL = f"http://{REPOSITORY_ALIAS}:{REPOSITORY_PORT}/manifest.json"
-ARCHIVE = "plugin-lastfm-0.1.0.zip"
+ARCHIVE = f"plugin-lastfm-{PLUGIN_VERSION}.zip"
 PACKAGE_SECONDS = 60
 RESTART_SECONDS = 180
 FAVOURITES = ("Catalog Before", "Catalog After")
@@ -66,6 +80,7 @@ def release_archive(release: Path, directory: Path) -> str:
 
 
 def write_repository(release: Path, directory: Path) -> None:
+    """Writes the release archive and a one-entry plugin manifest that points the server at it."""
     checksum = release_archive(release, directory)
     version = {"version": RELEASE_VERSION, "changelog": "Release-shaped package of the catalog check.",
                "targetAbi": DESCRIPTOR["targetAbi"], "sourceUrl": f"http://{REPOSITORY_ALIAS}:{REPOSITORY_PORT}/{ARCHIVE}",
@@ -78,11 +93,13 @@ class Repository:
     """The plugin repository container on the stand-in's network; removed again by cleanup."""
 
     def __init__(self, directory: Path, network: str) -> None:
+        """Names the repository container after the run's network; nothing starts yet."""
         self.directory, self.network = directory, network
         self.name = network + "-repository"
         self.started = False
 
     def start(self) -> None:
+        """Starts the read-only HTTP server that serves the manifest and the archive."""
         docker("run", "--detach", "--name", self.name, "--label", "org.jellysin.smoke=true", "--network", self.network,
                "--network-alias", REPOSITORY_ALIAS, "--user", "65534:65534", "--memory", "128m", "--cpus", "1", "--read-only",
                "--mount", f"type=bind,src={self.directory},dst=/repository,readonly", STAND_IN_IMAGE,
@@ -90,6 +107,7 @@ class Repository:
         self.started = True
 
     def cleanup(self) -> None:
+        """Removes the repository container if this run started it."""
         require(not self.started or remove_container(self.name), "The plugin repository container could not be removed.")
 
 
@@ -117,7 +135,7 @@ def folders(host: DockerHost) -> dict[str, Any]:
               "if [ -f \"$d/meta.json\" ]; then tr -d '\\n' < \"$d/meta.json\"; fi; echo; done")
     result = {}
     for line in docker("exec", host.name, "sh", "-c", script).splitlines():
-        name, files, meta = (line.split("\t") + ["", ""])[:3]
+        name, files, meta = ([*line.split("\t"), "", ""])[:3]
         manifest = json.loads(meta) if meta else {}
         if not files.split():
             # The empty fixture folder every DockerHost prepares for the native probe.
@@ -127,6 +145,7 @@ def folders(host: DockerHost) -> dict[str, Any]:
 
 
 def state_folders(host: DockerHost) -> list[str]:
+    """The plugin's state folders under the server's configuration, sorted."""
     script = "find /config -mindepth 1 -maxdepth 4 -type d -path '*/jellysin-lastfm/*' | sort"
     return docker("exec", host.name, "sh", "-c", script).split()
 
@@ -138,10 +157,12 @@ def listed(admin: Client) -> list[dict[str, Any]]:
 
 
 def snapshot(host: DockerHost, admin: Client) -> dict[str, Any]:
+    """The library folders, the plugin listing and the state folders at one point of the run."""
     return {"folders": folders(host), "plugins": listed(admin), "state": state_folders(host)}
 
 
 def connect(host: DockerHost, stand_in: StandInContainer, password: str, admin: Client | None = None) -> Client:
+    """Sets up the server and a library, connects the listener and proves one love reaches the stand-in."""
     if admin is None:
         admin = Client(host.origin)
         setup_server(admin, password)
@@ -170,6 +191,7 @@ def install(admin: Client) -> None:
 
 
 def restart(host: DockerHost, password: str) -> Client:
+    """Restarts the server and signs the administrator in again once it answers."""
     docker("restart", host.name, timeout=120)
     host.refresh_origin()
     for _ in range(RESTART_SECONDS):
@@ -189,6 +211,7 @@ def judge_listing(after: dict[str, Any]) -> None:
 
 
 def judge(report: dict[str, Any], stand_in: StandInContainer, host: DockerHost, password: str) -> None:
+    """Requires the release alone after the restart and a love sent with the session key stored before it."""
     judge_listing(report["after-restart"])
     # The plugin creates an empty key ring at start, so only a love with the stored session key shows it was kept.
     listener = signed_in(host, password)
@@ -213,6 +236,7 @@ def run(host: DockerHost, stand_in: StandInContainer, plant: str | None, report:
 
 
 def main() -> int:
+    """Runs the catalog check against a disposable server and writes its report; 0 on pass, 1 on failure."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--canary", type=Path, required=True, help="A canary-shaped build of the plugin assembly.")
     parser.add_argument("--release", type=Path, required=True, help="A release-shaped build of the plugin assembly.")
