@@ -145,8 +145,7 @@ def approve(listener: Client, token: str = APPROVAL_TOKEN, user: str = LASTFM_US
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *_: Any) -> None:
-            """Refuses to follow the callback's redirect, so its own status is what the check reads."""
-            return None
+            """Refuses to follow the callback's redirect (no request returned), so its own status is what the check reads."""
 
     request = urllib.request.Request(listener.origin + callback.path + "?" + query, headers={"Cookie": cookie.strip()})
     try:
