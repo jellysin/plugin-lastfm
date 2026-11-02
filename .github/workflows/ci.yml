@@ -197,6 +197,74 @@ jobs:
             test-results
           if-no-files-found: ignore
           retention-days: 7
+  carryover:
+    name: Upgrade, removal and catalog checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CI: 'true'
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+      LASTFM_API_KEY: ''
+      LASTFM_SHARED_SECRET: ''
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      # Build web assets and restore exact locked dependencies before building assemblies.
+      - name: Build web assets and restore dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          dotnet restore --locked-mode
+      # Build the canary assembly shape copied aside, then build the ordinary Release shape.
+      - name: Build canary and release assembly shapes
+        run: |
+          dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore -p:Version=0.0.5-canary -p:AssemblyVersion=0.0.5.0 -p:FileVersion=0.0.5.0
+          mkdir -p build/canary-shape && cp src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll build/canary-shape/
+          dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
+      # A user connected on the previous release carries their account and session across an upgrade to the newest Jellyfin.
+      - name: Carry state across upgrade from previous published release
+        run: python tests/integration/state_carryover.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --previous-release --report build/state-carryover.json
+      # Plugin removal via API must delete the assembly while preserving configurations, state and keys for copy and repository installs.
+      - name: Verify leftovers after plugin removal
+        run: |
+          python tests/integration/removal_leftovers.py --build build/canary-shape/JellySin.Plugin.Lastfm.dll --source copy --report build/removal-leftovers-copy.json --server floor
+          python tests/integration/removal_leftovers.py --build src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --source repository --report build/removal-leftovers-repository.json --server floor
+      # Installing a catalog release over a canary must replace the canary and keep the account connected.
+      - name: Verify catalog release install over canary
+        run: python tests/integration/catalog_over_canary.py --canary build/canary-shape/JellySin.Plugin.Lastfm.dll --release src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --report build/catalog-over-canary.json --server floor
+      # A dropped key ring during restore must be detected and refused by the carry-over check.
+      - name: Require carry-over check to refuse dropped key ring
+        run: python tools/expect_refusal.py --report build/state-carryover-planted.json --expect "After the restore the account reads" -- python tests/integration/state_carryover.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --plant drop-keys --report build/state-carryover-planted.json
+      # Skipping plugin removal must leave the assembly behind and be refused by the leftover judge.
+      - name: Require leftover check to refuse skipped plugin removal
+        run: python tools/expect_refusal.py --report build/removal-leftovers-planted.json --expect "Plugin assembly still present after removal" -- python tests/integration/removal_leftovers.py --build build/canary-shape/JellySin.Plugin.Lastfm.dll --source copy --plant skip-remove --report build/removal-leftovers-planted.json --server floor
+      # Removing the key ring before restarting after a catalog install must be refused.
+      - name: Require catalog check to refuse missing key ring after install
+        run: python tools/expect_refusal.py --report build/catalog-over-canary-planted.json --expect "After the catalog install the account reads" -- python tests/integration/catalog_over_canary.py --canary build/canary-shape/JellySin.Plugin.Lastfm.dll --release src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --plant keys --report build/catalog-over-canary-planted.json --server floor
+      # Retain JSON reports from carryover, removal and catalog checks for inspection.
+      - name: Retain diagnostic check reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: carryover-reports
+          path: build/*.json
+          if-no-files-found: ignore
+          retention-days: 7
   scanners:
     name: scanners
     runs-on: ubuntu-24.04

@@ -17,16 +17,19 @@ oldest supported Jellyfin 12 release and has a library favourite loved on Last.f
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 from pathlib import Path
 import secrets
 import sys
 import tempfile
 import time
-from typing import Any
+from typing import Any, Sequence
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -34,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lastfm_stand_in import APPROVAL_TOKEN, LASTFM_USER  # noqa: E402
 from page_check import CALL_SECONDS, StandInContainer, named, wait_for_call  # noqa: E402
 from smoke import (  # noqa: E402
-    IMAGES, PREFIX, Client, DockerHost, SmokeFailure, add_library, create_user, docker, fixture_music, lower_keys,
+    IMAGES, PLUGIN_ID, PREFIX, Client, DockerHost, SmokeFailure, add_library, create_user, docker, fixture_music, lower_keys,
     remove_container, require, setup_server, wait_music,
 )
 
@@ -44,6 +47,55 @@ FAVOURITES = {"before": "Carryover Before", "upgrade": "Carryover Upgrade", "res
 COOKIE = "JellySinLastfmAttempt"
 # The favourites and the seed track every server writes into the Public library.
 LIBRARY_TRACKS = len(FAVOURITES) + 1
+
+PREVIOUS_RELEASE_VERSION = "0.5.0"
+PREVIOUS_RELEASE_URL = (
+    f"https://github.com/jellysin/plugin-lastfm/releases/download/v{PREVIOUS_RELEASE_VERSION}/"
+    f"plugin-lastfm-{PREVIOUS_RELEASE_VERSION}.zip"
+)
+PREVIOUS_RELEASE_SHA256 = "d96498fadd577011aef33785b9e2be094cfbf9c8c2ca045de7ab4a47cfb78cc2"
+PREVIOUS_RELEASE_MAX_BYTES = 4 * 1024 * 1024
+PLUGIN_DLL = "JellySin.Plugin.Lastfm.dll"
+
+
+def download_release(
+    url: str = PREVIOUS_RELEASE_URL,
+    max_bytes: int = PREVIOUS_RELEASE_MAX_BYTES,
+    timeout: float = 60.0,
+) -> bytes:
+    parsed = urllib.parse.urlsplit(url)
+    require(parsed.scheme == "https", f"Release download URL must use HTTPS: {url}")
+    request = urllib.request.Request(url, headers={"User-Agent": "JellySin-StateCarryover"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            archive = response.read(max_bytes + 1)
+    except (urllib.error.URLError, OSError) as error:
+        raise SmokeFailure(f"Failed to download previous release from {url}: {error}") from None
+    require(len(archive) <= max_bytes, f"Downloaded release archive exceeded bound of {max_bytes} bytes.")
+    return archive
+
+
+def extract_assembly(
+    archive: bytes,
+    destination: Path,
+    expected_sha256: str = PREVIOUS_RELEASE_SHA256,
+    member_name: str = PLUGIN_DLL,
+    max_bytes: int = PREVIOUS_RELEASE_MAX_BYTES,
+) -> Path:
+    require(len(archive) <= max_bytes, f"The release archive has {len(archive)} bytes, exceeding the bound of {max_bytes}.")
+    actual_sha = hashlib.sha256(archive).hexdigest()
+    require(actual_sha == expected_sha256, f"Release archive SHA-256 {actual_sha} does not match expected {expected_sha256}.")
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            members = [item for item in bundle.infolist() if Path(item.filename).name == member_name]
+            require(len(members) == 1, f"The release archive holds no single {member_name} (found {len(members)}).")
+            require(members[0].file_size <= max_bytes, f"Member {member_name} size {members[0].file_size} exceeds {max_bytes}.")
+            data = bundle.read(members[0])
+    except zipfile.BadZipFile as error:
+        raise SmokeFailure(f"Release archive is not a valid zip file: {error}") from None
+    target = destination / member_name
+    target.write_bytes(data)
+    return target
 
 
 def add_fixtures(host: DockerHost) -> None:
@@ -96,6 +148,13 @@ def love(listener: Client, stand_in: StandInContainer, title: str, first: bool, 
     wait_for_call(stand_in, "POST track.love" + named(title))
 
 
+def plugin_version(client: Client) -> str:
+    plugins = client.request("/Plugins")
+    match = next((item for item in plugins if item["id"].replace("-", "") == PLUGIN_ID.replace("-", "")), None)
+    require(match is not None, "The plugin is not listed in Jellyfin.")
+    return str(match["version"])
+
+
 class Servers:
     """The stand-in and every server of the run; each volume is removed once, by whoever holds it last."""
 
@@ -105,9 +164,9 @@ class Servers:
         self.hosts: list[DockerHost] = []
         self.volumes: list[str] = []
 
-    def start(self, image: str, config: str | None = None, cache: str | None = None) -> DockerHost:
+    def start(self, image: str, config: str | None = None, cache: str | None = None, plugin: Path | None = None) -> DockerHost:
         """A server on a fresh configuration volume, or on an existing one when config names it."""
-        host = DockerHost(self.plugin, image, extra_arguments=self.stand_in.server_arguments())
+        host = DockerHost(plugin or self.plugin, image, extra_arguments=self.stand_in.server_arguments())
         host.config, host.cache = config or host.config, cache or host.cache
         add_fixtures(host)
         self.hosts.append(host)
@@ -165,10 +224,11 @@ def require_connected(listener: Client, after: str) -> None:
             f"After {after} the account reads {status}.")
 
 
-def connect_on_floor(servers: Servers, image: str, password: str) -> DockerHost:
-    host = servers.start(image)
+def connect_on_floor(servers: Servers, image: str, password: str, plugin: Path | None = None) -> DockerHost:
+    host = servers.start(image, plugin=plugin)
     admin = Client(host.origin)
     setup_server(admin, password)
+    host.plugin_version = plugin_version(admin)
     add_library(admin, "Public")
     admin.request("/Library/Refresh", "POST", expected=204)
     admin.request(PREFIX + "/Admin/Application", "PUT", {"ApiKey": "a" * 32, "Secret": "b" * 32}, expected=(200, 204))
@@ -176,23 +236,30 @@ def connect_on_floor(servers: Servers, image: str, password: str) -> DockerHost:
     listener = signed_in(host, password)
     approve(listener)
     love(listener, servers.stand_in, FAVOURITES["before"], first=True)
-    print(f"PASS: Jellyfin {host.version}: connected as {LASTFM_USER}; a favourite reached the stand-in.", flush=True)
+    print(f"PASS: Jellyfin {host.version} (plugin {host.plugin_version}): connected as {LASTFM_USER}; "
+          "a favourite reached the stand-in.", flush=True)
     return host
 
 
-def upgrade(servers: Servers, before: DockerHost, image: str, password: str) -> DockerHost:
+def upgrade(servers: Servers, before: DockerHost, image: str, password: str, plugin: Path | None = None) -> DockerHost:
     servers.stop(before)
-    host = servers.start(image, before.config, before.cache)
+    host = servers.start(image, before.config, before.cache, plugin=plugin)
+    admin = signed_in(host, password, "SmokeAdmin")
+    host.plugin_version = plugin_version(admin)
     listener = signed_in(host, password)
     require_connected(listener, "the upgrade")
     love(listener, servers.stand_in, FAVOURITES["upgrade"], first=False)
-    print(f"PASS: upgrade {before.version} -> {host.version}: still connected; a favourite reached the stand-in.", flush=True)
+    print(f"PASS: upgrade Jellyfin {before.version} -> {host.version} "
+          f"(plugin {before.plugin_version} -> {host.plugin_version}): still connected; a favourite reached the stand-in.",
+          flush=True)
     return host
 
 
-def restore(servers: Servers, source: DockerHost, image: str, password: str, keep_keys: bool) -> None:
+def restore(servers: Servers, source: DockerHost, image: str, password: str, keep_keys: bool,
+            plant: str | None = None) -> None:
     calls_before = len(servers.stand_in.lines("calls.log"))
-    host = servers.start(image, servers.copy_configuration(image, source.config, keep_keys))
+    drop = (not keep_keys) or (plant == "drop-keys")
+    host = servers.start(image, servers.copy_configuration(image, source.config, keep_keys=not drop))
     listener = signed_in(host, password)
     title = FAVOURITES["restore" if keep_keys else "keyless"]
     if keep_keys:
@@ -208,8 +275,11 @@ def restore(servers: Servers, source: DockerHost, image: str, password: str, kee
                 f"After a restore without the key ring the account reads {status}, not a request to connect again.")
         item = next(entry["id"] for entry in wait_music(listener, LIBRARY_TRACKS) if entry["name"] == title)
         listener.request("/UserFavoriteItems/" + item, "POST")
-        # Without a readable application the client refuses before sending (Last.fm error 10), which the API answers with 502.
-        listener.request(PREFIX + "/Me/Favourites/Sync", "POST", expected=502)
+        # Without a readable application the synchronization is refused before any call, with the problem type of a
+        # missing application and HTTP 503 (Api/ApiExceptionFilter.cs).
+        problem = lower_keys(listener.request(PREFIX + "/Me/Favourites/Sync", "POST", expected=503))
+        require(problem.get("type") == "urn:jellysin:lastfm:application-missing",
+                f"A synchronization without the key ring answered {problem}, not a missing application.")
         time.sleep(5)
         reached = servers.stand_in.lines("calls.log")[calls_before:]
         require(not reached, f"The server without its key ring still reached the stand-in: {reached}.")
@@ -218,19 +288,55 @@ def restore(servers: Servers, source: DockerHost, image: str, password: str, kee
     servers.stop(host)
 
 
-def run(plugin: Path, floor: str, newest: str) -> None:
+def run(
+    plugin: Path,
+    floor: str,
+    newest: str,
+    previous_release: bool = False,
+    plant: str | None = None,
+    report: dict[str, Any] | None = None,
+) -> None:
     password = secrets.token_urlsafe(24)
     with tempfile.TemporaryDirectory(prefix="jellysin-carryover-") as name:
-        (Path(name) / "stand-in").mkdir(mode=0o755)
-        servers = Servers(plugin, Path(name) / "stand-in")
+        stand_in_dir = Path(name) / "stand-in"
+        stand_in_dir.mkdir(mode=0o755)
+        servers = Servers(plugin, stand_in_dir)
+        floor_plugin = plugin
+        if previous_release:
+            release_dir = Path(name) / "previous-release"
+            release_dir.mkdir(mode=0o755)
+            archive = download_release()
+            floor_plugin = extract_assembly(archive, release_dir)
+        assemblies = {"floor": hashlib.sha256(floor_plugin.read_bytes()).hexdigest(),
+                      "upgraded": hashlib.sha256(plugin.read_bytes()).hexdigest()}
+        if report is not None:
+            report["assemblies"] = assemblies
+        # Both releases can carry the same version number, so the assembly hash shows the upgrade swapped the plugin.
+        require(not previous_release or assemblies["floor"] != assemblies["upgraded"],
+                "The build under test is the previous release itself; the upgrade would change nothing.")
         try:
             servers.stand_in.start()
-            upgraded = upgrade(servers, connect_on_floor(servers, floor, password), newest, password)
+            connected = connect_on_floor(servers, floor, password, plugin=floor_plugin)
+            if report is not None:
+                report.setdefault("steps", []).append("connect")
+            upgraded = upgrade(servers, connected, newest, password, plugin=plugin)
+            if report is not None:
+                report.setdefault("steps", []).append("upgrade")
+                report["versions"] = {
+                    "server": {"floor": connected.version, "upgraded": upgraded.version},
+                    "plugin": {"floor": connected.plugin_version, "upgraded": upgraded.plugin_version},
+                }
             servers.stop(upgraded)
-            restore(servers, upgraded, newest, password, keep_keys=True)
+            restore(servers, upgraded, newest, password, keep_keys=True, plant=plant)
+            if report is not None:
+                report.setdefault("steps", []).append("restore")
             restore(servers, upgraded, newest, password, keep_keys=False)
+            if report is not None:
+                report.setdefault("steps", []).append("keyless")
             require(servers.stand_in.session not in "".join(servers.stand_in.lines("calls.log")),
                     "The stand-in record holds the session key.")
+            if report is not None:
+                report["passed"] = True
         except BaseException:
             for failure in servers.cleanup():
                 print(f"Not removed: {failure}", file=sys.stderr, flush=True)
@@ -239,16 +345,44 @@ def run(plugin: Path, floor: str, newest: str) -> None:
         require(not failures, f"Some carry-over resources could not be removed: {failures}.")
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--plugin", type=Path, required=True)
-    args = parser.parse_args()
+    parser.add_argument("--plugin", type=Path, required=True, help="The current plugin assembly build.")
+    parser.add_argument("--previous-release", action="store_true",
+                        help="Download and test upgrade from the previous published release.")
+    parser.add_argument("--plant", choices=("drop-keys",), help="Plant a defect the check must refuse.")
+    parser.add_argument("--report", type=Path, help="Where to write the JSON record of the run.")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    floor, newest = IMAGES["floor"], IMAGES["newest"]
+    report: dict[str, Any] = {
+        "plant": args.plant,
+        "previous_release": args.previous_release,
+        "images": {"floor": floor, "newest": newest},
+        "steps": [],
+    }
     try:
-        run(args.plugin.resolve(strict=True), IMAGES["floor"], IMAGES["newest"])
+        run(
+            args.plugin.resolve(strict=True),
+            floor,
+            newest,
+            previous_release=args.previous_release,
+            plant=args.plant,
+            report=report,
+        )
+        print("PASS: state carry-over verified across upgrade and restore.", flush=True)
     except SmokeFailure as failure:
+        report["failure"] = str(failure)
         print(f"FAIL: {failure}", file=sys.stderr, flush=True)
-        return 1
-    return 0
+    finally:
+        if args.report:
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    return 0 if report.get("passed") else 1
 
 
 if __name__ == "__main__":

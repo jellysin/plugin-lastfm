@@ -42,11 +42,13 @@ from state_carryover import approve, love, require_connected, signed_in  # noqa:
 DESCRIPTOR = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
 # The folder a canary is copied into; the same name the other checks mount the plugin under.
 CANARY_FOLDER = "JellySin.Lastfm"
-RELEASE_VERSION = "0.1.0.0"
+# The release shape carries the version of version.txt, as Directory.Build.props stamps it on the assembly.
+PLUGIN_VERSION = (ROOT / "version.txt").read_text(encoding="utf-8").strip()
+RELEASE_VERSION = PLUGIN_VERSION + ".0"
 REPOSITORY_ALIAS = "plugin-repository"
 REPOSITORY_PORT = 8080
 MANIFEST_URL = f"http://{REPOSITORY_ALIAS}:{REPOSITORY_PORT}/manifest.json"
-ARCHIVE = "plugin-lastfm-0.1.0.zip"
+ARCHIVE = f"plugin-lastfm-{PLUGIN_VERSION}.zip"
 PACKAGE_SECONDS = 60
 RESTART_SECONDS = 180
 FAVOURITES = ("Catalog Before", "Catalog After")
