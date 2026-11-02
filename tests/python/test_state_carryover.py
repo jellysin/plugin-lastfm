@@ -28,6 +28,7 @@ from state_carryover import (  # noqa: E402
 
 
 def make_zip(entries: dict[str, bytes], compression: int = zipfile.ZIP_STORED) -> bytes:
+    """An in-memory zip archive holding the given members."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=compression) as bundle:
         for name, data in entries.items():

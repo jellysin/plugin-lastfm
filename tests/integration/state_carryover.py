@@ -77,6 +77,7 @@ class HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
     """Follows a redirect only to another HTTPS address; the release host redirects to its storage host."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """Refuses the redirect unless its target address uses HTTPS."""
         require(urllib.parse.urlsplit(newurl).scheme == "https", f"Release download redirected off HTTPS: {newurl}")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -86,6 +87,7 @@ def download_release(
     max_bytes: int = PREVIOUS_RELEASE_MAX_BYTES,
     timeout: float = 60.0,
 ) -> bytes:
+    """Downloads the previous release archive over HTTPS only, reading at most max_bytes."""
     parsed = urllib.parse.urlsplit(url)
     require(parsed.scheme == "https", f"Release download URL must use HTTPS: {url}")
     request = urllib.request.Request(url, headers={"User-Agent": "JellySin-StateCarryover"})
@@ -107,6 +109,7 @@ def extract_assembly(
     member_name: str = PLUGIN_DLL,
     max_bytes: int = PREVIOUS_RELEASE_MAX_BYTES,
 ) -> Path:
+    """Checks the archive against its pinned SHA-256 and writes its single plugin assembly to destination."""
     require(len(archive) <= max_bytes, f"The release archive has {len(archive)} bytes, exceeding the bound of {max_bytes}.")
     actual_sha = hashlib.sha256(archive).hexdigest()
     require(actual_sha == expected_sha256, f"Release archive SHA-256 {actual_sha} does not match expected {expected_sha256}.")
@@ -124,6 +127,7 @@ def extract_assembly(
 
 
 def add_fixtures(host: DockerHost) -> None:
+    """Writes one fixture track per favourite into the server's public library folder."""
     for title in FAVOURITES.values():
         fixture_music(host.fixture_directory / "Public", title)
 
@@ -156,6 +160,7 @@ def approve(listener: Client, token: str = APPROVAL_TOKEN, user: str = LASTFM_US
 
 
 def connection(listener: Client) -> dict[str, Any]:
+    """The Last.fm connection state the plugin reports for the signed-in account."""
     return listener.request(PREFIX + "/Me")["connection"]
 
 
@@ -190,6 +195,7 @@ def wait_settled(admin: Client, tracks: int = LIBRARY_TRACKS) -> None:
 
 
 def plugin_version(client: Client) -> str:
+    """The plugin version Jellyfin lists; fails when the plugin is not loaded."""
     plugins = client.request("/Plugins")
     match = next((item for item in plugins if item["id"].replace("-", "") == PLUGIN_ID.replace("-", "")), None)
     require(match is not None, "The plugin is not listed in Jellyfin.")
@@ -217,6 +223,7 @@ class Servers:
         return host
 
     def stop(self, host: DockerHost) -> None:
+        """Stops and removes a server container and keeps its volumes for the next start."""
         docker("stop", host.name, timeout=120)
         require(remove_container(host.name), "A stopped server could not be removed.")
         host.started = False
@@ -235,6 +242,7 @@ class Servers:
         return target
 
     def cleanup(self) -> list[str]:
+        """Removes every server, volume and the stand-in; returns the resources that could not be removed."""
         failures = []
         for host in reversed(self.hosts):
             try:
@@ -254,18 +262,21 @@ class Servers:
 
 
 def signed_in(host: DockerHost, password: str, name: str = "SmokeListener") -> Client:
+    """A client signed in to host as the named account."""
     client = Client(host.origin)
     client.authenticate(name, password)
     return client
 
 
 def require_connected(listener: Client, after: str) -> None:
+    """Fails unless the account is still connected to the stand-in user without a reconnect request."""
     status = connection(listener)
     require(status["connected"] and status["username"] == LASTFM_USER and not status["needsreconnect"],
             f"After {after} the account reads {status}.")
 
 
 def connect_on_floor(servers: Servers, image: str, password: str, plugin: Path | None = None) -> DockerHost:
+    """Sets up the floor server, connects the account and proves a first favourite reaches the stand-in."""
     host = servers.start(image, plugin=plugin)
     admin = Client(host.origin)
     setup_server(admin, password)
@@ -283,6 +294,7 @@ def connect_on_floor(servers: Servers, image: str, password: str, plugin: Path |
 
 
 def upgrade(servers: Servers, before: DockerHost, image: str, password: str, plugin: Path | None = None) -> DockerHost:
+    """Restarts the floor configuration on the newest image and plugin; the connection and a new favourite must carry over."""
     servers.stop(before)
     host = servers.start(image, before.config, before.cache, plugin=plugin)
     admin = signed_in(host, password, "SmokeAdmin")
@@ -299,6 +311,7 @@ def upgrade(servers: Servers, before: DockerHost, image: str, password: str, plu
 
 def restore(servers: Servers, source: DockerHost, image: str, password: str, keep_keys: bool,
             plant: str | None = None) -> None:
+    """Starts a copy of the configuration; with the key ring it must stay connected, without it it must refuse to call Last.fm."""
     calls_before = len(servers.stand_in.lines("calls.log"))
     drop = (not keep_keys) or (plant == "drop-keys")
     host = servers.start(image, servers.copy_configuration(image, source.config, keep_keys=not drop))
@@ -339,6 +352,7 @@ def run(
     plant: str | None = None,
     report: dict[str, Any] | None = None,
 ) -> None:
+    """Runs connect, upgrade, restore and keyless restore, records each step in report and removes every resource."""
     password = secrets.token_urlsafe(24)
     with tempfile.TemporaryDirectory(prefix="jellysin-carryover-") as name:
         stand_in_dir = Path(name) / "stand-in"
@@ -390,6 +404,7 @@ def run(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The command-line options of the carry-over check."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plugin", type=Path, required=True, help="The current plugin assembly build.")
     parser.add_argument("--previous-release", action="store_true",
@@ -400,6 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Runs the check, writes the report and returns 0 only for a passed, failure-free run."""
     parser = build_parser()
     args = parser.parse_args(argv)
     floor, newest = IMAGES["floor"], IMAGES["newest"]

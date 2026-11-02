@@ -19,6 +19,7 @@ DEFAULT_TIMEOUT = 1800
 
 
 def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
+    """Splits the arguments at "--" into this tool's options and the check command to run."""
     args_list = list(argv)
     if "--" in args_list:
         separator = args_list.index("--")
@@ -37,6 +38,7 @@ def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
 
 
 def run_check(report_path: Path, expect: str, command: list[str], timeout: int) -> int:
+    """Runs the check and returns 0 only if it exits 1 with a report whose failure names the expected text."""
     if not expect:
         print("FAIL: Expected failure substring must not be empty.", file=sys.stderr)
         return 1
@@ -87,6 +89,7 @@ def run_check(report_path: Path, expect: str, command: list[str], timeout: int) 
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Command-line entry point; returns the exit status of run_check, or 1 on an argument error."""
     if argv is None:
         argv = sys.argv[1:]
     try:

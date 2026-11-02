@@ -16,6 +16,7 @@ import expect_refusal  # noqa: E402
 
 
 def child_command(report_path: Path, failure_text: str | None, passed: bool | None, exit_code: int) -> list[str]:
+    """A child process that writes the given report fields, if any, and exits with exit_code."""
     data: dict[str, object] = {}
     if failure_text is not None:
         data["failure"] = failure_text
@@ -33,6 +34,7 @@ def child_command(report_path: Path, failure_text: str | None, passed: bool | No
 
 
 def no_report_command(exit_code: int) -> list[str]:
+    """A child process that writes no report and exits with exit_code."""
     return [sys.executable, "-c", f"import sys; sys.exit({exit_code})"]
 
 
