@@ -155,7 +155,8 @@
       "matchFileNames": [
         ".devcontainer/devcontainer.json",
         ".devcontainer/Dockerfile.praetor",
-        ".github/workflows/reuse.yml"
+        ".github/workflows/reuse.yml",
+        ".config/reuse/requirements.txt"
       ],
       "enabled": false
     },
@@ -177,6 +178,17 @@
         "docker"
       ],
       "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
+      "description": "praetor-managed engine: updates arrive in one coordinated adoption pull request",
+      "matchPackageNames": [
+        "github.com/cordanaLLM/praetor",
+        "github.com/cordanaLLM/praetor/**",
+        "github.com/cordanaLLM/praetor/cmd/standardsctl",
+        "cordanaLLM/praetor",
+        "cordanaLLM/praetor/**"
+      ],
+      "enabled": false
     }
   ]
 }

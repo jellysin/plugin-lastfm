@@ -43,5 +43,8 @@ jobs:
           persist-credentials: false
       - name: reuse lint
         if: github.event.pull_request.draft != true
-        # yamllint disable-line rule:line-length
-        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5  # v6
+        run: |
+          python3 -m venv "$RUNNER_TEMP/praetor-reuse"
+          "$RUNNER_TEMP/praetor-reuse/bin/python" -m pip install \
+            --require-hashes -r .config/reuse/requirements.txt
+          "$RUNNER_TEMP/praetor-reuse/bin/reuse" lint
