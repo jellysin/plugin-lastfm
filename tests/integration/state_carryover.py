@@ -36,7 +36,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lastfm_stand_in import APPROVAL_TOKEN, LASTFM_USER
-from native_library import wait_scan
 from page_check import CALL_SECONDS, StandInContainer, named, wait_for_call
 from smoke import (
     IMAGES,
@@ -179,19 +178,43 @@ def love(listener: Client, stand_in: StandInContainer, title: str, first: bool, 
         wait_for_call(stand_in, "POST track.love" + named(title))
     except SmokeFailure as error:
         # The synchronization's own status and the stand-in's last calls say why the love never left the server.
+        listed = [(entry["name"], entry["id"], entry.get("artists")) for entry in audio_items(listener)]
         raise SmokeFailure(f"{error} Synchronization status: {review.get('status')!r}; last calls: "
-                           f"{stand_in.lines('calls.log')[-5:]}.") from error
+                           f"{stand_in.lines('calls.log')[-5:]}; audio items: {listed}.") from error
+
+
+def audio_items(client: Client) -> list[dict[str, Any]]:
+    """The audio items the server lists, with their names and artists."""
+    return client.request("/Items?recursive=true&includeItemTypes=Audio&limit=50")["items"]
+
+
+def scan_task(admin: Client) -> dict[str, Any]:
+    """The server's single library scan task."""
+    tasks = [task for task in admin.request("/ScheduledTasks") if task["key"] == "RefreshLibrary"]
+    require(len(tasks) == 1, "The server lists no single library scan task.")
+    return tasks[0]
 
 
 def wait_settled(admin: Client, tracks: int = LIBRARY_TRACKS) -> None:
-    """A started server rescans its library and lists tracks before their artists; the plugin's matcher needs both."""
-    for _ in range(120):
-        items = admin.request("/Items?recursive=true&includeItemTypes=Audio&limit=20")["items"]
-        if len(items) >= tracks and all(item.get("artists") for item in items):
-            wait_scan(admin)
-            return
+    """Scans the library and waits until that scan ended and each fixture title names exactly one item with an artist.
+
+    Every server start writes fresh fixture files under the same path, so the server rescans them at a moment of its own
+    choosing; until a scan has finished, a title can briefly name two items, which the plugin's matcher leaves unresolved.
+    """
+    before = (scan_task(admin).get("lastexecutionresult") or {}).get("endtimeutc")
+    admin.request("/Library/Refresh", "POST", expected=204)
+    items: list[dict[str, Any]] = []
+    for _ in range(240):
+        task = scan_task(admin)
+        ended = (task.get("lastexecutionresult") or {}).get("endtimeutc")
+        if task["state"] == "Idle" and ended != before:
+            items = audio_items(admin)
+            names = [item["name"] for item in items]
+            if len(items) == tracks and len(set(names)) == tracks and all(item.get("artists") for item in items):
+                return
         time.sleep(0.5)
-    raise SmokeFailure(f"The library did not list {tracks} tracks with their artists within 60 seconds.")
+    raise SmokeFailure(f"The library did not settle on {tracks} distinct tracks with artists within 120 seconds: "
+                       f"{[(item['name'], item.get('artists')) for item in items]}.")
 
 
 def plugin_version(client: Client) -> str:
