@@ -34,6 +34,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from native_library import wait_scan  # noqa: E402
 from lastfm_stand_in import APPROVAL_TOKEN, LASTFM_USER  # noqa: E402
 from page_check import CALL_SECONDS, StandInContainer, named, wait_for_call  # noqa: E402
 from smoke import (  # noqa: E402
@@ -163,6 +164,17 @@ def love(listener: Client, stand_in: StandInContainer, title: str, first: bool, 
                            f"{stand_in.lines('calls.log')[-5:]}.") from error
 
 
+def wait_settled(admin: Client, tracks: int = LIBRARY_TRACKS) -> None:
+    """A started server rescans its library and lists tracks before their artists; the plugin's matcher needs both."""
+    for _ in range(120):
+        items = admin.request("/Items?recursive=true&includeItemTypes=Audio&limit=20")["items"]
+        if len(items) >= tracks and all(item.get("artists") for item in items):
+            wait_scan(admin)
+            return
+        time.sleep(0.5)
+    raise SmokeFailure(f"The library did not list {tracks} tracks with their artists within 60 seconds.")
+
+
 def plugin_version(client: Client) -> str:
     plugins = client.request("/Plugins")
     match = next((item for item in plugins if item["id"].replace("-", "") == PLUGIN_ID.replace("-", "")), None)
@@ -261,6 +273,7 @@ def upgrade(servers: Servers, before: DockerHost, image: str, password: str, plu
     host = servers.start(image, before.config, before.cache, plugin=plugin)
     admin = signed_in(host, password, "SmokeAdmin")
     host.plugin_version = plugin_version(admin)
+    wait_settled(admin)
     listener = signed_in(host, password)
     require_connected(listener, "the upgrade")
     love(listener, servers.stand_in, FAVOURITES["upgrade"], first=False)
@@ -275,6 +288,7 @@ def restore(servers: Servers, source: DockerHost, image: str, password: str, kee
     calls_before = len(servers.stand_in.lines("calls.log"))
     drop = (not keep_keys) or (plant == "drop-keys")
     host = servers.start(image, servers.copy_configuration(image, source.config, keep_keys=not drop))
+    wait_settled(signed_in(host, password, "SmokeAdmin"))
     listener = signed_in(host, password)
     title = FAVOURITES["restore" if keep_keys else "keyless"]
     if keep_keys:
