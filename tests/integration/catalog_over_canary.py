@@ -20,24 +20,36 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import secrets
 import sys
 import tempfile
 import time
-from typing import Any
 import urllib.parse
 import zipfile
+from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from page_check import STAND_IN_IMAGE, StandInContainer  # noqa: E402
-from smoke import (  # noqa: E402
-    PLUGIN_ID, PREFIX, Client, DockerHost, SmokeFailure, add_library, add_server_options, chosen_image, create_user, docker,
-    fixture_music, remove_container, require, setup_server,
+from page_check import STAND_IN_IMAGE, StandInContainer
+from smoke import (
+    PLUGIN_ID,
+    PREFIX,
+    Client,
+    DockerHost,
+    SmokeFailure,
+    add_library,
+    add_server_options,
+    chosen_image,
+    create_user,
+    docker,
+    fixture_music,
+    remove_container,
+    require,
+    setup_server,
 )
-from state_carryover import approve, love, require_connected, signed_in  # noqa: E402
+from state_carryover import approve, love, require_connected, signed_in
 
 DESCRIPTOR = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
 # The folder a canary is copied into; the same name the other checks mount the plugin under.
@@ -119,7 +131,7 @@ def folders(host: DockerHost) -> dict[str, Any]:
               "if [ -f \"$d/meta.json\" ]; then tr -d '\\n' < \"$d/meta.json\"; fi; echo; done")
     result = {}
     for line in docker("exec", host.name, "sh", "-c", script).splitlines():
-        name, files, meta = (line.split("\t") + ["", ""])[:3]
+        name, files, meta = ([*line.split("\t"), "", ""])[:3]
         manifest = json.loads(meta) if meta else {}
         if not files.split():
             # The empty fixture folder every DockerHost prepares for the native probe.

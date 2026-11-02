@@ -5,20 +5,20 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
-from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest import mock
 import urllib.request
 import zipfile
+from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests" / "integration"))
-from smoke import SmokeFailure  # noqa: E402
-import state_carryover  # noqa: E402
-from state_carryover import (  # noqa: E402
+import state_carryover
+from smoke import SmokeFailure
+from state_carryover import (
     PLUGIN_DLL,
     HttpsOnlyRedirects,
     build_parser,
@@ -49,38 +49,33 @@ class ExtractAssemblyTests(unittest.TestCase):
 
     def test_sha_mismatch_refused(self):
         archive = make_zip({PLUGIN_DLL: b"content"})
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with self.assertRaisesRegex(SmokeFailure, "SHA-256"):
-                extract_assembly(archive, Path(temp_dir), expected_sha256="0" * 64)
+        with tempfile.TemporaryDirectory() as temp_dir, self.assertRaisesRegex(SmokeFailure, "SHA-256"):
+            extract_assembly(archive, Path(temp_dir), expected_sha256="0" * 64)
 
     def test_missing_member_refused(self):
         archive = make_zip({"OtherPlugin.dll": b"content"})
         expected_sha = hashlib.sha256(archive).hexdigest()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with self.assertRaisesRegex(SmokeFailure, f"no single {PLUGIN_DLL}"):
-                extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha)
+        with tempfile.TemporaryDirectory() as temp_dir, self.assertRaisesRegex(SmokeFailure, f"no single {PLUGIN_DLL}"):
+            extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha)
 
     def test_multiple_members_refused(self):
         archive = make_zip({PLUGIN_DLL: b"content1", f"sub/{PLUGIN_DLL}": b"content2"})
         expected_sha = hashlib.sha256(archive).hexdigest()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with self.assertRaisesRegex(SmokeFailure, f"no single {PLUGIN_DLL}"):
-                extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha)
+        with tempfile.TemporaryDirectory() as temp_dir, self.assertRaisesRegex(SmokeFailure, f"no single {PLUGIN_DLL}"):
+            extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha)
 
     def test_oversize_archive_refused(self):
         archive = make_zip({PLUGIN_DLL: b"content"})
         expected_sha = hashlib.sha256(archive).hexdigest()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with self.assertRaisesRegex(SmokeFailure, "exceeding the bound"):
-                extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha, max_bytes=10)
+        with tempfile.TemporaryDirectory() as temp_dir, self.assertRaisesRegex(SmokeFailure, "exceeding the bound"):
+            extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha, max_bytes=10)
 
     def test_oversize_member_refused(self):
         content = b"x" * 2000
         archive = make_zip({PLUGIN_DLL: content}, compression=zipfile.ZIP_DEFLATED)
         expected_sha = hashlib.sha256(archive).hexdigest()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with self.assertRaisesRegex(SmokeFailure, "exceeds"):
-                extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha, max_bytes=500)
+        with tempfile.TemporaryDirectory() as temp_dir, self.assertRaisesRegex(SmokeFailure, "exceeds"):
+            extract_assembly(archive, Path(temp_dir), expected_sha256=expected_sha, max_bytes=500)
 
 
 class ArgumentParsingTests(unittest.TestCase):
@@ -91,9 +86,8 @@ class ArgumentParsingTests(unittest.TestCase):
 
     def test_plant_invalid_choice_refused(self):
         parser = build_parser()
-        with contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit):
-                parser.parse_args(["--plugin", "plugin.dll", "--plant", "unknown-plant"])
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["--plugin", "plugin.dll", "--plant", "unknown-plant"])
 
     def test_previous_release_flag(self):
         parser = build_parser()
