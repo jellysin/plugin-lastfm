@@ -238,15 +238,17 @@ jobs:
           dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
       # A user connected on the previous release carries their account and session across an upgrade to the newest Jellyfin.
       - name: Carry state across upgrade from previous published release
-        run: python tests/integration/state_carryover.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --previous-release --report build/state-carryover.json
+        run: python tests/integration/state_carryover.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --previous-release --plant drop-keys --report build/state-carryover.json
       # Plugin removal via API must delete the assembly while preserving configurations, state and keys for copy and repository installs.
       - name: Verify leftovers after plugin removal
+        if: always()
         run: |
-          python tests/integration/removal_leftovers.py --build build/canary-shape/JellySin.Plugin.Lastfm.dll --source copy --report build/removal-leftovers-copy.json --server floor
+          python tests/integration/removal_leftovers.py --build build/canary-shape/JellySin.Plugin.Lastfm.dll --source copy --plant skip-remove --report build/removal-leftovers-copy.json --server floor
           python tests/integration/removal_leftovers.py --build src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --source repository --report build/removal-leftovers-repository.json --server floor
       # Installing a catalog release over a canary must replace the canary and keep the account connected.
       - name: Verify catalog release install over canary
-        run: python tests/integration/catalog_over_canary.py --canary build/canary-shape/JellySin.Plugin.Lastfm.dll --release src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --report build/catalog-over-canary.json --server floor
+        if: always()
+        run: python tests/integration/catalog_over_canary.py --canary build/canary-shape/JellySin.Plugin.Lastfm.dll --release src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --plant keys --report build/catalog-over-canary.json --server floor
       # A dropped key ring during restore must be detected and refused by the carry-over check.
       - name: Require carry-over check to refuse dropped key ring
         run: python tools/expect_refusal.py --report build/state-carryover-planted.json --expect "After the restore the account reads" -- python tests/integration/state_carryover.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --plant drop-keys --report build/state-carryover-planted.json
