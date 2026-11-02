@@ -145,6 +145,7 @@ def approve(listener: Client, token: str = APPROVAL_TOKEN, user: str = LASTFM_US
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *_: Any) -> None:
+            """Refuses to follow the callback's redirect, so its own status is what the check reads."""
             return None
 
     request = urllib.request.Request(listener.origin + callback.path + "?" + query, headers={"Cookie": cookie.strip()})
@@ -229,6 +230,7 @@ class Servers:
     """The stand-in and every server of the run; each volume is removed once, by whoever holds it last."""
 
     def __init__(self, plugin: Path, directory: Path) -> None:
+        """Holds the plugin under test and the stand-in; servers and volumes are added as the run starts them."""
         self.plugin = plugin
         self.stand_in = StandInContainer(directory)
         self.hosts: list[DockerHost] = []

@@ -40,6 +40,7 @@ def no_report_command(exit_code: int) -> list[str]:
 
 class ExpectRefusalTests(unittest.TestCase):
     def test_positive_rc1_with_expected_failure_passes(self):
+        """Exit status 1 with the expected failure text counts as a refusal."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             cmd = child_command(report_file, "After the restore the account reads error", False, 1)
@@ -52,6 +53,7 @@ class ExpectRefusalTests(unittest.TestCase):
             self.assertIn("PASS:", output)
 
     def test_negative_rc0_fails(self):
+        """A command that passes is no refusal."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             cmd = child_command(report_file, "Some failure text", False, 0)
@@ -64,6 +66,7 @@ class ExpectRefusalTests(unittest.TestCase):
             self.assertIn("FAIL:", errors)
 
     def test_negative_rc1_with_other_failure_text_fails(self):
+        """A failure for another reason than the expected one is no refusal."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             cmd = child_command(report_file, "Completely different failure", False, 1)
@@ -76,6 +79,7 @@ class ExpectRefusalTests(unittest.TestCase):
             self.assertIn("FAIL:", errors)
 
     def test_negative_rc2_fails(self):
+        """An exit status other than 1, such as a usage error, is no refusal."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             cmd = child_command(report_file, "Failure message", False, 2)
@@ -88,6 +92,7 @@ class ExpectRefusalTests(unittest.TestCase):
             self.assertIn("FAIL:", errors)
 
     def test_negative_missing_report_fails(self):
+        """A command that writes no report is no refusal."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             cmd = no_report_command(1)
@@ -100,6 +105,7 @@ class ExpectRefusalTests(unittest.TestCase):
             self.assertIn("FAIL:", errors)
 
     def test_negative_passed_true_fails(self):
+        """A report that records a pass is no refusal, whatever the exit status."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             cmd = child_command(report_file, "Failure message", True, 1)
@@ -112,6 +118,7 @@ class ExpectRefusalTests(unittest.TestCase):
             self.assertIn("FAIL:", errors)
 
     def test_negative_stale_report_is_deleted_before_run(self):
+        """A report left by an earlier run is deleted before the command starts."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             report_file.write_text(json.dumps({"failure": "Old failure", "passed": False}), encoding="utf-8")
@@ -125,6 +132,7 @@ class ExpectRefusalTests(unittest.TestCase):
             self.assertIn("FAIL:", errors)
 
     def test_boundary_empty_expect_refused(self):
+        """An empty expected text is refused, since it would match any failure."""
         with tempfile.TemporaryDirectory() as temp_dir:
             report_file = Path(temp_dir) / "report.json"
             cmd = child_command(report_file, "Failure message", False, 1)
