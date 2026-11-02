@@ -145,7 +145,12 @@ def love(listener: Client, stand_in: StandInContainer, title: str, first: bool, 
         require(time.monotonic() < deadline, f"The favourite synchronization did not finish: {review.get('status')}.")
         time.sleep(1)
         review = listener.request(PREFIX + "/Me/Favourites")
-    wait_for_call(stand_in, "POST track.love" + named(title))
+    try:
+        wait_for_call(stand_in, "POST track.love" + named(title))
+    except SmokeFailure as error:
+        # The synchronization's own status and the stand-in's last calls say why the love never left the server.
+        raise SmokeFailure(f"{error} Synchronization status: {review.get('status')!r}; last calls: "
+                           f"{stand_in.lines('calls.log')[-5:]}.") from error
 
 
 def plugin_version(client: Client) -> str:
