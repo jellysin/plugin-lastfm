@@ -58,6 +58,14 @@ PREVIOUS_RELEASE_MAX_BYTES = 4 * 1024 * 1024
 PLUGIN_DLL = "JellySin.Plugin.Lastfm.dll"
 
 
+class HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to another HTTPS address; the release host redirects to its storage host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201 - urllib's signature
+        require(urllib.parse.urlsplit(newurl).scheme == "https", f"Release download redirected off HTTPS: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def download_release(
     url: str = PREVIOUS_RELEASE_URL,
     max_bytes: int = PREVIOUS_RELEASE_MAX_BYTES,
@@ -67,7 +75,9 @@ def download_release(
     require(parsed.scheme == "https", f"Release download URL must use HTTPS: {url}")
     request = urllib.request.Request(url, headers={"User-Agent": "JellySin-StateCarryover"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.build_opener(HttpsOnlyRedirects).open(request, timeout=timeout) as response:
+            require(urllib.parse.urlsplit(response.geturl()).scheme == "https",
+                    f"Release download ended off HTTPS: {response.geturl()}")
             archive = response.read(max_bytes + 1)
     except (urllib.error.URLError, OSError) as error:
         raise SmokeFailure(f"Failed to download previous release from {url}: {error}") from None
@@ -340,14 +350,15 @@ def run(
                 report.setdefault("steps", []).append("keyless")
             require(servers.stand_in.session not in "".join(servers.stand_in.lines("calls.log")),
                     "The stand-in record holds the session key.")
-            if report is not None:
-                report["passed"] = True
         except BaseException:
             for failure in servers.cleanup():
                 print(f"Not removed: {failure}", file=sys.stderr, flush=True)
             raise
         failures = servers.cleanup()
         require(not failures, f"Some carry-over resources could not be removed: {failures}.")
+        # Passed only once the cleanup is known to be complete.
+        if report is not None:
+            report["passed"] = True
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -387,7 +398,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
             args.report.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
-    return 0 if report.get("passed") else 1
+    # A recorded failure wins over a pass flag, so a report never claims both.
+    return 0 if report.get("passed") and "failure" not in report else 1
 
 
 if __name__ == "__main__":

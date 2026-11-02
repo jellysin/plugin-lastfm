@@ -9,14 +9,18 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
+import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests" / "integration"))
 from smoke import SmokeFailure  # noqa: E402
+import state_carryover  # noqa: E402
 from state_carryover import (  # noqa: E402
     PLUGIN_DLL,
+    HttpsOnlyRedirects,
     build_parser,
     download_release,
     extract_assembly,
@@ -105,6 +109,44 @@ class DownloadReleaseTests(unittest.TestCase):
     def test_refuses_non_https_url(self):
         with self.assertRaisesRegex(SmokeFailure, "HTTPS"):
             download_release(url="http://insecure.invalid/plugin.zip")
+
+    def test_refuses_redirect_off_https(self):
+        handler = HttpsOnlyRedirects()
+        request = urllib.request.Request("https://github.com/plugin.zip")
+        for target in ("http://objects.invalid/plugin.zip", "file:///etc/passwd", "ftp://objects.invalid/plugin.zip"):
+            with self.subTest(target=target), self.assertRaisesRegex(SmokeFailure, "off HTTPS"):
+                handler.redirect_request(request, None, 302, "Found", {}, target)
+
+    def test_follows_redirect_to_https(self):
+        handler = HttpsOnlyRedirects()
+        request = urllib.request.Request("https://github.com/plugin.zip")
+        followed = handler.redirect_request(request, None, 302, "Found", {}, "https://objects.invalid/plugin.zip")
+        self.assertEqual(followed.full_url, "https://objects.invalid/plugin.zip")
+
+
+class ExitStatusTests(unittest.TestCase):
+    def test_failure_after_pass_flag_exits_one(self):
+        def passes_then_fails(*_args, report, **_kwargs):
+            report["passed"] = True
+            raise SmokeFailure("Some carry-over resources could not be removed: ['volume'].")
+
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(state_carryover, "run", side_effect=passes_then_fails), \
+                contextlib.redirect_stderr(io.StringIO()):
+            plugin = Path(directory) / "plugin.dll"
+            plugin.write_bytes(b"dll")
+            self.assertEqual(state_carryover.main(["--plugin", str(plugin)]), 1)
+
+    def test_pass_exits_zero(self):
+        def passes(*_args, report, **_kwargs):
+            report["passed"] = True
+
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(state_carryover, "run", side_effect=passes), \
+                contextlib.redirect_stdout(io.StringIO()):
+            plugin = Path(directory) / "plugin.dll"
+            plugin.write_bytes(b"dll")
+            self.assertEqual(state_carryover.main(["--plugin", str(plugin)]), 0)
 
 
 if __name__ == "__main__":

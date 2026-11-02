@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Run a planted check, passing only when it exits 1 with expected failure text in its report."""
+"""Run a planted check, passing only when it exits 1 with expected failure text in its report.
+
+Trust boundary: the command after ``--`` runs as given, without a shell, with the caller's rights. The tool is meant for
+the repository's own CI steps and local checks, whose command lines are written in the workflow; it never takes a
+command from a pull request title, comment or other untrusted input, and must not be wired to one.
+"""
 
 from __future__ import annotations
 
