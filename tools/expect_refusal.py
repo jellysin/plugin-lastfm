@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
-import subprocess
+import subprocess  # nosec B404 - runs the check command named by the workflow
 import sys
-from typing import Sequence
+from collections.abc import Sequence
+from pathlib import Path
 
 DEFAULT_TIMEOUT = 1800
 
@@ -48,7 +48,9 @@ def run_check(report_path: Path, expect: str, command: list[str], timeout: int) 
         report_path.unlink()
 
     try:
-        proc = subprocess.run(command, timeout=timeout, check=False)
+        # Argument list from the workflow or a local command line, no shell; see the module docstring.
+        # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+        proc = subprocess.run(command, timeout=timeout, check=False)  # nosec B603
     except subprocess.TimeoutExpired:
         print(f"FAIL: Command timed out after {timeout} seconds: {command}", file=sys.stderr)
         return 1

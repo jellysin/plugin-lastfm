@@ -20,26 +20,40 @@ import argparse
 import hashlib
 import io
 import json
-from pathlib import Path
 import secrets
 import sys
 import tempfile
 import time
-from typing import Any, Sequence
 import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from native_library import wait_scan  # noqa: E402
-from lastfm_stand_in import APPROVAL_TOKEN, LASTFM_USER  # noqa: E402
-from page_check import CALL_SECONDS, StandInContainer, named, wait_for_call  # noqa: E402
-from smoke import (  # noqa: E402
-    IMAGES, PLUGIN_ID, PREFIX, Client, DockerHost, SmokeFailure, add_library, create_user, docker, fixture_music, lower_keys,
-    remove_container, require, setup_server, wait_music,
+from lastfm_stand_in import APPROVAL_TOKEN, LASTFM_USER
+from native_library import wait_scan
+from page_check import CALL_SECONDS, StandInContainer, named, wait_for_call
+from smoke import (
+    IMAGES,
+    PLUGIN_ID,
+    PREFIX,
+    Client,
+    DockerHost,
+    SmokeFailure,
+    add_library,
+    create_user,
+    docker,
+    fixture_music,
+    lower_keys,
+    remove_container,
+    require,
+    setup_server,
+    wait_music,
 )
 
 # One library favourite per server the account is carried to; each must reach the stand-in as its own love.
@@ -62,7 +76,7 @@ PLUGIN_DLL = "JellySin.Plugin.Lastfm.dll"
 class HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
     """Follows a redirect only to another HTTPS address; the release host redirects to its storage host."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201 - urllib's signature
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         require(urllib.parse.urlsplit(newurl).scheme == "https", f"Release download redirected off HTTPS: {newurl}")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
