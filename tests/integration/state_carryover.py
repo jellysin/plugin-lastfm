@@ -206,8 +206,9 @@ def wait_settled(admin: Client, tracks: int = LIBRARY_TRACKS) -> None:
     items: list[dict[str, Any]] = []
     for _ in range(240):
         task = scan_task(admin)
-        ended = (task.get("lastexecutionresult") or {}).get("endtimeutc")
-        if task["state"] == "Idle" and ended != before:
+        result = task.get("lastexecutionresult") or {}
+        # A request during a running scan cancels it and queues a new one; only a completed scan settles the library.
+        if task["state"] == "Idle" and result.get("endtimeutc") != before and result.get("status") == "Completed":
             items = audio_items(admin)
             names = [item["name"] for item in items]
             if len(items) == tracks and len(set(names)) == tracks and all(item.get("artists") for item in items):
