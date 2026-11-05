@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120" width="1200" height="120" role="img" aria-label="JellySin Last.fm — Last.fm music integration for Jellyfin 12">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="55%" stop-color="#111a35"/>
+      <stop offset="100%" stop-color="#0a1a2f"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="50%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#3b82f6" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="120" rx="12" fill="url(#bg)"/>
+
+  <!-- Music waveforms: playback observation, scrobble queue, and reconciliation -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M820 60 C 860 25, 900 95, 940 60 S 1020 20, 1060 60 S 1120 95, 1160 60"
+          stroke="url(#wave)" stroke-width="14"/>
+    <path d="M820 60 C 860 25, 900 95, 940 60 S 1020 20, 1060 60 S 1120 95, 1160 60"
+          stroke="url(#accent)" stroke-width="2.5" opacity="0.95"/>
+    <path d="M820 64 C 860 35, 900 102, 940 68 S 1020 30, 1060 68 S 1120 100, 1160 68"
+          stroke="#06b6d4" stroke-width="1.6" stroke-dasharray="7 9" opacity="0.6"/>
+  </g>
+
+  <text x="44" y="74" font-family="ui-sans-serif,Segoe UI,Helvetica,Arial,sans-serif"
+        font-size="54" font-weight="700" fill="#f8fafc" letter-spacing="-1">plugin-<tspan fill="url(#accent)">lastfm</tspan></text>
+  <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="15" fill="#94a3b8">
+    <text x="460" y="52">Last.fm integration for Jellyfin 12</text>
+    <text x="460" y="76">Scrobbling · Playlists · Metadata</text>
+  </g>
+</svg>
