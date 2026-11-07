@@ -10,7 +10,7 @@
 set -eu
 
 # The update bot keeps these with global.json and .node-version; tests/python/test_sdk_pin.py refuses drift.
-DOTNET_IMAGE="mcr.microsoft.com/dotnet/sdk:10.0.403@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b"
+DOTNET_IMAGE="mcr.microsoft.com/dotnet/sdk:10.0.403@sha256:212fe4cb74627d5adf9817a4088906ae3edff1bd853bb27565d4b46731efe61e"
 NODE_IMAGE="node:26.13.0@sha256:6d2c7d5d074bf72f81ddc252b4fbb5d625bc028eeda49cb4b8c2ff8eda1ee617"
 CPUS=4
 MEMORY=4g
