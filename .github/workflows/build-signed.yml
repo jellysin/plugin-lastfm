@@ -41,7 +41,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -75,7 +75,7 @@ jobs:
           dotnet restore --locked-mode
           dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
       - name: Package the plugin, release metadata, checksums and SPDX SBOM
-        uses: jellysin/release-helper/actions/package@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
+        uses: jellysin/release-helper/actions/package@8e75bfdf6eb89283afb68c5bc50d5645c984752c # v1.7.0
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
           tag: ${{ inputs.tag }}
@@ -88,7 +88,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jellysin/release-helper
-          ref: c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
+          ref: 8e75bfdf6eb89283afb68c5bc50d5645c984752c # v1.7.0
           path: build/repro-tooling
           persist-credentials: false
       - name: Verify production artifact reproducibility with the embedded application
