@@ -47,7 +47,7 @@ jobs:
           name: ${{ needs.build.outputs.artifact }}
       - uses: ./.github/actions/verify-signed
       - name: Verify bytes, resume missing draft uploads and publish
-        uses: jellysin/release-helper/actions/publish@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
+        uses: jellysin/release-helper/actions/publish@8e75bfdf6eb89283afb68c5bc50d5645c984752c # v1.7.0
         with:
           directory: dist
           tag: ${{ github.ref_name }}

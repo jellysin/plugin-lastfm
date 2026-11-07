@@ -15,4 +15,4 @@ jobs:
       issues: write
       pull-requests: write
       actions: write
-    uses: jellysin/release-helper/.github/workflows/release-please.yml@c0f6e472f9ac4da2ccdd10afd0a7a167d938b566 # v1.6.0
+    uses: jellysin/release-helper/.github/workflows/release-please.yml@8e75bfdf6eb89283afb68c5bc50d5645c984752c # v1.7.0
