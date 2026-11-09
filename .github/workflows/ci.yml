@@ -10,7 +10,7 @@ permissions:
   contents: read
 env:
   # Engine the local Praetor hooks install and run (.config/lefthook/engine.sh).
-  PRAETOR_REF: "60c174e02c593ca7272f67a0f1bfbde656af3fd1"
+  PRAETOR_REF: "a6fc702c3b00d97bebeb99fc52900cf2fb259865"
 # A newer push replaces an older run only on a pull request. Main pushes,
 # dispatches and calls get a group of their own (the run id), so neither a
 # newer merge nor a queued third run cancels them and every merge keeps its
@@ -200,7 +200,7 @@ jobs:
   carryover:
     name: Upgrade, removal and catalog checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       CI: 'true'
       DOTNET_NOLOGO: 'true'

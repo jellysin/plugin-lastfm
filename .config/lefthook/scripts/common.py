@@ -360,8 +360,9 @@ def run(
     return stdout or b""
 
 
-def git(*args, cwd=None, env=None):
-    return run(["git", *args], cwd=cwd, env=env)
+def git(*args, cwd=None, env=None, allowed=(0,)):
+    """Run git with args; allowed lists the exit codes that are not failures."""
+    return run(["git", *args], cwd=cwd, env=env, allowed=allowed)
 
 
 def resolved_relative_to(path, root):

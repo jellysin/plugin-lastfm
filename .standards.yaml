@@ -46,3 +46,35 @@ register:
 release:
   e2e:
     since: 2fc207e3e3fa17b8504786d78b93c4044c561f32
+  test_levels:
+    unit:
+      paths:
+        - "tests/JellySin.Plugin.Lastfm.Tests/**/*Tests.cs"
+        - "tests/python/test_*.py"
+        - "tests/web/*.test.mjs"
+      job: "checks"
+      run: "dotnet test tests/JellySin.Plugin.Lastfm.Tests/"
+    integration:
+      paths:
+        - "tests/integration/native_userdata.py"
+      job: "checks"
+      run: "tests/integration/native_userdata.py"
+    e2e:
+      paths:
+        - "tests/integration/page_check.py"
+        - "tests/integration/proxied_sign_in.py"
+        - "tests/integration/settings_entry.py"
+      job: "checks"
+      run: "tests/integration/page_check.py"
+    load_soak:
+      paths:
+        - "tools/library_load.py"
+        - "tools/smoke.py"
+      job: "checks"
+      run: "tools/library_load.py"
+    recovery_restore:
+      paths:
+        - "tests/integration/state_carryover.py"
+        - "tests/integration/catalog_over_canary.py"
+      job: "carryover"
+      run: "tests/integration/state_carryover.py"
