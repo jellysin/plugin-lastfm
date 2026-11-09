@@ -24,8 +24,8 @@ MAX_FILES = 20000
 # REUSE ignores licence texts, so they never need a declaration.
 LICENCE_TEXTS = ("LICENSE", "LICENSES/**")
 FIRST_PARTY = (
-    ".dockerignore", ".editorconfig", ".gitattributes", ".gitignore", ".gitleaksignore",
-    ".mcp.json", ".node-version", ".python-version", ".release-please-manifest.json",
+    ".coderabbit.yaml", ".dockerignore", ".editorconfig", ".gitattributes", ".gitignore",
+    ".gitleaksignore", ".mcp.json", ".node-version", ".python-version", ".release-please-manifest.json",
     ".standards-baseline.json", ".standards.lock", ".standards.yaml", "Directory.Build.props",
     "JellySin.Plugin.Lastfm.sln", "Makefile", "REUSE.toml", "eslint.config.mjs", "global.json",
     "lefthook.yml", "opencode.json", "package-lock.json", "package.json", "playwright.config.mjs",
