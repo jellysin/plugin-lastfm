@@ -44,6 +44,7 @@ IMAGES = {
 DEFAULT_SERVER = "newest"
 REMOVE_ATTEMPTS = 4
 REMOVE_PAUSE_SECONDS = 5
+WINDOWS_ACL_TIMEOUT_SECONDS = 30
 IMAGE_TAG = re.compile(r"jellyfin/jellyfin:(\d+\.\d+)(?:\.\d+)?@sha256:[a-f0-9]{64}")
 PREFIX = "/JellySin/Lastfm"
 MAX_RESPONSE = 8_000_000
@@ -695,20 +696,25 @@ def cleanup_retained(path: Path) -> None:
 
 
 def write_private_state(path: Path, state: dict[str, Any]) -> None:
+    """Write state to a new file only the current user can read; fail if the file exists or access cannot be restricted."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         if os.name == "nt":
-            owner = subprocess.run(
-                ["whoami"],  # noqa: S607 - standard Windows whoami executable
-                capture_output=True, text=True, check=True,
-            ).stdout.strip()
-            result = subprocess.run(  # noqa: S603 - fixed arguments with state file path and resolved owner
-                [  # noqa: S607 - standard Windows icacls executable
-                    "icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)",
-                ],
-                capture_output=True, check=False,
-            )
+            try:
+                owner = subprocess.run(  # nosec B603 - fixed argv, no shell
+                    ["whoami"],  # noqa: S607 - standard Windows whoami executable
+                    capture_output=True, text=True, check=True, timeout=WINDOWS_ACL_TIMEOUT_SECONDS,
+                ).stdout.strip()
+                result = subprocess.run(  # noqa: S603 - fixed arguments with state file path and resolved owner
+                    [  # noqa: S607 - standard Windows icacls executable
+                        "icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)",
+                    ],
+                    capture_output=True, check=False, timeout=WINDOWS_ACL_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise SmokeFailure(f"{error.cmd[0]} did not finish within {WINDOWS_ACL_TIMEOUT_SECONDS} seconds while "
+                                   "restricting access to the local smoke state file.") from None
             require(result.returncode == 0, "Could not restrict access to the local smoke state file.")
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             descriptor = -1

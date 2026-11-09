@@ -9,6 +9,7 @@ from pathlib import Path
 import console
 from tools.attribution import MAX_EVENT_BYTES, AttributionError, check, credits_tool, event_texts, history, main, scan
 
+GIT_TIMEOUT_SECONDS = 30
 MODEL = "Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>"
 FOOTER = "\U0001f916 Generated with [Claude Code](https://claude.com/claude-code)"
 IDENTITY = ("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false")
@@ -19,9 +20,10 @@ def run(arguments):
 
 
 def git(directory, *arguments):
-    subprocess.run(  # noqa: S603 - fixed git command on test repository fixture
+    """Run git in directory; fail the test on a non-zero exit or after GIT_TIMEOUT_SECONDS."""
+    subprocess.run(  # nosec B603  # noqa: S603 - test-fixed git argv, no shell
         ["git", "-C", str(directory), *arguments],  # noqa: S607 - standard git executable for test fixture
-        check=True, capture_output=True,
+        check=True, capture_output=True, timeout=GIT_TIMEOUT_SECONDS,
     )
 
 
@@ -108,11 +110,12 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual((2, 0, []), check(self.repository, "HEAD", None))
 
     def test_planted_trailer_in_an_older_commit_is_reported_with_its_commit(self):
+        """A model trailer below HEAD is found and reported with its own commit id."""
         self.commit(f"feat: first\n\n{MODEL}")
         self.commit("fix: second")
-        planted = subprocess.run(  # noqa: S603 - fixed git rev-parse command on test repository
+        planted = subprocess.run(  # nosec B603  # noqa: S603 - fixed git rev-parse argv, no shell
             ["git", "-C", str(self.repository), "rev-parse", "HEAD~1"],  # noqa: S607 - standard git executable
-            check=True, capture_output=True, text=True,
+            check=True, capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
         ).stdout.strip()
         count, _, found = check(self.repository, "HEAD", None)
         self.assertEqual((2, [(f"commit {planted[:12]}", 3, MODEL)]), (count, [(item.source, item.number, item.line) for item in found]))
