@@ -6,7 +6,7 @@ action. Include versions, a minimal reproduction and impact; omit actual session
 keys, passwords and private library contents.
 
 JellySin Last.fm is in development for Jellyfin 12. The latest release is
-[0.2.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.2.0); report security issues
+[0.5.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.5.0); report security issues
 against it or the development branch. Published release bytes
 must remain immutable; release fixes require new versions and Plugin Repository entries.
 

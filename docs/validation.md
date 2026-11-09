@@ -221,7 +221,8 @@ Release [0.1.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.1.0) w
 reproduction are recorded in [validation/release-0.1.0.md](validation/release-0.1.0.md).
 Release [0.2.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.2.0) followed on the same day; its record is
 [validation/release-0.2.0.md](validation/release-0.2.0.md).
-Release [0.4.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.4.0) was published on 2026-10-18; it has no separate record.
+Release [0.4.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.4.0) was published on 2026-10-18; its record, written afterwards from read-back, is
+[validation/release-0.4.0.md](validation/release-0.4.0.md).
 Release [0.5.0](https://github.com/jellysin/plugin-lastfm/releases/tag/v0.5.0) was published on 2026-10-19; its record is
 [validation/release-0.5.0.md](validation/release-0.5.0.md).
 The checks above are evidence for the commit they name.
