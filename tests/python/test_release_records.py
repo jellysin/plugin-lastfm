@@ -14,7 +14,10 @@ def missing_assets(text):
 
 
 class ReleaseRecordTests(unittest.TestCase):
+    """The committed release records and the field-list check that guards them."""
+
     def test_every_record_reads_back_its_assets(self):
+        """Each docs/validation/release-*.md has a read-back, and every read-back asks for assets."""
         records = sorted(RECORDS.glob("release-*.md"))
         self.assertTrue(records, f"no release record under {RECORDS}")
         for record in records:
@@ -24,10 +27,12 @@ class ReleaseRecordTests(unittest.TestCase):
                 self.assertEqual(missing_assets(text), [])
 
     def test_field_list_without_assets_is_reported(self):
+        """A field list without assets is returned as missing."""
         text = "`gh release view v9.9.9 -R jellysin/plugin-lastfm --json isDraft,isImmutable,publishedAt`"
         self.assertEqual(missing_assets(text), ["isDraft,isImmutable,publishedAt"])
 
     def test_assets_at_the_end_of_the_field_list_is_accepted(self):
+        """assets as the last field still counts."""
         text = "`gh release view v9.9.9 --json isDraft,assets`"
         self.assertEqual(missing_assets(text), [])
 
