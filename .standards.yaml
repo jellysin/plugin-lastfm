@@ -46,14 +46,24 @@ register:
 release:
   e2e:
     since: 2fc207e3e3fa17b8504786d78b93c4044c561f32
+  # One level per suite: the audit proves a level by finding its run text in a step of its
+  # job, so a level whose paths span several suites would prove only one of them.
   test_levels:
     unit:
       paths:
         - "tests/JellySin.Plugin.Lastfm.Tests/**/*Tests.cs"
-        - "tests/python/test_*.py"
-        - "tests/web/*.test.mjs"
       job: "checks"
       run: "dotnet test tests/JellySin.Plugin.Lastfm.Tests/"
+    unit_python:
+      paths:
+        - "tests/python/test_*.py"
+      job: "checks"
+      run: "python -m unittest discover -s tests/python"
+    unit_web:
+      paths:
+        - "tests/web/*.test.mjs"
+      job: "checks"
+      run: "npm test"
     integration:
       paths:
         - "tests/integration/native_userdata.py"
@@ -62,19 +72,40 @@ release:
     e2e:
       paths:
         - "tests/integration/page_check.py"
-        - "tests/integration/proxied_sign_in.py"
-        - "tests/integration/settings_entry.py"
       job: "checks"
       run: "tests/integration/page_check.py"
+    e2e_proxied_sign_in:
+      paths:
+        - "tests/integration/proxied_sign_in.py"
+      job: "checks"
+      run: "tests/integration/proxied_sign_in.py"
+    e2e_settings_entry:
+      paths:
+        - "tests/integration/settings_entry.py"
+      job: "checks"
+      run: "tests/integration/settings_entry.py"
+    e2e_browser:
+      paths:
+        - "tests/web/*.spec.mjs"
+      job: "checks"
+      run: "npm run test:e2e"
     load_soak:
       paths:
         - "tools/library_load.py"
-        - "tools/smoke.py"
       job: "checks"
       run: "tools/library_load.py"
+    load_soak_smoke:
+      paths:
+        - "tools/smoke.py"
+      job: "checks"
+      run: "tools/smoke.py"
     recovery_restore:
       paths:
         - "tests/integration/state_carryover.py"
-        - "tests/integration/catalog_over_canary.py"
       job: "carryover"
       run: "tests/integration/state_carryover.py"
+    recovery_restore_catalog:
+      paths:
+        - "tests/integration/catalog_over_canary.py"
+      job: "carryover"
+      run: "tests/integration/catalog_over_canary.py"
