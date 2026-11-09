@@ -9,6 +9,7 @@ from pathlib import Path
 import console
 from tools.attribution import MAX_EVENT_BYTES, AttributionError, check, credits_tool, event_texts, history, main, scan
 
+GIT_TIMEOUT_SECONDS = 30
 MODEL = "Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>"
 FOOTER = "\U0001f916 Generated with [Claude Code](https://claude.com/claude-code)"
 IDENTITY = ("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false")
@@ -19,7 +20,7 @@ def run(arguments):
 
 
 def git(directory, *arguments):
-    subprocess.run(["git", "-C", str(directory), *arguments], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(directory), *arguments], check=True, capture_output=True, timeout=GIT_TIMEOUT_SECONDS)
 
 
 def scratch_repository(case, *init):
@@ -107,7 +108,7 @@ class HistoryTests(unittest.TestCase):
     def test_planted_trailer_in_an_older_commit_is_reported_with_its_commit(self):
         self.commit(f"feat: first\n\n{MODEL}")
         self.commit("fix: second")
-        planted = subprocess.run(["git", "-C", str(self.repository), "rev-parse", "HEAD~1"], check=True, capture_output=True, text=True).stdout.strip()
+        planted = subprocess.run(["git", "-C", str(self.repository), "rev-parse", "HEAD~1"], check=True, capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS).stdout.strip()
         count, _, found = check(self.repository, "HEAD", None)
         self.assertEqual((2, [(f"commit {planted[:12]}", 3, MODEL)]), (count, [(item.source, item.number, item.line) for item in found]))
         code, output, errors = run(["--repository", str(self.repository)])
