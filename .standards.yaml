@@ -48,6 +48,7 @@ release:
     since: 2fc207e3e3fa17b8504786d78b93c4044c561f32
   # One level per suite: the audit proves a level by finding its run text in a step of its
   # job, so a level whose paths span several suites would prove only one of them.
+  # run text must name a normal step; a planted step (--plant, tools/expect_refusal.py) never proves a level.
   test_levels:
     unit:
       paths:
@@ -83,7 +84,7 @@ release:
       paths:
         - "tests/integration/settings_entry.py"
       job: "checks"
-      run: "tests/integration/settings_entry.py"
+      run: "tests/integration/settings_entry.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --server newest --evidence build/settings-entry-newest"
     e2e_browser:
       paths:
         - "tests/web/*.spec.mjs"
@@ -103,9 +104,9 @@ release:
       paths:
         - "tests/integration/state_carryover.py"
       job: "carryover"
-      run: "tests/integration/state_carryover.py"
+      run: "tests/integration/state_carryover.py --plugin src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --previous-release --report build/state-carryover.json"
     recovery_restore_catalog:
       paths:
         - "tests/integration/catalog_over_canary.py"
       job: "carryover"
-      run: "tests/integration/catalog_over_canary.py"
+      run: "tests/integration/catalog_over_canary.py --canary build/canary-shape/JellySin.Plugin.Lastfm.dll --release src/JellySin.Plugin.Lastfm/bin/Release/net10.0/JellySin.Plugin.Lastfm.dll --report build/catalog-over-canary.json"
