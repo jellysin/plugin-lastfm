@@ -21,15 +21,16 @@ def levels(text):
             or (re.match(r"^ {1,2}\S", line) and not line.startswith("  #"))
         ):
             break
-        elif in_levels and re.match(r"^ {4}([a-zA-Z0-9_]+):\s*$", line):
+        elif in_levels and (level := re.match(r"^ {4}([a-zA-Z0-9_]+):\s*$", line)):
             if cur_level and job and run:
                 result[cur_level] = (job, run)
-            cur_level = re.match(r"^ {4}([a-zA-Z0-9_]+):\s*$", line).group(1)
+            cur_level = level.group(1)
             job, run = None, None
-        elif in_levels and re.match(r"^ {6}job:\s*[\"']([^\"']+)[\"']", line):
-            job = re.match(r"^ {6}job:\s*[\"']([^\"']+)[\"']", line).group(1)
-        elif in_levels and re.match(r"^ {6}run:\s*[\"']([^\"']+)[\"']", line):
-            run = re.match(r"^ {6}run:\s*[\"']([^\"']+)[\"']", line).group(1)
+        elif in_levels and (key := re.match(r"^ {6}(job|run):\s*[\"']([^\"']+)[\"']", line)):
+            if key.group(1) == "job":
+                job = key.group(2)
+            else:
+                run = key.group(2)
     if cur_level and job and run:
         result[cur_level] = (job, run)
     return result
@@ -41,10 +42,9 @@ def _finish_step(acc, job_id, job_name, run_lines):
 
 
 def _handle_run_line(line, run_lines, multi):
-    if multi:
-        if line.startswith("          ") or not line.strip():
-            run_lines.append(line[10:] if len(line) >= 10 else "")
-            return True
+    if multi and (line.startswith("          ") or not line.strip()):
+        run_lines.append(line[10:] if len(line) >= 10 else "")
+        return True
     if line.startswith("        run:"):
         val = line.split("run:", 1)[1].strip()
         if val.startswith("|"):
