@@ -31,7 +31,7 @@ succeeded in `release.yml` (Publish exact release tag) run
 
 ## Published release
 
-`gh release view v0.4.0 -R jellysin/plugin-lastfm --json isDraft,isImmutable,publishedAt`
+`gh release view v0.4.0 -R jellysin/plugin-lastfm --json isDraft,isImmutable,publishedAt,assets`
 returned `isDraft: false`, `isImmutable: true` and `publishedAt: 2026-10-18T15:05:49Z`,
 with four assets (SHA-256 from release API, matched by download):
 
