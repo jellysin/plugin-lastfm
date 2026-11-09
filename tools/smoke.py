@@ -691,6 +691,7 @@ def cleanup_retained(path: Path) -> None:
 
 
 def write_private_state(path: Path, state: dict[str, Any]) -> None:
+    """Write state to a new file only the current user can read; fail if the file exists or access cannot be restricted."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:

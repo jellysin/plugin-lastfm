@@ -20,6 +20,7 @@ def run(arguments):
 
 
 def git(directory, *arguments):
+    """Run git in directory; fail the test on a non-zero exit or after GIT_TIMEOUT_SECONDS."""
     subprocess.run(["git", "-C", str(directory), *arguments], check=True, capture_output=True, timeout=GIT_TIMEOUT_SECONDS)
 
 
@@ -106,6 +107,7 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual((2, 0, []), check(self.repository, "HEAD", None))
 
     def test_planted_trailer_in_an_older_commit_is_reported_with_its_commit(self):
+        """A model trailer below HEAD is found and reported with its own commit id."""
         self.commit(f"feat: first\n\n{MODEL}")
         self.commit("fix: second")
         planted = subprocess.run(["git", "-C", str(self.repository), "rev-parse", "HEAD~1"], check=True, capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS).stdout.strip()
