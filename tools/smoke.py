@@ -697,7 +697,7 @@ def write_private_state(path: Path, state: dict[str, Any]) -> None:
     try:
         if os.name == "nt":
             try:
-                owner = subprocess.run(["whoami"], capture_output=True, text=True, check=True,
+                owner = subprocess.run(["whoami"], capture_output=True, text=True, check=True,  # nosec B603 - fixed argv, no shell
                                        timeout=WINDOWS_ACL_TIMEOUT_SECONDS).stdout.strip()
                 result = subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)"],
                                         capture_output=True, check=False, timeout=WINDOWS_ACL_TIMEOUT_SECONDS)
