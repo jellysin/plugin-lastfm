@@ -60,8 +60,9 @@ def require(condition: Any, description: str) -> None:
 
 
 def docker(*arguments: str, timeout: int = 90) -> str:
-    command = subprocess.run(
-        ["docker", *arguments], capture_output=True, text=True,
+    command = subprocess.run(  # noqa: S603 - fixed docker command with caller-supplied arguments
+        ["docker", *arguments],  # noqa: S607 - standard docker executable
+        capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=timeout, check=False,
     )
     if command.returncode:
@@ -97,9 +98,13 @@ class Client:
         if data is not None:
             outgoing["Content-Type"] = "application/json"
         display_path = "/Auth/Keys/[redacted]" if path.startswith("/Auth/Keys/") else path.split("?")[0]
-        request = urllib.request.Request(self.origin + self.base_path + path, data=data, headers=outgoing, method=method)
+        request = urllib.request.Request(  # noqa: S310 - URL built from test server origin and base path
+            self.origin + self.base_path + path, data=data, headers=outgoing, method=method
+        )
         try:
-            response = urllib.request.urlopen(request, timeout=timeout)
+            response = urllib.request.urlopen(  # noqa: S310 - opening request built from test server origin
+                request, timeout=timeout
+            )
         except urllib.error.HTTPError as error:
             response = error
         except (OSError, http.client.HTTPException) as error:
@@ -694,9 +699,16 @@ def write_private_state(path: Path, state: dict[str, Any]) -> None:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         if os.name == "nt":
-            owner = subprocess.run(["whoami"], capture_output=True, text=True, check=True).stdout.strip()
-            result = subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)"],
-                                    capture_output=True, check=False)
+            owner = subprocess.run(
+                ["whoami"],  # noqa: S607 - standard Windows whoami executable
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+            result = subprocess.run(  # noqa: S603 - fixed arguments with state file path and resolved owner
+                [  # noqa: S607 - standard Windows icacls executable
+                    "icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)",
+                ],
+                capture_output=True, check=False,
+            )
             require(result.returncode == 0, "Could not restrict access to the local smoke state file.")
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             descriptor = -1

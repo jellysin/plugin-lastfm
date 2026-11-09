@@ -78,6 +78,12 @@ says which one ran. Files that
 Semgrep parses only in part, such as C# primary constructors, are listed, not passed
 silently. `--self-test` writes planted cases to a temporary directory and fails when a
 rule misses one or reports an unmarked line.
+Ruff runs through `tools/ruff_gate.py` in the CI scanners job, with the release pinned in
+`.config/ruff/requirements.txt`. `ruff.toml` lists the Ruff patterns Codacy enables and is
+the only place to change them. Suppress a finding on its line with
+`# noqa: <code> - <reason>`. A per-file exception in `ruff.toml` needs the line
+`# expires YYYY-MM-DD (MEL <A-D>, entered YYYY-MM-DD): <reason>` directly above it, and
+the gate fails once that date has passed.
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,

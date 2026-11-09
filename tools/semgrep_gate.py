@@ -70,28 +70,30 @@ class GateError(RuntimeError):
     """Semgrep did not run to completion, or the self-test found the rules wrong."""
 
 
-def pinned_version(text: str) -> str:
-    """Return the Semgrep version the requirements file pins with `==`."""
-    versions = [line.split("==", 1)[1].strip() for line in text.splitlines() if line.startswith("semgrep==")]
+def pinned_version(text: str, package: str = "semgrep", source: Path = REQUIREMENTS) -> str:
+    """Return the package version the requirements file pins with `==`."""
+    prefix = f"{package}=="
+    versions = [line.split("==", 1)[1].strip() for line in text.splitlines() if line.startswith(prefix)]
     if len(versions) != 1 or not versions[0]:
-        raise GateError(f"{REQUIREMENTS.relative_to(ROOT)}: expected one `semgrep==<version>` line")
+        rel = source.relative_to(ROOT) if source.is_relative_to(ROOT) else source
+        raise GateError(f"{rel}: expected one `{package}==<version>` line")
     return versions[0]
 
 
-def launcher(version: str) -> list[str]:
-    """Return the command that starts the pinned Semgrep; uvx first, pipx second, and say which one runs.
+def launcher(version: str, package: str = "semgrep", python: str = SEMGREP_PYTHON) -> list[str]:
+    """Return the command that starts the pinned tool; uvx first, pipx second, and say which one runs.
 
     Only these two launchers are accepted, each resolved once to an absolute path on PATH, the same trust any
     developer tool on the machine gets; the version comes from the committed requirements file.
     """
     uvx, pipx = shutil.which("uvx"), shutil.which("pipx")
     if uvx:
-        command = [uvx, "--quiet", "--python", SEMGREP_PYTHON, "--from", f"semgrep=={version}", "semgrep"]
+        command = [uvx, "--quiet", "--python", python, "--from", f"{package}=={version}", package]
     elif pipx:
-        command = [pipx, "run", "--python", SEMGREP_PYTHON, "--fetch-missing-python", "--spec", f"semgrep=={version}", "semgrep"]
+        command = [pipx, "run", "--python", python, "--fetch-missing-python", "--spec", f"{package}=={version}", package]
     else:
-        raise GateError("neither uvx nor pipx found; install uv (https://docs.astral.sh/uv/) to run Semgrep")
-    print(f"semgrep-gate: semgrep {version} on Python {SEMGREP_PYTHON} via {command[0]}", file=sys.stderr)
+        raise GateError(f"neither uvx nor pipx found; install uv (https://docs.astral.sh/uv/) to run {package}")
+    print(f"{package}-gate: {package} {version} on Python {python} via {command[0]}", file=sys.stderr)
     return command
 
 
@@ -117,7 +119,7 @@ def tracked() -> list[str]:
         raise GateError("git not found; the tracked files cannot be listed")
     # Fixed arguments, absolute executable path, no shell.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # noqa: S603 - fixed argv with absolute git executable
         [executable, "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True, timeout=60
     )
     return [name for name in result.stdout.decode().split("\0") if name]
@@ -133,7 +135,7 @@ def run(command: list[str], targets: list[str], packs: tuple[str, ...]) -> list[
     # The launcher is uvx or pipx at an absolute path, the version comes from the committed requirements file, and the
     # targets are repository paths (scanned() refuses any other) after `--`; no shell. Tests: TargetTests, LauncherTests.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # noqa: S603 - fixed launcher with validated target paths
         arguments, check=False, cwd=ROOT, capture_output=True, text=True, timeout=SCAN_TIMEOUT_SECONDS
     )
     if result.returncode not in (0, 1):

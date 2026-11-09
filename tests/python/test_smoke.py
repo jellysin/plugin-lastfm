@@ -443,8 +443,12 @@ def authenticated(adapter_status=404):
         do_GET = do_POST = do_PUT = do_DELETE = answer
 
     with serving(Planted) as origin:
-        admin = smoke.Client(origin, "/jellyfin", token="admin-token")
-        listener = smoke.Client(origin, "/jellyfin", token="listener-token")
+        admin = smoke.Client(
+            origin, "/jellyfin", token="admin-token"  # noqa: S106 - test token, no credential
+        )
+        listener = smoke.Client(
+            origin, "/jellyfin", token="listener-token"  # noqa: S106 - test token, no credential
+        )
         smoke.check_authentication(admin, listener, True)
     return asked
 

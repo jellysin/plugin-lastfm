@@ -223,8 +223,11 @@ def listener_flows(origin: str, stand_in: StandInContainer, state: dict[str, Any
 
 
 def write_evidence(evidence: Path, host: DockerHost, stand_in: StandInContainer) -> None:
-    log = subprocess.run(["docker", "logs", host.name], capture_output=True, text=True, encoding="utf-8",
-                         errors="replace", timeout=60, check=False)
+    log = subprocess.run(  # noqa: S603 - fixed docker logs command with managed host container
+        ["docker", "logs", host.name],  # noqa: S607 - standard docker executable for container log collection
+        capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=60, check=False,
+    )
     text = log.stdout + log.stderr
     require(stand_in.session not in text, "The server log contains the Last.fm session key.")
     (evidence / "server.log").write_text(text, encoding="utf-8")
@@ -248,8 +251,14 @@ def run(image: str, plugin: Path, evidence: Path) -> None:
             run_file = directory / "run.json"
             run_file.write_text(json.dumps(state), encoding="utf-8")
             run_file.chmod(0o600)
-            browser = subprocess.run(["node", str(ROOT / "tests/integration/page_check.mjs"), str(run_file)],
-                                     cwd=ROOT, timeout=600, check=False)
+            browser = subprocess.run(  # noqa: S603 - fixed node invocation with test runner script
+                [  # noqa: S607 - standard node executable for integration test runner
+                    "node",
+                    str(ROOT / "tests/integration/page_check.mjs"),
+                    str(run_file),
+                ],
+                cwd=ROOT, timeout=600, check=False,
+            )
             # The flows need the connection the browser made; without it they would only repeat its failure.
             flows = browser.returncode == 0 and listener_flows(host.origin, stand_in, state)
             write_evidence(evidence, host, stand_in)

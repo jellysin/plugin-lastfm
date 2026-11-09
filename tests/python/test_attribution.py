@@ -19,7 +19,10 @@ def run(arguments):
 
 
 def git(directory, *arguments):
-    subprocess.run(["git", "-C", str(directory), *arguments], check=True, capture_output=True)
+    subprocess.run(  # noqa: S603 - fixed git command on test repository fixture
+        ["git", "-C", str(directory), *arguments],  # noqa: S607 - standard git executable for test fixture
+        check=True, capture_output=True,
+    )
 
 
 def scratch_repository(case, *init):
@@ -107,7 +110,10 @@ class HistoryTests(unittest.TestCase):
     def test_planted_trailer_in_an_older_commit_is_reported_with_its_commit(self):
         self.commit(f"feat: first\n\n{MODEL}")
         self.commit("fix: second")
-        planted = subprocess.run(["git", "-C", str(self.repository), "rev-parse", "HEAD~1"], check=True, capture_output=True, text=True).stdout.strip()
+        planted = subprocess.run(  # noqa: S603 - fixed git rev-parse command on test repository
+            ["git", "-C", str(self.repository), "rev-parse", "HEAD~1"],  # noqa: S607 - standard git executable
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
         count, _, found = check(self.repository, "HEAD", None)
         self.assertEqual((2, [(f"commit {planted[:12]}", 3, MODEL)]), (count, [(item.source, item.number, item.line) for item in found]))
         code, output, errors = run(["--repository", str(self.repository)])

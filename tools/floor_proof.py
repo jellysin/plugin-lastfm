@@ -76,7 +76,9 @@ def ask(tooling, root, documents, scratch):
         command += [f"--{option}", str(scratch / f"{option}.json")]
     # Without the runner's output file the helper's step outputs do not reach this job.
     environment = {name: value for name, value in os.environ.items() if name != "GITHUB_OUTPUT"}
-    done = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False)
+    done = subprocess.run(  # noqa: S603 - fixed python executable with validated packaging arguments
+        command, cwd=root, env=environment, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False
+    )
     written = sorted(path.name for path in (scratch / "out").iterdir()) if (scratch / "out").is_dir() else []
     return done.returncode, done.stdout + done.stderr, written
 

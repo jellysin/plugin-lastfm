@@ -59,7 +59,9 @@ def audit(directory, production_only=False, registry=None):
     command = ["npm", "audit", "--json", "--package-lock-only"]
     command += ["--omit=dev"] if production_only else []
     command += ["--registry", registry, "--fetch-retries=0"] if registry else []
-    result = subprocess.run(command, cwd=directory, capture_output=True, text=True, timeout=AUDIT_TIMEOUT_SECONDS, check=False)
+    result = subprocess.run(  # noqa: S603 - fixed npm audit command on directory
+        command, cwd=directory, capture_output=True, text=True, timeout=AUDIT_TIMEOUT_SECONDS, check=False
+    )
     if len(result.stdout) > MAX_REPORT_BYTES:
         raise AuditError("the npm audit report is too large")
     try:
@@ -95,7 +97,10 @@ def render(findings, revision):
 
 
 def forge(arguments, text=None):
-    result = subprocess.run(["gh", *arguments], input=text, capture_output=True, text=True, timeout=FORGE_TIMEOUT_SECONDS, check=False)
+    result = subprocess.run(  # noqa: S603 - fixed gh command with caller-supplied arguments
+        ["gh", *arguments],  # noqa: S607 - standard gh CLI executable
+        input=text, capture_output=True, text=True, timeout=FORGE_TIMEOUT_SECONDS, check=False,
+    )
     if result.returncode:
         raise AuditError(f"gh {' '.join(arguments[:2])} failed (exit {result.returncode}); the token needs `issues: write`: {result.stderr.strip()[-300:]}")
     return result.stdout

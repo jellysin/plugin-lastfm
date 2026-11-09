@@ -63,7 +63,9 @@ def references(root):
         if path == Path(root) / PLUGIN:
             continue
         try:
-            elements = ElementTree.fromstring(read(path)).iter("PackageReference")
+            elements = ElementTree.fromstring(  # noqa: S314 - parsing repository C# project XML file
+                read(path)
+            ).iter("PackageReference")
         except ElementTree.ParseError as error:
             raise FloorError(f"{path.name} is not a readable project file") from error
         for element in elements:

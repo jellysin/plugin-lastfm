@@ -295,3 +295,7 @@ jobs:
         run: |
           python3 tools/semgrep_gate.py --self-test
           python3 tools/semgrep_gate.py
+      - name: No Ruff finding under the Codacy rule set (ruff)
+        run: |
+          python3 tools/ruff_gate.py --self-test
+          python3 tools/ruff_gate.py

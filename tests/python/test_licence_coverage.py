@@ -53,7 +53,10 @@ class PlantedRepository(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
-        subprocess.run(["git", "init", "-q", str(self.root)], check=True, capture_output=True, timeout=30)
+        subprocess.run(  # noqa: S603 - fixed git init command on test fixture directory
+            ["git", "init", "-q", str(self.root)],  # noqa: S607 - standard git executable for test fixture
+            check=True, capture_output=True, timeout=30,
+        )
         self.write("REUSE.toml", REUSE_TOML)
         self.write("src/Plugin.cs", "class Plugin {}\n")
         self.write("docs/guide.md", "# Guide\n")

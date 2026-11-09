@@ -21,16 +21,20 @@ def run(arguments: list[str], directory: Path, timeout: int = 600) -> None:
     executable = shutil.which(arguments[0])
     if executable is None:
         raise RuntimeError(f"Required executable is unavailable: {arguments[0]}")
-    result = subprocess.run([executable, *arguments[1:]], cwd=directory, timeout=timeout,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=False)
+    result = subprocess.run(  # noqa: S603 - absolute executable path resolved by shutil.which
+        [executable, *arguments[1:]], cwd=directory, timeout=timeout,
+        stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=False,
+    )
     if result.returncode:
         # Compiler diagnostics can contain embedded application credentials.
         raise RuntimeError(f"Reproducibility stage {arguments[0]} failed (exit {result.returncode}).")
 
 
 def git(root: Path, *arguments: str) -> str:
-    result = subprocess.run(["git", *arguments], cwd=root, capture_output=True,
-                            text=True, timeout=30, check=True)
+    result = subprocess.run(  # noqa: S603 - fixed git command with caller-supplied arguments
+        ["git", *arguments],  # noqa: S607 - standard git executable
+        cwd=root, capture_output=True, text=True, timeout=30, check=True,
+    )
     return result.stdout.strip()
 
 
