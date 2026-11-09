@@ -10,6 +10,7 @@ CI = ROOT / ".github" / "workflows" / "ci.yml"
 
 
 def levels(text):
+    """Map each release test level in .standards.yaml to its (job, run) binding."""
     result = {}
     in_levels = False
     cur_level, job, run = None, None, None
@@ -37,11 +38,13 @@ def levels(text):
 
 
 def _finish_step(acc, job_id, job_name, run_lines):
+    """Append the open step to acc as (job id, job name, run text); skip when no step is open."""
     if run_lines is not None:
         acc.append((job_id, job_name, "\n".join(run_lines)))
 
 
 def _handle_run_line(line, run_lines, multi):
+    """Collect one run line into run_lines; return whether a multi-line run block continues."""
     if multi and (line.startswith("          ") or not line.strip()):
         run_lines.append(line[10:] if len(line) >= 10 else "")
         return True
@@ -54,6 +57,7 @@ def _handle_run_line(line, run_lines, multi):
 
 
 def steps(text):
+    """List every workflow step of ci.yml as (job id, job name, run text)."""
     result = []
     job_id, job_name, run_lines, multi = None, None, None, False
     in_jobs = False
@@ -77,10 +81,12 @@ def steps(text):
 
 
 def planted(run_text):
+    """Return whether a step plants a defect instead of running the normal check."""
     return "--plant" in run_text or "tools/expect_refusal.py" in run_text
 
 
 def proving_steps(level_job, level_run, all_steps):
+    """Return the steps in the level's job whose run text contains the level's run binding."""
     return [
         step
         for step in all_steps
