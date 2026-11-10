@@ -178,16 +178,16 @@ def connect(host: DockerHost, stand_in: StandInContainer, password: str, admin: 
     return admin
 
 
-def install(admin: Client) -> None:
-    """Adds the repository and installs the release from it through Jellyfin's package API."""
-    admin.request("/Repositories", "POST", [{"Name": "JellySin catalog check", "Url": MANIFEST_URL, "Enabled": True}], expected=204)
-    deadline = time.monotonic() + PACKAGE_SECONDS
-    while not any(item["guid"].replace("-", "") == PLUGIN_ID.replace("-", "") for item in admin.request("/Packages")):
-        require(time.monotonic() < deadline, "The server does not list the package of the local repository.")
+def install(admin: Client, manifest: str = MANIFEST_URL, version: str = RELEASE_VERSION, seconds: int = PACKAGE_SECONDS) -> None:
+    """Adds the repository at manifest and installs version from it through Jellyfin's package API within seconds."""
+    admin.request("/Repositories", "POST", [{"Name": "JellySin catalog check", "Url": manifest, "Enabled": True}], expected=204)
+    deadline = time.monotonic() + seconds
+    while not any(item["guid"].replace("-", "") == PLUGIN_ID.replace("-", "") for item in admin.request("/Packages", timeout=seconds)):
+        require(time.monotonic() < deadline, f"The server does not list the package of the repository at {manifest}.")
         time.sleep(1)
-    query = urllib.parse.urlencode({"assemblyGuid": DESCRIPTOR["guid"], "version": RELEASE_VERSION, "repositoryUrl": MANIFEST_URL})
+    query = urllib.parse.urlencode({"assemblyGuid": DESCRIPTOR["guid"], "version": version, "repositoryUrl": manifest})
     admin.request("/Packages/Installed/" + urllib.parse.quote(DESCRIPTOR["name"]) + "?" + query, "POST", expected=204,
-                  timeout=PACKAGE_SECONDS)
+                  timeout=seconds)
 
 
 def restart(host: DockerHost, password: str) -> Client:
@@ -235,6 +235,26 @@ def run(host: DockerHost, stand_in: StandInContainer, plant: str | None, report:
     report["passed"] = True
 
 
+def finish(host: DockerHost, parts: tuple[Any, ...], path: Path, report: dict[str, Any]) -> None:
+    """Writes the report with the server's plugin log, then removes every part, even when the log, the write or a removal fails."""
+    try:
+        if host.started:
+            try:
+                report["log"] = [line for line in docker("logs", host.name).splitlines() if "lugin" in line][-60:]
+            except SmokeFailure as failure:
+                report["log-failure"] = str(failure)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    finally:
+        failures = []
+        for part in parts:
+            try:
+                part.cleanup()
+            except SmokeFailure as failure:
+                failures.append(str(failure))
+        require(not failures, " ".join(failures))
+
+
 def main() -> int:
     """Runs the catalog check against a disposable server and writes its report; 0 on pass, 1 on failure."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -264,12 +284,7 @@ def main() -> int:
             report["failure"] = str(failure)
             print(f"FAIL: {failure}", file=sys.stderr, flush=True)
         finally:
-            if host.started:
-                report["log"] = [line for line in docker("logs", host.name).splitlines() if "lugin" in line][-60:]
-            args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
-            for part in (host, repository, stand_in):
-                part.cleanup()
+            finish(host, (host, repository, stand_in), args.report, report)
     return 0 if report.get("passed") else 1
 
 

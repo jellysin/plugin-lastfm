@@ -305,6 +305,29 @@ at start, so only the love with the stored session key shows that the ring was k
 The record in `docs/operations.md` comes from this check. CI job `carryover` runs this
 check and enforces refusal of `--plant keys` via `tools/expect_refusal.py`.
 
+## A published release installed from the catalog
+
+`catalog_install.py` checks a release once its catalog entry has merged. It starts a
+disposable Jellyfin 12 server with no plugin, adds the published catalog
+(`https://raw.githubusercontent.com/jellysin/repo/main/manifest.json`, or the HTTPS
+address `--catalog` names) and installs `--version`, a four-part catalog version,
+through the server's package API with the requests of `catalog_over_canary.py`. The
+check fails unless the server lists that version alone and active after each of two
+restarts. The JSON report records the image, the server release, the plugin list
+before the install, after it and after each restart, and the SHA-256 of the installed
+assembly.
+
+```sh
+python3 tests/integration/catalog_install.py --version 0.5.0.0 --server 12.2 \
+  --report build/catalog-install-0.5.0.json
+```
+
+It needs Docker and internet access, because the server downloads the catalog and the
+release archive itself. `--plant none-installed` judges the plugin list from before
+the install, so the run must fail; `tools/expect_refusal.py` checks that refusal. CI
+does not run this check, since it depends on the published catalog; the release
+records in `docs/validation/` name each run.
+
 ## What a removal leaves behind
 
 `removal_leftovers.py` starts a disposable Jellyfin 12 server with the plugin placed
