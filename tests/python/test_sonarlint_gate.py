@@ -230,10 +230,27 @@ class ApiTests(unittest.TestCase):
         with self.assertRaises(sonarlint_gate.GateError):
             from_pages(data)
 
+    def test_boolean_total(self):
+        """A one-item page accepts integer one but refuses a boolean total."""
+        data = pages()[:1]
+        data[0]["pagination"]["total"] = 1
+        self.assertEqual(len(json.loads(from_pages(data))["rules"]), 1)
+        data[0]["pagination"]["total"] = True
+        with self.assertRaises(sonarlint_gate.GateError):
+            from_pages(data)
+
     def test_different_standards(self):
         """Rules from two coding standards cannot be silently combined."""
         data = pages()
         data[1]["data"][0]["enabledBy"] = [{"id": 99, "name": "Different standard"}]
+        with self.assertRaises(sonarlint_gate.GateError):
+            from_pages(data)
+
+    def test_boolean_standard_id(self):
+        """A consistent coding standard with a boolean id is refused."""
+        data = pages()
+        for page in data:
+            page["data"][0]["enabledBy"] = [{"id": True, "name": STANDARD[0]["name"]}]
         with self.assertRaises(sonarlint_gate.GateError):
             from_pages(data)
 

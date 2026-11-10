@@ -35,6 +35,11 @@ GENERATED_COMMENT = (
 PLANTED_CASES = 8
 
 
+def plain_int(value) -> bool:
+    """Return whether a value is an integer other than a boolean."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def json_object(text: str, source: str) -> dict:
     """Decode a JSON object, reporting malformed input as a gate error."""
     try:
@@ -153,7 +158,7 @@ def api_items(texts: list[str]) -> list[dict]:
         if not isinstance(data, list) or not isinstance(pagination, dict):
             raise GateError(f"API page {index}: expected data list and pagination object")
         total = pagination.get("total")
-        if type(total) is not int or not 1 <= total <= MAX_RULES:
+        if not plain_int(total) or not 1 <= total <= MAX_RULES:
             raise GateError(f"API page {index}: invalid pagination.total")
         if len(items) + len(data) > MAX_RULES:
             raise GateError(f"API: more than {MAX_RULES} rules")
@@ -193,7 +198,7 @@ def snapshot_from_pages(texts: list[str], read_date: str) -> str:
     if not isinstance(standard, list) or len(standard) != 1 or not isinstance(standard[0], dict):
         raise GateError("API: enabledBy must contain exactly one coding standard")
     identity = standard[0]
-    if type(identity.get("id")) is not int or not isinstance(identity.get("name"), str):
+    if not plain_int(identity.get("id")) or not isinstance(identity.get("name"), str):
         raise GateError("API: coding standard requires an integer id and string name")
     rules = [api_rule(item, standard) for item in items]
     try:
