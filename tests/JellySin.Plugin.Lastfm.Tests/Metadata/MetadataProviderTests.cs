@@ -213,6 +213,54 @@ public sealed class MetadataProviderTests : IDisposable
         Assert.Empty(_fixture.Client.Calls);
     }
 
+    /// <summary>Missing artist names without a MusicBrainz ID return no metadata and make no Last.fm call.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ArtistWithoutNameOrMbidMakesNoCall(string name)
+    {
+        var result = await GetArtistMetadataAsync(
+            """
+            {
+              "artist": {
+                "name": "Cher",
+                "bio": {
+                  "content": "Cher biography. <a href=\"https://www.last.fm/music/Cher\">Read more on Last.fm</a>"
+                }
+              }
+            }
+            """,
+            new ArtistInfo { Name = name });
+
+        AssertNoMetadata(result);
+        Assert.Empty(_fixture.Client.Calls);
+    }
+
+    /// <summary>Missing album or artist names without a MusicBrainz ID return no metadata and make no Last.fm call.</summary>
+    [Theory]
+    [InlineData("", "Cher")]
+    [InlineData("Believe", "")]
+    [InlineData("Believe", "   ")]
+    public async Task AlbumWithoutNamesOrMbidMakesNoCall(string albumName, string artistName)
+    {
+        var result = await GetAlbumMetadataAsync(
+            """
+            {
+              "album": {
+                "name": "Believe",
+                "artist": "Cher",
+                "wiki": {
+                  "content": "Believe album wiki. <a href=\"https://www.last.fm/music/Cher/Believe\">Read more on Last.fm</a>"
+                }
+              }
+            }
+            """,
+            new AlbumInfo { Name = albumName, AlbumArtists = [artistName] });
+
+        AssertNoMetadata(result);
+        Assert.Empty(_fixture.Client.Calls);
+    }
+
     [Fact]
     public async Task CancellationHonoured()
     {
