@@ -1,0 +1,2 @@
+# Release run by tools/ruff_gate.py; the update bot's pip_requirements manager moves it.
+ruff==0.17.4

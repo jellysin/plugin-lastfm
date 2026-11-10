@@ -10,7 +10,7 @@ PROPS = ROOT / "Directory.Build.props"
 
 def problems(text):
     """Return what keeps the build properties from writing one SARIF 2.1 file per project under build/sarif, each as one statement."""
-    project = ET.fromstring(text)
+    project = ET.fromstring(text)  # nosec B314  # noqa: S314 - parsing repository Directory.Build.props XML
     values = {child.tag: (child.text or "").strip() for group in project.iter("PropertyGroup") for child in group}
     found = []
     folder = values.get("SarifDirectory", "")

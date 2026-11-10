@@ -62,8 +62,14 @@ def references(root):
     for path in found:
         if path == Path(root) / PLUGIN:
             continue
+        text = read(path)
+        if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+            raise FloorError(f"{path.name} declares a document type or entity; project files carry neither")
         try:
-            elements = ElementTree.fromstring(read(path)).iter("PackageReference")
+            # nosemgrep: python_xml_rule-element - DTD and entity declarations are refused before the parse
+            elements = ElementTree.fromstring(  # nosec B314  # noqa: S314 - parsing repository C# project XML file
+                text
+            ).iter("PackageReference")
         except ElementTree.ParseError as error:
             raise FloorError(f"{path.name} is not a readable project file") from error
         for element in elements:

@@ -61,8 +61,10 @@ def require(condition: Any, description: str) -> None:
 
 
 def docker(*arguments: str, timeout: int = 90) -> str:
-    command = subprocess.run(
-        ["docker", *arguments], capture_output=True, text=True,
+    """Run a Docker command and return stdout; raise SmokeFailure on failure."""
+    command = subprocess.run(  # nosec B603  # noqa: S603 - fixed docker command with caller-supplied arguments
+        ["docker", *arguments],  # noqa: S607 - standard docker executable
+        capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=timeout, check=False,
     )
     if command.returncode:
@@ -88,6 +90,7 @@ class Client:
         expected: int | tuple[int, ...] = 200, headers: dict[str, str] | None = None,
         raw: bool = False, timeout: float = 20,
     ) -> Any:
+        """Send an HTTP request to the server and return the response; raise SmokeFailure on error or unexpected status."""
         authorization = f'MediaBrowser Client="JellySin smoke", Device="Test", DeviceId="{self.device}", Version="1.0.0"'
         if self.token:
             authorization += f', Token="{self.token}"'
@@ -98,9 +101,17 @@ class Client:
         if data is not None:
             outgoing["Content-Type"] = "application/json"
         display_path = "/Auth/Keys/[redacted]" if path.startswith("/Auth/Keys/") else path.split("?")[0]
-        request = urllib.request.Request(self.origin + self.base_path + path, data=data, headers=outgoing, method=method)
+        url = self.origin + self.base_path + path
+        if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+            raise SmokeFailure(f"{method} {display_path} refused: the server address is not http or https.")
+        request = urllib.request.Request(  # nosec B310  # noqa: S310 - URL scheme checked above
+            url, data=data, headers=outgoing, method=method
+        )
         try:
-            response = urllib.request.urlopen(request, timeout=timeout)
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected, python_urlopen_rule-urllib-urlopen
+            response = urllib.request.urlopen(  # nosec B310  # noqa: S310 - URL scheme checked above
+                request, timeout=timeout
+            )
         except urllib.error.HTTPError as error:
             response = error
         except (OSError, http.client.HTTPException) as error:
@@ -697,10 +708,16 @@ def write_private_state(path: Path, state: dict[str, Any]) -> None:
     try:
         if os.name == "nt":
             try:
-                owner = subprocess.run(["whoami"], capture_output=True, text=True, check=True,  # nosec B603 - fixed argv, no shell
-                                       timeout=WINDOWS_ACL_TIMEOUT_SECONDS).stdout.strip()
-                result = subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)"],
-                                        capture_output=True, check=False, timeout=WINDOWS_ACL_TIMEOUT_SECONDS)
+                owner = subprocess.run(  # nosec B603 - fixed argv, no shell
+                    ["whoami"],  # noqa: S607 - standard Windows whoami executable
+                    capture_output=True, text=True, check=True, timeout=WINDOWS_ACL_TIMEOUT_SECONDS,
+                ).stdout.strip()
+                result = subprocess.run(  # nosec B603  # noqa: S603 - fixed arguments with state file path and resolved owner
+                    [  # noqa: S607 - standard Windows icacls executable
+                        "icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)",
+                    ],
+                    capture_output=True, check=False, timeout=WINDOWS_ACL_TIMEOUT_SECONDS,
+                )
             except subprocess.TimeoutExpired as error:
                 raise SmokeFailure(f"{error.cmd[0]} did not finish within {WINDOWS_ACL_TIMEOUT_SECONDS} seconds while "
                                    "restricting access to the local smoke state file.") from None

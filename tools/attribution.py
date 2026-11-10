@@ -48,7 +48,8 @@ def credits_tool(line):
     if not footer:
         return False
     # The credited name ends at the link target, a sentence end or a dash.
-    named = re.split(r"\]|\(|[.,;:!?](\s|$)|\s[-–—]\s", footer["name"], maxsplit=1)[0]
+    pattern = r"\]|\(|[.,;:!?](\s|$)|\s[-–—]\s"  # noqa: RUF001 - intended en dash in regex splitting on dash variants
+    named = re.split(pattern, footer["name"], maxsplit=1)[0]
     return names_tool(named)
 
 
@@ -57,8 +58,12 @@ def scan(source, text):
 
 
 def git(repository, *arguments):
+    """Run a git command against the repository and return stdout; raise AttributionError on failure."""
     try:
-        done = subprocess.run(["git", "-C", str(repository), *arguments], capture_output=True, check=False, timeout=HISTORY_TIMEOUT_SECONDS)
+        done = subprocess.run(  # nosec B603  # noqa: S603 - fixed git command with caller-supplied arguments on repository
+            ["git", "-C", str(repository), *arguments],  # noqa: S607 - standard git executable
+            capture_output=True, check=False, timeout=HISTORY_TIMEOUT_SECONDS,
+        )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise AttributionError(f"git {arguments[0]} did not complete: {error}") from error
     if done.returncode != 0:

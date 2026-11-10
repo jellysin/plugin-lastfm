@@ -4,13 +4,14 @@
 # Edited: the five projects restore and build as one solution, one SDK container each, so shared projects build once.
 # Edited: reuse-lint runs the REUSE 6 lint of the required "REUSE lint" CI check and the licence coverage check (tools/reuse-lint.sh) before push.
 # Edited: test runs tools/JellySin.CodePolicy like CI, because no Praetor scanner reads C# and HISS-04 holds no C# exception.
+# Edited: ruff runs tools/ruff_gate.py with the Codacy rule set like the CI scanners job, so a Ruff finding fails before push.
 # Praetor ships one binary under two names; resolve whichever is installed.
 PRAETORCTL ?= $(shell command -v praetorctl 2>/dev/null || command -v standardsctl 2>/dev/null || echo praetorctl)
-.PHONY: all verify-all compile-context compile-context-verify caveman-sources audit reuse-lint semgrep build test
+.PHONY: all verify-all compile-context compile-context-verify caveman-sources audit reuse-lint semgrep ruff build test
 
 all: build
 
-verify-all: compile-context-verify caveman-sources audit reuse-lint semgrep test
+verify-all: compile-context-verify caveman-sources audit reuse-lint semgrep ruff test
 
 compile-context:
 	@$(PRAETORCTL) compile-context
@@ -30,6 +31,10 @@ reuse-lint:
 semgrep:
 	@python3 tools/semgrep_gate.py --self-test
 	@exec python3 tools/semgrep_gate.py
+
+ruff:
+	@python3 tools/ruff_gate.py --self-test
+	@exec python3 tools/ruff_gate.py
 
 test: build
 	@exec './tools/sdk.sh' 'dotnet' 'run' '--project' 'tools/JellySin.CodePolicy' '-c' 'Release' '--no-build' '--' '--self-test'

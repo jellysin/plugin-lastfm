@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Only Ruff rule source: tools/ruff_gate.py passes this file with --config, and Codacy
+# reads it once its Ruff tool uses the configuration file. The pattern list holds exactly
+# Codacy's enabled Ruff patterns read 2026-11-09.
+
+[lint]
+select = [
+    "B002", "B003", "B006", "B008", "B011", "B012", "B016", "B017", "B019", "B023",
+    "B025", "B026", "B027", "B029", "B030", "B031", "B032", "B035", "B039", "B904",
+    "E722", "E902", "FA102", "PLE2502", "PLW1509", "RUF001", "S101", "S102", "S103",
+    "S104", "S105", "S106", "S107", "S108", "S110", "S112", "S113", "S201", "S202",
+    "S301", "S302", "S303", "S304", "S305", "S306", "S307", "S308", "S310", "S311",
+    "S312", "S313", "S314", "S315", "S316", "S317", "S318", "S319", "S321", "S323",
+    "S324", "S501", "S502", "S503", "S504", "S505", "S506", "S507", "S508", "S509",
+    "S601", "S602", "S603", "S604", "S605", "S606", "S607", "S608", "S609", "S610",
+    "S611", "S612", "S701", "S702", "S704", "TID251", "W605",
+]
+
+# Each exception names one file and its codes; tools/ruff_gate.py fails once the date on the line above has passed.
+[lint.per-file-ignores]
+# expires 2026-11-20 (MEL C, entered 2026-11-10): Praetor renders this hook runner; it starts argv lists without a shell
+".config/lefthook/scripts/common.py" = ["S603", "S607"]

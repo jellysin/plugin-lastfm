@@ -96,6 +96,14 @@ class FloorTests(unittest.TestCase):
         with self.assertRaises(FloorError):
             mismatches(root)
 
+    def test_refuses_a_project_that_declares_an_entity(self):
+        """A project file that declares an XML entity or doctype is refused."""
+        root = planted(self.root)
+        project = root / "tests" / "Tests.csproj"
+        project.write_text('<!DOCTYPE Project [<!ENTITY a "x">]>' + project.read_text(encoding="utf-8"), encoding="utf-8")
+        with self.assertRaisesRegex(FloorError, "declares a document type or entity"):
+            mismatches(root)
+
     def test_exit_status_separates_findings_from_errors(self):
         statuses = {}
         for label, changes in {"clean": {}, "finding": {"compiled": "12.2.0"}, "error": {"target": None}}.items():

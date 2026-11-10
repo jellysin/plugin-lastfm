@@ -81,7 +81,9 @@ def listed_files(root):
     """Tracked files and untracked files git does not ignore."""
     command = ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
     try:
-        result = subprocess.run(command, capture_output=True, check=True, timeout=LIST_TIMEOUT_SECONDS)
+        result = subprocess.run(  # nosec B603  # noqa: S603 - fixed git ls-files command on repository root
+            command, capture_output=True, check=True, timeout=LIST_TIMEOUT_SECONDS
+        )
     except (OSError, subprocess.SubprocessError) as error:
         raise CoverageError(f"cannot list files: {error}") from error
     files = sorted({name.decode("utf-8") for name in result.stdout.split(b"\0") if name})

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS = ROOT / ".config" / "semgrep" / "requirements.txt"
 LOCAL_RULES = ROOT / ".config" / "semgrep"
 PACKS = ("p/csharp", "p/typescript", "p/javascript", "p/python", "p/github-actions")
-SUFFIXES = {".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"}
+SUFFIXES = frozenset({".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"})
 # Two scans (self-test, then the tree) plus the earlier steps fit the CI scanners job's 15 minutes; both took 25 s
 # together on ubuntu-24.04 (run 41312005329).
 SCAN_TIMEOUT_SECONDS = 300
@@ -70,36 +70,47 @@ class GateError(RuntimeError):
     """Semgrep did not run to completion, or the self-test found the rules wrong."""
 
 
-def pinned_version(text: str) -> str:
-    """Return the Semgrep version the requirements file pins with `==`."""
-    versions = [line.split("==", 1)[1].strip() for line in text.splitlines() if line.startswith("semgrep==")]
+def pinned_version(text: str, package: str = "semgrep", source: Path = REQUIREMENTS) -> str:
+    """Return the package version the requirements file pins with `==`."""
+    prefix = f"{package}=="
+    versions = [line.split("==", 1)[1].strip() for line in text.splitlines() if line.startswith(prefix)]
     if len(versions) != 1 or not versions[0]:
-        raise GateError(f"{REQUIREMENTS.relative_to(ROOT)}: expected one `semgrep==<version>` line")
+        rel = source.relative_to(ROOT) if source.is_relative_to(ROOT) else source
+        raise GateError(f"{rel}: expected one `{package}==<version>` line")
     return versions[0]
 
 
-def launcher(version: str) -> list[str]:
-    """Return the command that starts the pinned Semgrep; uvx first, pipx second, and say which one runs.
+def launcher(version: str, package: str = "semgrep", python: str = SEMGREP_PYTHON) -> list[str]:
+    """Return the command that starts the pinned tool; uvx first, pipx second, and say which one runs.
 
     Only these two launchers are accepted, each resolved once to an absolute path on PATH, the same trust any
     developer tool on the machine gets; the version comes from the committed requirements file.
     """
     uvx, pipx = shutil.which("uvx"), shutil.which("pipx")
     if uvx:
-        command = [uvx, "--quiet", "--python", SEMGREP_PYTHON, "--from", f"semgrep=={version}", "semgrep"]
+        command = [uvx, "--quiet", "--python", python, "--from", f"{package}=={version}", package]
     elif pipx:
-        command = [pipx, "run", "--python", SEMGREP_PYTHON, "--fetch-missing-python", "--spec", f"semgrep=={version}", "semgrep"]
+        command = [pipx, "run", "--python", python, "--fetch-missing-python", "--spec", f"{package}=={version}", package]
     else:
-        raise GateError("neither uvx nor pipx found; install uv (https://docs.astral.sh/uv/) to run Semgrep")
-    print(f"semgrep-gate: semgrep {version} on Python {SEMGREP_PYTHON} via {command[0]}", file=sys.stderr)
+        raise GateError(f"neither uvx nor pipx found; install uv (https://docs.astral.sh/uv/) to run {package}")
+    print(f"{package}-gate: {package} {version} on Python {python} via {command[0]}", file=sys.stderr)
     return command
 
 
-def scanned(paths: list[str]) -> list[str]:
+def read_bounded(path: Path | str, limit: int) -> str:
+    """Read the file as UTF-8 text if its size does not exceed the limit; fail with GateError when larger."""
+    target = Path(path)
+    size = target.stat().st_size
+    if size > limit:
+        raise GateError(f"{target.name}: file size {size} exceeds the limit of {limit} bytes")
+    return target.read_text(encoding="utf-8")
+
+
+def scanned(paths: list[str], suffixes: frozenset[str] = SUFFIXES) -> list[str]:
     """Return the paths with a scanned suffix, in order.
 
     Targets are files of this repository (staged or tracked names): a path that resolves outside the repository, or a
-    list longer than MAX_TARGETS, is refused. They reach Semgrep after `--`, as list elements without a shell, so a
+    list longer than MAX_TARGETS, is refused. They reach the scanner after `--`, as list elements without a shell, so a
     name cannot become an option or a command.
     """
     if len(paths) > MAX_TARGETS:
@@ -107,7 +118,7 @@ def scanned(paths: list[str]) -> list[str]:
     outside = [path for path in paths if not (ROOT / path).resolve().is_relative_to(ROOT)]
     if outside:
         raise GateError(f"targets outside the repository: {', '.join(outside[:5])}")
-    return [path for path in paths if Path(path).suffix in SUFFIXES]
+    return [path for path in paths if Path(path).suffix in suffixes]
 
 
 def tracked() -> list[str]:
@@ -117,7 +128,7 @@ def tracked() -> list[str]:
         raise GateError("git not found; the tracked files cannot be listed")
     # Fixed arguments, absolute executable path, no shell.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # noqa: S603 - fixed argv with absolute git executable
         [executable, "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True, timeout=60
     )
     return [name for name in result.stdout.decode().split("\0") if name]
@@ -133,7 +144,7 @@ def run(command: list[str], targets: list[str], packs: tuple[str, ...]) -> list[
     # The launcher is uvx or pipx at an absolute path, the version comes from the committed requirements file, and the
     # targets are repository paths (scanned() refuses any other) after `--`; no shell. Tests: TargetTests, LauncherTests.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
-    result = subprocess.run(  # nosec B603
+    result = subprocess.run(  # nosec B603  # noqa: S603 - fixed launcher with validated target paths
         arguments, check=False, cwd=ROOT, capture_output=True, text=True, timeout=SCAN_TIMEOUT_SECONDS
     )
     if result.returncode not in (0, 1):
@@ -188,7 +199,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("files", nargs="*", help="files to scan; every tracked file when none is given")
     arguments = parser.parse_args(argv)
     try:
-        command = launcher(pinned_version(REQUIREMENTS.read_text(encoding="utf-8")))
+        command = launcher(pinned_version(read_bounded(REQUIREMENTS, 64 * 1024)))
         if arguments.self_test:
             problems = self_test(command)
             for problem in problems:

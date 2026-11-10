@@ -110,6 +110,14 @@ class AnswerTests(unittest.TestCase):
                     client.request("/System/Info", *(("GET", None, 200, None, False) + timeout))
         self.assertEqual([20, 600], seen)
 
+    def test_refuses_a_request_whose_scheme_is_not_http_or_https(self):
+        """A request whose server address is not http or https is refused without opening a connection."""
+        client = smoke.Client("file:///etc")
+        with patch.object(smoke.urllib.request, "urlopen") as mock_urlopen:
+            with self.assertRaises(SmokeFailure):
+                client.request("/System/Info")
+            mock_urlopen.assert_not_called()
+
 
 class ServerChoiceTests(unittest.TestCase):
     def test_every_pinned_server_carries_a_release_and_a_digest(self):
@@ -443,8 +451,12 @@ def authenticated(adapter_status=404):
         do_GET = do_POST = do_PUT = do_DELETE = answer
 
     with serving(Planted) as origin:
-        admin = smoke.Client(origin, "/jellyfin", token="admin-token")
-        listener = smoke.Client(origin, "/jellyfin", token="listener-token")
+        admin = smoke.Client(
+            origin, "/jellyfin", token="admin-token"  # nosec B106  # noqa: S106 - test token, no credential
+        )
+        listener = smoke.Client(
+            origin, "/jellyfin", token="listener-token"  # nosec B106  # noqa: S106 - test token, no credential
+        )
         smoke.check_authentication(admin, listener, True)
     return asked
 

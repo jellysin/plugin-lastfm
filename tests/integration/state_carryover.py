@@ -89,7 +89,9 @@ def download_release(
     """Downloads the previous release archive over HTTPS only, reading at most max_bytes."""
     parsed = urllib.parse.urlsplit(url)
     require(parsed.scheme == "https", f"Release download URL must use HTTPS: {url}")
-    request = urllib.request.Request(url, headers={"User-Agent": "JellySin-StateCarryover"})
+    request = urllib.request.Request(  # nosec B310  # noqa: S310 - URL scheme verified as https above
+        url, headers={"User-Agent": "JellySin-StateCarryover"}
+    )
     try:
         with urllib.request.build_opener(HttpsOnlyRedirects).open(request, timeout=timeout) as response:
             require(urllib.parse.urlsplit(response.geturl()).scheme == "https",
@@ -147,7 +149,9 @@ def approve(listener: Client, token: str = APPROVAL_TOKEN, user: str = LASTFM_US
         def redirect_request(self, *_: Any) -> None:
             """Refuses to follow the callback's redirect (no request returned), so its own status is what the check reads."""
 
-    request = urllib.request.Request(listener.origin + callback.path + "?" + query, headers={"Cookie": cookie.strip()})
+    request = urllib.request.Request(  # nosec B310  # noqa: S310 - URL built from test server origin and verified callback path
+        listener.origin + callback.path + "?" + query, headers={"Cookie": cookie.strip()}
+    )
     try:
         status = urllib.request.build_opener(NoRedirect).open(request, timeout=20).status
     except urllib.error.HTTPError as error:

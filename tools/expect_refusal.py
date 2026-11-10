@@ -52,7 +52,9 @@ def run_check(report_path: Path, expect: str, command: list[str], timeout: int) 
     try:
         # Argument list from the workflow or a local command line, no shell; see the module docstring.
         # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
-        proc = subprocess.run(command, timeout=timeout, check=False)  # nosec B603
+        proc = subprocess.run(  # nosec B603  # noqa: S603 - command line arguments from workflow or CLI without shell
+            command, timeout=timeout, check=False
+        )
     except subprocess.TimeoutExpired:
         print(f"FAIL: Command timed out after {timeout} seconds: {command}", file=sys.stderr)
         return 1
