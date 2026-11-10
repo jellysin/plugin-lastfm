@@ -1,6 +1,7 @@
 """The Ruff gate reads one pinned release, scans only Python files and verifies the Codacy pattern set."""
 
 from datetime import date
+import io
 from pathlib import Path
 import sys
 import tempfile
@@ -15,11 +16,12 @@ from ruff_gate import (  # noqa: E402 - module imported after sys.path manipulat
     exception_problems,
     launcher,
     pinned_version,
-    python_files,
 )
+from semgrep_gate import MAX_TARGETS  # noqa: E402 - module imported after sys.path manipulation
 
 ENTRY = '".config/lefthook/scripts/common.py" = ["S603"]'
 NOTE = "# expires 2026-11-20 (MEL C, entered 2026-11-10): rendered by Praetor"
+PY = {".py"}
 
 
 def config(*lines: str) -> str:
@@ -61,27 +63,27 @@ class TargetTests(unittest.TestCase):
     def test_keeps_py_only(self):
         """Files without the .py suffix are dropped, order kept."""
         paths = ["tools/ruff_gate.py", "README.md", "src/Plugin.cs", "tests/python/test_ruff_gate.py", "web/app.js"]
-        self.assertEqual(python_files(paths), ["tools/ruff_gate.py", "tests/python/test_ruff_gate.py"])
+        self.assertEqual(ruff_gate.scanned(paths, suffixes=PY), ["tools/ruff_gate.py", "tests/python/test_ruff_gate.py"])
 
     def test_empty_list_returns_empty(self):
         """No paths give no targets."""
-        self.assertEqual(python_files([]), [])
+        self.assertEqual(ruff_gate.scanned([], suffixes=PY), [])
 
     def test_refuses_a_path_outside_the_repository(self):
         """A path that resolves outside the repository is refused, relative or absolute."""
         for path in ("../outside.py", "/etc/passwd.py", "tools/../../outside.py"):
             with self.subTest(path=path), self.assertRaises(GateError):
-                python_files(["tools/ruff_gate.py", path])
+                ruff_gate.scanned(["tools/ruff_gate.py", path], suffixes=PY)
 
     def test_refuses_more_than_the_bound(self):
         """One path over the bound is refused."""
         with self.assertRaises(GateError):
-            python_files(["a.py"] * (ruff_gate.MAX_TARGETS + 1))
+            ruff_gate.scanned(["a.py"] * (MAX_TARGETS + 1), suffixes=PY)
 
     def test_accepts_exactly_the_bound(self):
         """Exactly MAX_TARGETS paths are accepted."""
-        targets = python_files(["a.py"] * ruff_gate.MAX_TARGETS)
-        self.assertEqual(len(targets), ruff_gate.MAX_TARGETS)
+        targets = ruff_gate.scanned(["a.py"] * MAX_TARGETS, suffixes=PY)
+        self.assertEqual(len(targets), MAX_TARGETS)
 
 
 class ConfigTests(unittest.TestCase):
@@ -178,6 +180,39 @@ class LauncherTests(unittest.TestCase):
             launcher("1.2.3", package="ruff")
 
 
+class RunTests(unittest.TestCase):
+    """The run helper runs Ruff check, bounds its report size and captures stderr on failure."""
+
+    def test_oversized_report_raises_gate_error(self):
+        """A report file larger than MAX_REPORT_BYTES raises GateError."""
+        def fake_run(arguments, **kwargs):
+            out_idx = arguments.index("--output-file") + 1
+            Path(arguments[out_idx]).write_bytes(b"[" + b" " * 98 + b"]")
+            return mock.Mock(returncode=0)
+
+        with (
+            mock.patch.object(ruff_gate, "MAX_REPORT_BYTES", 10),
+            mock.patch("subprocess.run", side_effect=fake_run),
+            self.assertRaisesRegex(GateError, "exceeds the limit of 10 bytes"),
+        ):
+            ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
+
+    def test_exit_code_two_raises_gate_error_with_stderr(self):
+        """Exit code 2 raises GateError carrying stderr text."""
+        def fake_run(arguments, **kwargs):
+            stderr = kwargs.get("stderr")
+            if stderr:
+                stderr.write("unexpected failure in ruff check")
+                stderr.flush()
+            return mock.Mock(returncode=2)
+
+        with (
+            mock.patch("subprocess.run", side_effect=fake_run),
+            self.assertRaisesRegex(GateError, "unexpected failure in ruff check"),
+        ):
+            ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
+
+
 class MainTests(unittest.TestCase):
     """The gate's exit status separates findings from failures to run."""
 
@@ -190,6 +225,38 @@ class MainTests(unittest.TestCase):
                 mock.patch.object(ruff_gate, "launcher", return_value=["ruff"]),
             ):
                 self.assertEqual(ruff_gate.main([]), 2)
+
+    def test_main_bounds_findings_to_max_printed(self):
+        """201 fake findings print 200 lines plus one summary line and return 1."""
+        fake_findings = [
+            {"filename": "a.py", "location": {"row": i, "column": 1}, "code": "E999", "message": "msg"}
+            for i in range(1, 202)
+        ]
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(ruff_gate, "launcher", return_value=["ruff"]),
+            mock.patch.object(ruff_gate, "run", return_value=fake_findings),
+            mock.patch.object(ruff_gate, "scanned", return_value=["a.py"]),
+            mock.patch("sys.stderr", stderr),
+        ):
+            status = ruff_gate.main(["a.py"])
+            self.assertEqual(status, 1)
+        lines = [line for line in stderr.getvalue().splitlines() if line]
+        self.assertEqual(len(lines), 201)
+        self.assertEqual(lines[-1], "ruff-gate: 1 more findings not shown")
+
+
+class BoundedReadTests(unittest.TestCase):
+    """Files read under a size bound are accepted at the bound and refused when larger."""
+
+    def test_read_bounded_refuses_one_byte_over_and_accepts_at_limit(self):
+        """read_bounded refuses a file one byte over its limit and accepts one at the limit."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "test.txt"
+            path.write_bytes(b"x" * 10)
+            self.assertEqual(ruff_gate.read_bounded(path, 10), "x" * 10)
+            with self.assertRaises(GateError):
+                ruff_gate.read_bounded(path, 9)
 
 
 if __name__ == "__main__":

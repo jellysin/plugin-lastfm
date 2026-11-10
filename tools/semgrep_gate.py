@@ -97,11 +97,20 @@ def launcher(version: str, package: str = "semgrep", python: str = SEMGREP_PYTHO
     return command
 
 
-def scanned(paths: list[str]) -> list[str]:
+def read_bounded(path: Path | str, limit: int) -> str:
+    """Read the file as UTF-8 text if its size does not exceed the limit; fail with GateError when larger."""
+    target = Path(path)
+    size = target.stat().st_size
+    if size > limit:
+        raise GateError(f"{target.name}: file size {size} exceeds the limit of {limit} bytes")
+    return target.read_text(encoding="utf-8")
+
+
+def scanned(paths: list[str], suffixes: set[str] = SUFFIXES) -> list[str]:
     """Return the paths with a scanned suffix, in order.
 
     Targets are files of this repository (staged or tracked names): a path that resolves outside the repository, or a
-    list longer than MAX_TARGETS, is refused. They reach Semgrep after `--`, as list elements without a shell, so a
+    list longer than MAX_TARGETS, is refused. They reach the scanner after `--`, as list elements without a shell, so a
     name cannot become an option or a command.
     """
     if len(paths) > MAX_TARGETS:
@@ -109,7 +118,7 @@ def scanned(paths: list[str]) -> list[str]:
     outside = [path for path in paths if not (ROOT / path).resolve().is_relative_to(ROOT)]
     if outside:
         raise GateError(f"targets outside the repository: {', '.join(outside[:5])}")
-    return [path for path in paths if Path(path).suffix in SUFFIXES]
+    return [path for path in paths if Path(path).suffix in suffixes]
 
 
 def tracked() -> list[str]:
@@ -190,7 +199,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("files", nargs="*", help="files to scan; every tracked file when none is given")
     arguments = parser.parse_args(argv)
     try:
-        command = launcher(pinned_version(REQUIREMENTS.read_text(encoding="utf-8")))
+        command = launcher(pinned_version(read_bounded(REQUIREMENTS, 64 * 1024)))
         if arguments.self_test:
             problems = self_test(command)
             for problem in problems:

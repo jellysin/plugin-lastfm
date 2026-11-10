@@ -71,7 +71,7 @@ def write_run_configuration(directory: Path, state: dict[str, Any]) -> Path:
 
 
 def save_server_log(host: DockerHost, evidence: Path) -> None:
-    log = subprocess.run(  # noqa: S603 - fixed docker logs command with managed host container
+    log = subprocess.run(  # nosec B603  # noqa: S603 - fixed docker logs command with managed host container
         ["docker", "logs", host.name],  # noqa: S607 - standard docker executable for container log collection
         capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=60, check=False,
@@ -122,7 +122,7 @@ def run(image: str, plugin: Path, evidence: Path, plant: str) -> None:
                 "plant": plant,
             })
             try:
-                browser = subprocess.run(  # noqa: S603 - fixed node invocation with test runner script
+                browser = subprocess.run(  # nosec B603  # noqa: S603 - fixed node invocation with test runner script
                     [  # noqa: S607 - standard node executable for integration test runner
                         "node", str(ROOT / "tests/integration/settings_entry.mjs"), str(run_file),
                     ],

@@ -223,7 +223,7 @@ def listener_flows(origin: str, stand_in: StandInContainer, state: dict[str, Any
 
 
 def write_evidence(evidence: Path, host: DockerHost, stand_in: StandInContainer) -> None:
-    log = subprocess.run(  # noqa: S603 - fixed docker logs command with managed host container
+    log = subprocess.run(  # nosec B603  # noqa: S603 - fixed docker logs command with managed host container
         ["docker", "logs", host.name],  # noqa: S607 - standard docker executable for container log collection
         capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=60, check=False,
@@ -251,7 +251,7 @@ def run(image: str, plugin: Path, evidence: Path) -> None:
             run_file = directory / "run.json"
             run_file.write_text(json.dumps(state), encoding="utf-8")
             run_file.chmod(0o600)
-            browser = subprocess.run(  # noqa: S603 - fixed node invocation with test runner script
+            browser = subprocess.run(  # nosec B603  # noqa: S603 - fixed node invocation with test runner script
                 [  # noqa: S607 - standard node executable for integration test runner
                     "node",
                     str(ROOT / "tests/integration/page_check.mjs"),

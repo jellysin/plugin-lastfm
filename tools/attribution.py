@@ -59,7 +59,7 @@ def scan(source, text):
 
 def git(repository, *arguments):
     try:
-        done = subprocess.run(  # noqa: S603 - fixed git command with caller-supplied arguments on repository
+        done = subprocess.run(  # nosec B603  # noqa: S603 - fixed git command with caller-supplied arguments on repository
             ["git", "-C", str(repository), *arguments],  # noqa: S607 - standard git executable
             capture_output=True, check=False, timeout=HISTORY_TIMEOUT_SECONDS,
         )

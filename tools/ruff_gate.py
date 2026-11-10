@@ -17,14 +17,24 @@ import sys
 import tempfile
 import tomllib
 
-from semgrep_gate import GateError, launcher, pinned_version, tracked
+from semgrep_gate import (
+    GateError,
+    MARK,
+    expected_lines,
+    launcher,
+    pinned_version,
+    read_bounded,
+    scanned,
+    tracked,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "ruff.toml"
 REQUIREMENTS = ROOT / ".config" / "ruff" / "requirements.txt"
-MAX_TARGETS = 20000
+MAX_REPORT_BYTES = 16 * 1024 * 1024
+MAX_CONFIG_BYTES = 256 * 1024
+MAX_PRINTED = 200
 CHECK_TIMEOUT_SECONDS = 120
-MARK = "planted"
 EXCEPTION_NOTE = re.compile(r"# expires (\d{4}-\d{2}-\d{2}) \(MEL [ABCD], entered \d{4}-\d{2}-\d{2}\): \S.*")
 
 PLANTED_PY = "\n".join([
@@ -40,21 +50,6 @@ PLANTED_PY = "\n".join([
     "eval(text)  # noqa: S307 - planted suppression",
     "",
 ])
-
-
-def python_files(paths: list[str]) -> list[str]:
-    """Return the paths with the .py suffix, in order.
-
-    Targets are files of this repository (staged or tracked names): a path that resolves outside the repository, or a
-    list longer than MAX_TARGETS, is refused. They reach Ruff after `--`, as list elements without a shell, so a
-    name cannot become an option or a command.
-    """
-    if len(paths) > MAX_TARGETS:
-        raise GateError(f"{len(paths)} targets exceed the bound of {MAX_TARGETS}")
-    outside = [path for path in paths if not (ROOT / path).resolve().is_relative_to(ROOT)]
-    if outside:
-        raise GateError(f"targets outside the repository: {', '.join(outside[:5])}")
-    return [path for path in paths if Path(path).suffix == ".py"]
 
 
 def exception_problems(text: str, today: date) -> list[str]:
@@ -80,18 +75,34 @@ def run(command: list[str], targets: list[str]) -> list[dict]:
     if CONFIG.is_symlink() or not CONFIG.exists():
         rel = CONFIG.relative_to(ROOT) if CONFIG.is_relative_to(ROOT) else CONFIG
         raise GateError(f"{rel}: configuration file missing or a symlink")
-    arguments = [
-        *command, "check", "--config", str(CONFIG), "--no-cache", "--output-format", "json", "--", *targets,
-    ]
-    # The launcher is uvx or pipx at an absolute path, the version comes from the committed requirements file, and the
-    # targets are repository paths (python_files() refuses any other) after `--`; no shell.
-    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
-    result = subprocess.run(  # nosec B603  # noqa: S603 - fixed launcher and config with validated target paths
-        arguments, check=False, cwd=ROOT, capture_output=True, text=True, timeout=CHECK_TIMEOUT_SECONDS
-    )
-    if result.returncode not in (0, 1):
-        raise GateError(f"ruff exited {result.returncode}: {result.stderr.strip()[-2000:]}")
-    return json.loads(result.stdout)
+    with tempfile.TemporaryDirectory(prefix="ruff-gate-") as directory:
+        report_path = Path(directory) / "report.json"
+        stderr_path = Path(directory) / "stderr.txt"
+        arguments = [
+            *command, "check", "--config", str(CONFIG), "--no-cache",
+            "--output-format", "json", "--output-file", str(report_path), "--", *targets,
+        ]
+        with open(stderr_path, "w", encoding="utf-8") as stderr_file:
+            # The launcher is uvx or pipx at an absolute path, the version comes from the committed requirements file,
+            # and the targets are repository paths (scanned() refuses any other) after `--`; no shell.
+            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+            result = subprocess.run(  # nosec B603  # noqa: S603 - fixed launcher and config with validated target paths
+                arguments, check=False, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=stderr_file,
+                timeout=CHECK_TIMEOUT_SECONDS,
+            )
+        if result.returncode not in (0, 1):
+            stderr_size = stderr_path.stat().st_size
+            with open(stderr_path, "rb") as handle:
+                if stderr_size > 2000:
+                    handle.seek(stderr_size - 2000)
+                tail = handle.read(2000).decode("utf-8", errors="replace").strip()
+            raise GateError(f"ruff exited {result.returncode}: {tail}")
+        if not report_path.is_file():
+            raise GateError("ruff produced no report file")
+        report_size = report_path.stat().st_size
+        if report_size > MAX_REPORT_BYTES:
+            raise GateError(f"ruff report size {report_size} exceeds the limit of {MAX_REPORT_BYTES} bytes")
+        return json.loads(report_path.read_text(encoding="utf-8"))
 
 
 def describe(finding: dict) -> str:
@@ -107,11 +118,6 @@ def describe(finding: dict) -> str:
     code = finding.get("code", "")
     message = finding.get("message", "")
     return f"{rel_path}:{row}:{col}: {code} {message}"
-
-
-def expected_lines(text: str) -> set[int]:
-    """Return the numbers of the lines that carry the planted mark."""
-    return {number for number, line in enumerate(text.splitlines(), 1) if line.rstrip().endswith(MARK)}
 
 
 def self_test(command: list[str]) -> list[str]:
@@ -136,9 +142,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("files", nargs="*", help="files to scan; every tracked Python file when none is given")
     arguments = parser.parse_args(argv)
     try:
-        version = pinned_version(REQUIREMENTS.read_text(encoding="utf-8"), package="ruff", source=REQUIREMENTS)
+        version = pinned_version(read_bounded(REQUIREMENTS, 64 * 1024), package="ruff", source=REQUIREMENTS)
         command = launcher(version, package="ruff")
-        expired = exception_problems(CONFIG.read_text(encoding="utf-8"), date.today())
+        expired = exception_problems(read_bounded(CONFIG, MAX_CONFIG_BYTES), date.today())
         for problem in expired:
             print(f"ruff-gate: {problem}", file=sys.stderr)
         if expired:
@@ -148,15 +154,17 @@ def main(argv: list[str]) -> int:
             for problem in problems:
                 print(f"ruff-gate self-test: {problem}", file=sys.stderr)
             return 1 if problems else 0
-        targets = python_files(arguments.files or tracked())
+        targets = scanned(arguments.files or tracked(), suffixes={".py"})
         if not targets:
             return 0
         findings = run(command, targets)
     except (GateError, subprocess.SubprocessError, OSError, ValueError) as error:
         print(f"ruff-gate: {error}", file=sys.stderr)
         return 2
-    for finding in findings:
+    for finding in findings[:MAX_PRINTED]:
         print(describe(finding), file=sys.stderr)
+    if len(findings) > MAX_PRINTED:
+        print(f"ruff-gate: {len(findings) - MAX_PRINTED} more findings not shown", file=sys.stderr)
     return 1 if findings else 0
 
 

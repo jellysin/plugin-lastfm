@@ -53,7 +53,7 @@ class PlantedRepository(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
-        subprocess.run(  # noqa: S603 - fixed git init command on test fixture directory
+        subprocess.run(  # nosec B603  # noqa: S603 - fixed git init command on test fixture directory
             ["git", "init", "-q", str(self.root)],  # noqa: S607 - standard git executable for test fixture
             check=True, capture_output=True, timeout=30,
         )

@@ -133,7 +133,7 @@ def load_xml(path):
         upper = document.upper()
         if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
             raise CoverageError("DTD/entity declarations are not allowed")
-        root = ET.fromstring(document)  # noqa: S314 - parsing Cobertura coverage XML written by test runner
+        root = ET.fromstring(document)  # nosec B314  # noqa: S314 - parsing Cobertura coverage XML written by test runner
     except (ET.ParseError, UnicodeError) as error:
         raise CoverageError("Invalid UTF-8 coverage XML") from error
     if root.tag != "coverage":

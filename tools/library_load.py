@@ -163,7 +163,7 @@ def keep(host: DockerHost | None, stand_in: StandInContainer, report: Path) -> N
     if calls.exists():
         shutil.copy2(calls, report.with_suffix(".calls.log"))
     if host and host.started:
-        logs = subprocess.run(  # noqa: S603 - fixed docker logs command with managed host container
+        logs = subprocess.run(  # nosec B603  # noqa: S603 - fixed docker logs command with managed host container
             ["docker", "logs", host.name],  # noqa: S607 - standard docker executable
             capture_output=True, text=True, timeout=60, check=False,
         )

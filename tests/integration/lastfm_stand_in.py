@@ -48,7 +48,7 @@ SIMILAR_PLAYS = 7
 NOW = int(time.time())
 LOVED_PAGE = 200
 MAX_LOVED = 20_000
-APPROVAL_TOKEN = "stand-in-approval-token"  # noqa: S105 - stand-in test token, no credential
+APPROVAL_TOKEN = "stand-in-approval-token"  # nosec B105  # noqa: S105 - stand-in test token, no credential
 LABEL = re.compile(r"[a-z0-9]{1,16}")
 # The methods a refused period answers with error 16, which the plugin retries.
 REFUSABLE = ("track.scrobble", "track.updateNowPlaying")
@@ -267,7 +267,7 @@ class Tunnel(http.server.BaseHTTPRequestHandler):
 def make_certificates(directory: Path) -> None:
     """A certificate authority for one run only (ca.pem) and a server certificate for the Last.fm API host."""
     def openssl(*arguments: str) -> None:
-        subprocess.run(  # noqa: S603 - fixed arguments for test certificate generation
+        subprocess.run(  # nosec B603  # noqa: S603 - fixed arguments for test certificate generation
             ["openssl", *arguments],  # noqa: S607 - standard openssl executable for test certificate generation
             cwd=directory, check=True, capture_output=True, timeout=60,
         )
@@ -303,7 +303,7 @@ def bind(directory: Path, address: tuple[str, int]) -> http.server.ThreadingHTTP
 
 def main() -> int:
     # Every interface of its own container, which sits on the run's private network alone.
-    server = bind(Path(sys.argv[1]), ("0.0.0.0", PORT))  # noqa: S104 - container network requires binding all interfaces
+    server = bind(Path(sys.argv[1]), ("0.0.0.0", PORT))  # nosec B104  # noqa: S104 - container network requires binding all interfaces
     (Record.directory / "ready").write_text("listening\n", encoding="utf-8")
     server.serve_forever()
     return 0

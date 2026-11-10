@@ -116,7 +116,7 @@ def check_log(host: DockerHost, accounts: dict[str, Any], scenarios: list[str], 
 def certificate(directory: Path) -> ssl.SSLContext:
     """A certificate for the test name that lives for this run; the browser is told not to verify it."""
     key, chain = directory / "key.pem", directory / "certificate.pem"
-    made = subprocess.run(  # noqa: S603 - fixed arguments for test certificate generation
+    made = subprocess.run(  # nosec B603  # noqa: S603 - fixed arguments for test certificate generation
         [  # noqa: S607 - standard openssl executable for test certificate generation
             "openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
             "-nodes", "-days", "2", "-keyout", str(key), "-out", str(chain), "-subj", "/CN=" + HOST,
@@ -230,7 +230,7 @@ def run(host: DockerHost, configured: bool, report: Path, only: str) -> int:
                                             "direct": host.origin, "report": str(report), "only": only}), encoding="utf-8")
             # The result of an earlier run must not stand in for a browser half that ended without one.
             (report / "result.json").unlink(missing_ok=True)
-            browser = subprocess.run(  # noqa: S603 - fixed node invocation with test runner script
+            browser = subprocess.run(  # nosec B603  # noqa: S603 - fixed node invocation with test runner script
                 [  # noqa: S607 - standard node executable for integration test runner
                     "node", str(Path(__file__).with_suffix(".mjs")), str(settings),
                 ],

@@ -81,7 +81,7 @@ def load_exceptions(repository):
 
 def findings(gitleaks, repository):
     """Return every fingerprint Gitleaks reports with no exception applied."""
-    located = subprocess.run(
+    located = subprocess.run(  # nosec B603  # fixed git rev-parse argument list, no shell
         ["git", "rev-parse", "--absolute-git-dir"],  # noqa: S607 - standard git executable
         cwd=repository, capture_output=True, text=True, timeout=60, check=True,
     )
@@ -96,7 +96,8 @@ def findings(gitleaks, repository):
             "--gitleaks-ignore-path", str(source), "--report-format", "json", "--report-path", str(report), str(source),
         ]
         environment = {**os.environ, "GIT_DIR": located.stdout.strip()}
-        result = subprocess.run(  # noqa: S603 - gitleaks executable resolved to absolute path with fixed arguments
+        # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
+        result = subprocess.run(  # nosec B603  # noqa: S603 - gitleaks executable resolved to absolute path with fixed arguments
             command, cwd=source, env=environment, capture_output=True,
             text=True, timeout=SCAN_TIMEOUT_SECONDS, check=False,
         )
@@ -123,7 +124,7 @@ def scan(gitleaks, repository, today):
 
 def git(repository, *arguments):
     identity = ["-c", "user.name=fixture", "-c", "user.email=fixture@invalid", "-c", "commit.gpgsign=false"]
-    subprocess.run(  # noqa: S603 - fixed git command with test identity
+    subprocess.run(  # nosec B603  # noqa: S603 - fixed git command with test identity
         ["git", *identity, *arguments],  # noqa: S607 - standard git executable
         cwd=repository, capture_output=True, text=True, timeout=60, check=True,
     )

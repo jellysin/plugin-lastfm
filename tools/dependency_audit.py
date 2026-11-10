@@ -59,7 +59,7 @@ def audit(directory, production_only=False, registry=None):
     command = ["npm", "audit", "--json", "--package-lock-only"]
     command += ["--omit=dev"] if production_only else []
     command += ["--registry", registry, "--fetch-retries=0"] if registry else []
-    result = subprocess.run(  # noqa: S603 - fixed npm audit command on directory
+    result = subprocess.run(  # nosec B603  # noqa: S603 - fixed npm audit command on directory
         command, cwd=directory, capture_output=True, text=True, timeout=AUDIT_TIMEOUT_SECONDS, check=False
     )
     if len(result.stdout) > MAX_REPORT_BYTES:
@@ -97,7 +97,7 @@ def render(findings, revision):
 
 
 def forge(arguments, text=None):
-    result = subprocess.run(  # noqa: S603 - fixed gh command with caller-supplied arguments
+    result = subprocess.run(  # nosec B603  # noqa: S603 - fixed gh command with caller-supplied arguments
         ["gh", *arguments],  # noqa: S607 - standard gh CLI executable
         input=text, capture_output=True, text=True, timeout=FORGE_TIMEOUT_SECONDS, check=False,
     )

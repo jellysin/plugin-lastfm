@@ -61,7 +61,7 @@ def require(condition: Any, description: str) -> None:
 
 
 def docker(*arguments: str, timeout: int = 90) -> str:
-    command = subprocess.run(  # noqa: S603 - fixed docker command with caller-supplied arguments
+    command = subprocess.run(  # nosec B603  # noqa: S603 - fixed docker command with caller-supplied arguments
         ["docker", *arguments],  # noqa: S607 - standard docker executable
         capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=timeout, check=False,
@@ -99,11 +99,15 @@ class Client:
         if data is not None:
             outgoing["Content-Type"] = "application/json"
         display_path = "/Auth/Keys/[redacted]" if path.startswith("/Auth/Keys/") else path.split("?")[0]
-        request = urllib.request.Request(  # noqa: S310 - URL built from test server origin and base path
-            self.origin + self.base_path + path, data=data, headers=outgoing, method=method
+        url = self.origin + self.base_path + path
+        if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+            raise SmokeFailure(f"{method} {display_path} refused: the server address is not http or https.")
+        request = urllib.request.Request(  # nosec B310  # noqa: S310 - URL scheme checked above
+            url, data=data, headers=outgoing, method=method
         )
         try:
-            response = urllib.request.urlopen(  # noqa: S310 - opening request built from test server origin
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected, python_urlopen_rule-urllib-urlopen
+            response = urllib.request.urlopen(  # nosec B310  # noqa: S310 - URL scheme checked above
                 request, timeout=timeout
             )
         except urllib.error.HTTPError as error:
@@ -706,7 +710,7 @@ def write_private_state(path: Path, state: dict[str, Any]) -> None:
                     ["whoami"],  # noqa: S607 - standard Windows whoami executable
                     capture_output=True, text=True, check=True, timeout=WINDOWS_ACL_TIMEOUT_SECONDS,
                 ).stdout.strip()
-                result = subprocess.run(  # noqa: S603 - fixed arguments with state file path and resolved owner
+                result = subprocess.run(  # nosec B603  # noqa: S603 - fixed arguments with state file path and resolved owner
                     [  # noqa: S607 - standard Windows icacls executable
                         "icacls", str(path), "/inheritance:r", "/grant:r", owner + ":(F)",
                     ],
