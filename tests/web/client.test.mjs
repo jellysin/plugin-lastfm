@@ -118,6 +118,28 @@ test('caller cancellation aborts a pending download', async context => {
   await assert.rejects(download, error => error.name === 'AbortError');
 });
 
+for (const [name, start, answer] of [
+  ['a data request that outlives its 90-second deadline is aborted', client => client.api('Me/History'), () => Response.json({})],
+  ['a download that outlives its 90-second deadline is aborted',
+    client => client.download('Me/ScrobbleLog/Export?format=csv', 'history.csv'), () => new Response('a,b')],
+]) {
+  test(name, async context => {
+    const client = new Client(bootstrap);
+    client.acceptSession(session);
+    const deadline = new AbortController();
+    const seen = [];
+    context.mock.method(AbortSignal, 'timeout', ms => { seen.push(ms); return deadline.signal; });
+    let complete;
+    context.mock.method(globalThis, 'fetch', () => new Promise(resolve => { complete = resolve; }));
+    const pending = start(client);
+    assert.deepEqual(seen, [90_000]);
+    deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    complete(answer());
+    await assert.rejects(pending, error => error.name === 'TimeoutError');
+    assert.equal(client.signedIn, true);
+  });
+}
+
 test('a request its caller cancelled before it started rejects even when the transport answers', async context => {
   const controller = new AbortController();
   controller.abort();
