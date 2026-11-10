@@ -21,9 +21,7 @@ public sealed class AccountConcurrencyTests
                 .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         }
         finally { release.TrySetResult(); }
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finish);
-        await disconnect;
-        Assert.Null(await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken));
+        await AssertGrantCancelledAndDisconnectedAsync(fixture, finish, disconnect);
         Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
         fixture.Client.AsyncHandler = null;
         await fixture.ConnectAsync();
@@ -69,9 +67,7 @@ public sealed class AccountConcurrencyTests
         {
             release.TrySetResult();
         }
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finish);
-        await disconnect;
-        Assert.Null(await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken));
+        await AssertGrantCancelledAndDisconnectedAsync(fixture, finish, disconnect);
     }
 
     [Fact]
@@ -106,5 +102,13 @@ public sealed class AccountConcurrencyTests
         var finish = fixture.Accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken);
         var authorization = await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         return (attempt, finish, authorization, release);
+    }
+
+    /// <summary>Checks that the released grant ended cancelled and that the disconnect removed the account.</summary>
+    private static async Task AssertGrantCancelledAndDisconnectedAsync(CoreFixture fixture, Task finish, Task disconnect)
+    {
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finish);
+        await disconnect;
+        Assert.Null(await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken));
     }
 }
