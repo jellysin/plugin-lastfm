@@ -273,6 +273,19 @@ public sealed class MetadataProviderTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.GetMetadata(info, cts.Token));
     }
 
+    /// <summary>Album metadata lookups honour cancellation.</summary>
+    [Fact]
+    public async Task AlbumCancellationHonoured()
+    {
+        await _fixture.ConfigureApplicationAsync();
+        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
+        var info = new AlbumInfo { Name = "Believe", AlbumArtists = ["Cher"] };
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.GetMetadata(info, cts.Token));
+    }
+
     [Fact]
     public Task WikiPublishedNeverBecomesPremiereDate() =>
         AssertAlbumDatesAsync(
@@ -331,6 +344,20 @@ public sealed class MetadataProviderTests : IDisposable
         var albumProvider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
         var res2 = await albumProvider.GetImageResponse("https://lastfm.freetls.fastly.net/image.jpg", CancellationToken.None);
         Assert.Equal(HttpStatusCode.NotFound, res2.StatusCode);
+    }
+
+    /// <summary>Artist and album image responses honour cancellation.</summary>
+    [Fact]
+    public async Task ImageResponsesHonourCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var artistProvider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => artistProvider.GetImageResponse("https://www.last.fm/image.jpg", cts.Token));
+
+        var albumProvider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => albumProvider.GetImageResponse("https://www.last.fm/image.jpg", cts.Token));
     }
 
     [Fact]
