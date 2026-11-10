@@ -161,9 +161,9 @@ class SnapshotTests(unittest.TestCase):
     def test_non_ascii_digits(self):
         """Only ASCII digits form a rule number, in the snapshot and in API pages."""
         with self.assertRaises(sonarlint_gate.GateError):
-            sonarlint_gate.load_snapshot(snapshot([{"key": "S١١٠", "parameters": []}]))
+            sonarlint_gate.load_snapshot(snapshot([{"key": "S\u0661\u0661\u0660", "parameters": []}]))
         data = pages()
-        data[0]["data"][0]["patternDefinition"]["id"] = "SonarCSharp_S١١٢"
+        data[0]["data"][0]["patternDefinition"]["id"] = "SonarCSharp_S\u0661\u0661\u0662"
         with self.assertRaises(sonarlint_gate.GateError):
             from_pages(data)
 
