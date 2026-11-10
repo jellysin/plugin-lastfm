@@ -197,6 +197,8 @@ public sealed class MetadataProviderTests : IDisposable
         Assert.True(result.HasMetadata);
         Assert.Single(_fixture.Client.Calls);
         Assert.Equal("Björk & The Sugar-cubes", _fixture.Client.Calls[0].Values["artist"]);
+        Assert.False(result.QueriedById);
+        Assert.Equal("0", _fixture.Client.Calls[0].Values["autocorrect"]);
     }
 
     [Fact]
@@ -211,12 +213,73 @@ public sealed class MetadataProviderTests : IDisposable
         Assert.Empty(_fixture.Client.Calls);
     }
 
+    /// <summary>Missing artist names without a MusicBrainz ID return no metadata and make no Last.fm call.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ArtistWithoutNameOrMbidMakesNoCall(string name)
+    {
+        var result = await GetArtistMetadataAsync(
+            """
+            {
+              "artist": {
+                "name": "Cher",
+                "bio": {
+                  "content": "Cher biography. <a href=\"https://www.last.fm/music/Cher\">Read more on Last.fm</a>"
+                }
+              }
+            }
+            """,
+            new ArtistInfo { Name = name });
+
+        AssertNoMetadata(result);
+        Assert.Empty(_fixture.Client.Calls);
+    }
+
+    /// <summary>Missing album or artist names without a MusicBrainz ID return no metadata and make no Last.fm call.</summary>
+    [Theory]
+    [InlineData("", "Cher")]
+    [InlineData("Believe", "")]
+    [InlineData("Believe", "   ")]
+    public async Task AlbumWithoutNamesOrMbidMakesNoCall(string albumName, string artistName)
+    {
+        var result = await GetAlbumMetadataAsync(
+            """
+            {
+              "album": {
+                "name": "Believe",
+                "artist": "Cher",
+                "wiki": {
+                  "content": "Believe album wiki. <a href=\"https://www.last.fm/music/Cher/Believe\">Read more on Last.fm</a>"
+                }
+              }
+            }
+            """,
+            new AlbumInfo { Name = albumName, AlbumArtists = [artistName] });
+
+        AssertNoMetadata(result);
+        Assert.Empty(_fixture.Client.Calls);
+    }
+
     [Fact]
     public async Task CancellationHonoured()
     {
         await _fixture.ConfigureApplicationAsync();
         var provider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
         var info = new ArtistInfo { Name = "Cher" };
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.GetMetadata(info, cts.Token));
+    }
+
+    /// <summary>Album metadata lookups honour cancellation.</summary>
+    [Fact]
+    public async Task AlbumCancellationHonoured()
+    {
+        await _fixture.ConfigureApplicationAsync();
+        var provider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
+        var info = new AlbumInfo { Name = "Believe", AlbumArtists = ["Cher"] };
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
@@ -281,6 +344,20 @@ public sealed class MetadataProviderTests : IDisposable
         var albumProvider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
         var res2 = await albumProvider.GetImageResponse("https://lastfm.freetls.fastly.net/image.jpg", CancellationToken.None);
         Assert.Equal(HttpStatusCode.NotFound, res2.StatusCode);
+    }
+
+    /// <summary>Artist and album image responses honour cancellation.</summary>
+    [Fact]
+    public async Task ImageResponsesHonourCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var artistProvider = new LastfmArtistProvider(_fixture.Client, _fixture.Credentials);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => artistProvider.GetImageResponse("https://www.last.fm/image.jpg", cts.Token));
+
+        var albumProvider = new LastfmAlbumProvider(_fixture.Client, _fixture.Credentials);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => albumProvider.GetImageResponse("https://www.last.fm/image.jpg", cts.Token));
     }
 
     [Fact]
