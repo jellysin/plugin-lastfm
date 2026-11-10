@@ -9,62 +9,46 @@ using MediaBrowser.Model.Providers;
 
 namespace JellySin.Plugin.Lastfm.Metadata;
 
+/// <summary>Provides Last.fm album metadata.</summary>
 public sealed class LastfmAlbumProvider(
     ILastfmClient client,
     ApplicationCredentialService credentials) : LastfmInfoProvider<MusicAlbum, AlbumInfo>(client, credentials)
 {
+    /// <summary>Gets the Last.fm album lookup method.</summary>
     protected override string Method => "album.getInfo";
 
+    /// <summary>Gets the MusicBrainz album identifier key.</summary>
+    protected override string MusicBrainzKey => "MusicBrainzAlbum";
+
+    /// <summary>Gets the album response node name.</summary>
+    protected override string ItemNode => "album";
+
+    /// <summary>Gets the album wiki node name.</summary>
+    protected override string TextNode => "wiki";
+
+    /// <summary>Copies album release dates into a search result.</summary>
     protected override void Describe(RemoteSearchResult result, MusicAlbum item)
     {
         result.PremiereDate = item.PremiereDate;
         result.ProductionYear = item.ProductionYear;
     }
 
-    protected override (Dictionary<string, string>? Parameters, bool QueriedById) BuildParameters(AlbumInfo info)
+    /// <summary>Builds an album name query when artist and album names are present.</summary>
+    protected override Dictionary<string, string>? NameQuery(AlbumInfo info)
     {
-        if (info.ProviderIds is not null && info.ProviderIds.TryGetValue("MusicBrainzAlbum", out var albumMbid) && !string.IsNullOrWhiteSpace(albumMbid))
-        {
-            return (new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["mbid"] = albumMbid.Trim(),
-                ["autocorrect"] = "0"
-            }, true);
-        }
-
         var artistName = info.AlbumArtists?.FirstOrDefault(a => !string.IsNullOrWhiteSpace(a));
         if (!string.IsNullOrWhiteSpace(artistName) && !string.IsNullOrWhiteSpace(info.Name))
         {
-            return (new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["artist"] = artistName,
-                ["album"] = info.Name,
-                ["autocorrect"] = "0"
-            }, false);
+            return Query(("artist", artistName), ("album", info.Name));
         }
 
-        return (null, false);
+        return null;
     }
 
-    protected override MetadataResult<MusicAlbum> Parse(JsonDocument document, AlbumInfo info, bool queriedById)
+    /// <summary>Fills album release dates from the response node.</summary>
+    protected override void Fill(MusicAlbum item, JsonElement node)
     {
-        var albumNode = MusicJson.Child(document.RootElement, "album");
-        if (albumNode.ValueKind != JsonValueKind.Object)
-            return new MetadataResult<MusicAlbum>();
-
-        var wikiNode = MusicJson.Child(albumNode, "wiki");
-        var overview = MusicJson.CleanWiki(wikiNode);
-        if (string.IsNullOrWhiteSpace(overview))
-            return new MetadataResult<MusicAlbum> { HasMetadata = false };
-
-        var name = MusicJson.Text(albumNode, "name");
-        var item = new MusicAlbum
-        {
-            Name = string.IsNullOrWhiteSpace(name) ? info.Name : name,
-            Overview = overview
-        };
-
-        var releaseDateText = MusicJson.Text(albumNode, "releasedate");
+        var releaseDateText = MusicJson.Text(node, "releasedate");
 
         if (!string.IsNullOrWhiteSpace(releaseDateText) &&
             DateTime.TryParse(releaseDateText.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var releaseDate))
@@ -72,12 +56,5 @@ public sealed class LastfmAlbumProvider(
             item.PremiereDate = releaseDate;
             item.ProductionYear = releaseDate.Year;
         }
-
-        return new MetadataResult<MusicAlbum>
-        {
-            HasMetadata = true,
-            Item = item,
-            QueriedById = queriedById
-        };
     }
 }

@@ -197,6 +197,8 @@ public sealed class MetadataProviderTests : IDisposable
         Assert.True(result.HasMetadata);
         Assert.Single(_fixture.Client.Calls);
         Assert.Equal("Björk & The Sugar-cubes", _fixture.Client.Calls[0].Values["artist"]);
+        Assert.False(result.QueriedById);
+        Assert.Equal("0", _fixture.Client.Calls[0].Values["autocorrect"]);
     }
 
     [Fact]
