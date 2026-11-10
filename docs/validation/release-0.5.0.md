@@ -79,19 +79,28 @@ wizard and client of `tools/smoke.py`:
 
 1. Before the install `GET /Plugins` listed no JellySin plugin.
 2. `POST /Repositories` added the catalog, `GET /Packages` offered the plugin's GUID, and
-   `POST /Packages/Installed` installed version 0.5.0.0, which the server then listed
-   with status `Restart`.
+   this request installed version 0.5.0.0, which the server then listed with status
+   `Restart` (query values URL-encoded in the request):
+
+   ```text
+   POST /Packages/Installed/JellySin%20Last.fm?assemblyGuid=2034650d-a290-4a16-b195-89fb44cfb932&version=0.5.0.0&repositoryUrl=https://raw.githubusercontent.com/jellysin/repo/main/manifest.json
+   ```
+
 3. After each of two restarts `GET /Plugins` listed `JellySin Last.fm` 0.5.0.0, and only
    that version, as `Active`.
 
-The installed `JellySin.Plugin.Lastfm.dll` has SHA-256
-`32a557fd143cae7b866607a7aa715da0f4c22e6b436bad079a8f4c3296d57e8b`, the same as the
-assembly inside the downloaded `plugin-lastfm-0.5.0.zip`, whose SHA-256 matches the
-published one above.
+Two different digests tie the install to the release:
+
+- The installed `JellySin.Plugin.Lastfm.dll` has SHA-256
+  `32a557fd143cae7b866607a7aa715da0f4c22e6b436bad079a8f4c3296d57e8b`. That is the digest
+  of the DLL file inside the downloaded ZIP, not of the ZIP.
+- The downloaded `plugin-lastfm-0.5.0.zip` has SHA-256
+  `d96498fadd577011aef33785b9e2be094cfbf9c8c2ca045de7ab4a47cfb78cc2`, the ZIP digest in
+  the asset table above.
 
 The check also refuses when it should. Run on 2026-11-10 before #67 merged, it failed
-because the catalog on `main` did not offer 0.5.0.0: `POST /Packages/Installed`
-answered 404. Run after the merge with the pre-install listing judged in place of the
+because the catalog on `main` did not offer 0.5.0.0: the same install request answered
+404. Run after the merge with the pre-install listing judged in place of the
 installed one, it failed on that empty listing.
 
 ## Release workflows afterwards
