@@ -10,6 +10,7 @@ Every per-file exception in ruff.toml carries a dated note on the line above it;
 import argparse
 from datetime import date
 import json
+import os
 from pathlib import Path
 import re
 import subprocess  # nosec B404
@@ -38,6 +39,7 @@ CHECK_TIMEOUT_SECONDS = 120
 EXCEPTION_NOTE = re.compile(r"# expires (\d{4}-\d{2}-\d{2}) \(MEL [ABCD], entered \d{4}-\d{2}-\d{2}\): \S.*")
 
 PLANTED_PY = "\n".join([
+    f"#!/usr/bin/env python3  # {MARK}",
     "import subprocess",
     "",
     'text = "echo safe"',
@@ -132,6 +134,15 @@ def describe(finding: dict) -> str:
     return f"{rel_path}:{row}:{col}: {code} {message}"
 
 
+def planted_lines(text: str, posix: bool) -> set[int]:
+    """Return the numbers of the marked lines Ruff must report; off POSIX, without the shebang on line 1."""
+    lines = expected_lines(text)
+    if not posix:
+        # Ruff checks the executable bit only on Unix-like systems.
+        return lines - {1}
+    return lines
+
+
 def self_test(command: list[str]) -> list[str]:
     """Return a problem for every planted case the rules miss and every unmarked line they report."""
     problems = []
@@ -140,7 +151,7 @@ def self_test(command: list[str]) -> list[str]:
         path.write_text(PLANTED_PY, encoding="utf-8")
         findings = run(command, [str(path)])
         reported = {finding["location"]["row"] for finding in findings}
-        expected = expected_lines(PLANTED_PY)
+        expected = planted_lines(PLANTED_PY, os.name == "posix")
         name = path.name
         problems += [f"{name}:{line}: planted case not reported" for line in sorted(expected - reported)]
         problems += [f"{name}:{line}: reported but not planted" for line in sorted(reported - expected)]

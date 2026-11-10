@@ -13,11 +13,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import ruff_gate  # noqa: E402 - module imported after sys.path manipulation
 from ruff_gate import (  # noqa: E402 - module imported after sys.path manipulation
     GateError,
+    PLANTED_PY,
     exception_problems,
     launcher,
     pinned_version,
+    planted_lines,
 )
-from semgrep_gate import MAX_TARGETS  # noqa: E402 - module imported after sys.path manipulation
+from semgrep_gate import (  # noqa: E402 - module imported after sys.path manipulation
+    MAX_TARGETS,
+    expected_lines,
+)
 
 ENTRY = '".config/lefthook/scripts/common.py" = ["S603"]'
 NOTE = "# expires 2026-11-20 (MEL C, entered 2026-11-10): rendered by Praetor"
@@ -104,6 +109,13 @@ class ConfigTests(unittest.TestCase):
     def test_committed_exceptions_are_dated_and_current(self):
         """Every committed per-file exception carries a note and has not expired."""
         self.assertEqual(exception_problems(ruff_gate.CONFIG.read_text(encoding="utf-8"), date.today()), [])
+
+    def test_select_holds_the_shebang_rules(self):
+        """EXE001 through EXE005 are enabled in the select list."""
+        data = tomllib.loads(ruff_gate.CONFIG.read_text(encoding="utf-8"))
+        select = data.get("lint", {}).get("select", [])
+        for rule in ("EXE001", "EXE002", "EXE003", "EXE004", "EXE005"):
+            self.assertIn(rule, select)
 
 
 class ExceptionTests(unittest.TestCase):
@@ -283,6 +295,21 @@ class BoundedReadTests(unittest.TestCase):
             self.assertEqual(ruff_gate.read_bounded(path, 10), "x" * 10)
             with self.assertRaises(GateError):
                 ruff_gate.read_bounded(path, 9)
+
+
+class PlantedTests(unittest.TestCase):
+    """The self-test plants cases to verify rule enforcement across platforms."""
+
+    def test_planted_file_starts_with_a_marked_shebang(self):
+        """PLANTED_PY begins with a marked shebang on line 1."""
+        self.assertTrue(PLANTED_PY.splitlines()[0].startswith("#!"))
+        self.assertIn(1, planted_lines(PLANTED_PY, True))
+
+    def test_planted_shebang_is_not_expected_off_posix(self):
+        """Line 1 is omitted from expected lines when not on POSIX."""
+        lines = planted_lines(PLANTED_PY, False)
+        self.assertNotIn(1, lines)
+        self.assertEqual(lines, expected_lines(PLANTED_PY) - {1})
 
 
 if __name__ == "__main__":
