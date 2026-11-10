@@ -62,7 +62,37 @@ ZIP.
 
 ## Catalog install
 
-Not yet run for this release.
+The Plugin Repository's update workflow opened jellysin/repo#67 on 2026-10-19; its last
+head, `c4a8933` (2026-11-07), adds only the 0.5.0.0 entry, with `targetAbi` 12.0.0.0 and
+the MD5 above. GitHub held the pull request's CI and CodeQL runs for approval
+(`action_required`), and the CI runs the workflow dispatched on its branch do not count
+toward the required checks. The CodeQL run
+[42411366029](https://github.com/jellysin/repo/actions/runs/42411366029) and the CI run
+[42411365973](https://github.com/jellysin/repo/actions/runs/42411365973) were approved
+and passed, and #67 merged as `faeb534` on 2026-11-10.
+
+A fresh Jellyfin 12.2.0 server (image digest
+`sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037`) then installed
+the release from `https://raw.githubusercontent.com/jellysin/repo/main/manifest.json` on
+2026-11-10, which listed 0.5.0.0, 0.4.0.0, 0.2.0.0 and 0.1.0.0. The run used the startup
+wizard and client of `tools/smoke.py`:
+
+1. Before the install `GET /Plugins` listed no JellySin plugin.
+2. `POST /Repositories` added the catalog, `GET /Packages` offered the plugin's GUID, and
+   `POST /Packages/Installed` installed version 0.5.0.0, which the server then listed
+   with status `Restart`.
+3. After each of two restarts `GET /Plugins` listed `JellySin Last.fm` 0.5.0.0, and only
+   that version, as `Active`.
+
+The installed `JellySin.Plugin.Lastfm.dll` has SHA-256
+`32a557fd143cae7b866607a7aa715da0f4c22e6b436bad079a8f4c3296d57e8b`, the same as the
+assembly inside the downloaded `plugin-lastfm-0.5.0.zip`, whose SHA-256 matches the
+published one above.
+
+The check also refuses when it should. Run on 2026-11-10 before #67 merged, it failed
+because the catalog on `main` did not offer 0.5.0.0: `POST /Packages/Installed`
+answered 404. Run after the merge with the pre-install listing judged in place of the
+installed one, it failed on that empty listing.
 
 ## Release workflows afterwards
 
