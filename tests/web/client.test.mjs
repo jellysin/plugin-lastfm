@@ -49,6 +49,107 @@ test('tokens stay in authorization headers and prefixed server paths', async con
   assert.equal((await client.api('Me')).userName, 'listener');
 });
 
+test('downloads carry only authorization headers and use the prefixed export path', async context => {
+  const client = new Client(bootstrap);
+  client.acceptSession(session);
+  const fetch = context.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, '/jellyfin/JellySin/Lastfm/Me/ScrobbleLog/Export?format=csv');
+    assert.equal(options.method, 'GET');
+    assert.equal(options.credentials, 'omit');
+    assert.equal(options.redirect, 'error');
+    assert.equal(options.cache, 'no-store');
+    assert.deepEqual(Object.keys(options.headers), ['Authorization']);
+    assert.match(options.headers.Authorization, /^MediaBrowser /);
+    assert.ok(options.headers.Authorization.includes(`Token="${session.accessToken}"`));
+    assert.ok(options.signal instanceof AbortSignal);
+    return new Response('artist,title');
+  });
+  assert.equal(await client.download('Me/ScrobbleLog/Export?format=csv', 'history.csv'), undefined);
+  assert.equal(fetch.mock.callCount(), 1);
+});
+
+test('download HTTP errors do not expose private response bodies', async context => {
+  context.mock.method(globalThis, 'fetch', async () => new Response('private download details', { status: 500 }));
+  await assert.rejects(new Client(bootstrap).download('Me/ScrobbleLog/Export?format=csv', 'history.csv'), error => {
+    assert.match(error.message, /HTTP 500/);
+    assert.equal(error.message.includes('private download details'), false);
+    return true;
+  });
+});
+
+test('download unauthorized responses clear the session', async context => {
+  const client = new Client(bootstrap);
+  client.acceptSession(session);
+  context.mock.method(globalThis, 'fetch', async () => new Response('private download details', { status: 401 }));
+  await assert.rejects(client.download('Me/ScrobbleLog/Export?format=csv', 'history.csv'), /session expired/);
+  assert.equal(client.signedIn, false);
+});
+
+test('downloads reject backslashes and line breaks before fetching', async context => {
+  const fetch = context.mock.method(globalThis, 'fetch', async () => new Response());
+  const client = new Client(bootstrap);
+  for (const path of ['Me/bad\\path', 'Me/bad\rpath', 'Me/bad\npath']) {
+    await assert.rejects(client.download(path, 'history.csv'), /Invalid API path/);
+  }
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test('clearing the session cancels a pending download', async context => {
+  const client = new Client(bootstrap);
+  client.acceptSession(session);
+  let complete;
+  const fetch = context.mock.method(globalThis, 'fetch', () => new Promise(resolve => { complete = resolve; }));
+  const download = client.download('Me/ScrobbleLog/Export?format=csv', 'history.csv');
+  assert.equal(fetch.mock.callCount(), 1);
+  client.clearSession();
+  complete(new Response('private previous account'));
+  await assert.rejects(download, error => error.name === 'AbortError');
+});
+
+test('caller cancellation aborts a pending download', async context => {
+  const client = new Client(bootstrap);
+  const controller = new AbortController();
+  let complete;
+  const fetch = context.mock.method(globalThis, 'fetch', () => new Promise(resolve => { complete = resolve; }));
+  const download = client.download('Me/ScrobbleLog/Export?format=csv', 'history.csv', controller.signal);
+  assert.equal(fetch.mock.callCount(), 1);
+  controller.abort();
+  complete(new Response('cancelled download'));
+  await assert.rejects(download, error => error.name === 'AbortError');
+});
+
+for (const [name, start, answer] of [
+  ['a data request that outlives its 90-second deadline is aborted', client => client.api('Me/History'), () => Response.json({})],
+  ['a download that outlives its 90-second deadline is aborted',
+    client => client.download('Me/ScrobbleLog/Export?format=csv', 'history.csv'), () => new Response('a,b')],
+]) {
+  test(name, async context => {
+    const client = new Client(bootstrap);
+    client.acceptSession(session);
+    const deadline = new AbortController();
+    const seen = [];
+    context.mock.method(AbortSignal, 'timeout', ms => { seen.push(ms); return deadline.signal; });
+    let complete;
+    context.mock.method(globalThis, 'fetch', () => new Promise(resolve => { complete = resolve; }));
+    const pending = start(client);
+    assert.deepEqual(seen, [90_000]);
+    deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    complete(answer());
+    await assert.rejects(pending, error => error.name === 'TimeoutError');
+    assert.equal(client.signedIn, true);
+  });
+}
+
+test('a request its caller cancelled before it started rejects even when the transport answers', async context => {
+  const controller = new AbortController();
+  controller.abort();
+  context.mock.method(globalThis, 'fetch', async (_url, options) => {
+    assert.equal(options.signal.aborted, true);
+    return Response.json({});
+  });
+  await assert.rejects(new Client(bootstrap).request('/Me', 'GET', undefined, controller.signal), error => error.name === 'AbortError');
+});
+
 test('browser cookies are kept only for a request that asks for them', async context => {
   const client = new Client(bootstrap);
   client.acceptSession(session);

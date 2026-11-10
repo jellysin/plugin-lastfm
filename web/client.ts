@@ -151,19 +151,28 @@ export class Client extends EventTarget {
     return this.request<T>(`/JellySin/Lastfm/${path}`, method, body, signal, cookies);
   }
 
-  /** Requests carry no browser cookies. The start of a Last.fm sign-in is the exception: its response sets the cookie that ties the return to this browser. */
-  async request<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal, cookies = false): Promise<T> {
+  /** Sends one request under the session's cancellation, the caller's signal and a 90-second deadline; a 401 ends the session. */
+  private async send(path: string, fields: Pick<RequestInit, 'method' | 'credentials' | 'body'> & { headers?: Record<string, string> },
+    signal?: AbortSignal): Promise<{ response: Response; requestSignal: AbortSignal }> {
     if (!path.startsWith('/') || path.startsWith('//') || /[\r\n\\]/.test(path)) throw new Error('Invalid API path.');
     const requestSignal = AbortSignal.any([this.sessionRequests.signal, AbortSignal.timeout(90_000), ...(signal ? [signal] : [])]);
     const response = await fetch(this.root + path, {
-      method, credentials: cookies ? 'same-origin' : 'omit', redirect: 'error', cache: 'no-store',
-      headers: { Authorization: this.authorizationHeader(),
-        Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...fields, redirect: 'error', cache: 'no-store',
+      headers: { Authorization: this.authorizationHeader(), ...fields.headers },
       signal: requestSignal,
     });
     requestSignal.throwIfAborted();
     if (response.status === 401) { this.clearSession(); throw new Error(t('client_session_expired')); }
+    return { response, requestSignal };
+  }
+
+  /** Requests carry no browser cookies. The start of a Last.fm sign-in is the exception: its response sets the cookie that ties the return to this browser. */
+  async request<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal, cookies = false): Promise<T> {
+    const { response, requestSignal } = await this.send(path, {
+      method, credentials: cookies ? 'same-origin' : 'omit',
+      headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }, signal);
     if (!response.ok) throw new Error(response.status === 403 ? t('client_forbidden')
       : response.status === 507 ? t('client_storage_full')
       : response.status === 409 ? await marked(response, notConnectedType) ? t('client_connect_first') : t('client_unavailable_or_expired')
@@ -176,16 +185,7 @@ export class Client extends EventTarget {
   }
 
   async download(path: string, fallbackFilename: string, signal?: AbortSignal): Promise<void> {
-    const fullPath = `/JellySin/Lastfm/${path}`;
-    if (!fullPath.startsWith('/') || fullPath.startsWith('//') || /[\r\n\\]/.test(fullPath)) throw new Error('Invalid API path.');
-    const requestSignal = AbortSignal.any([this.sessionRequests.signal, AbortSignal.timeout(90_000), ...(signal ? [signal] : [])]);
-    const response = await fetch(this.root + fullPath, {
-      method: 'GET', credentials: 'omit', redirect: 'error', cache: 'no-store',
-      headers: { Authorization: this.authorizationHeader() },
-      signal: requestSignal,
-    });
-    requestSignal.throwIfAborted();
-    if (response.status === 401) { this.clearSession(); throw new Error(t('client_session_expired')); }
+    const { response } = await this.send(`/JellySin/Lastfm/${path}`, { method: 'GET', credentials: 'omit' }, signal);
     if (!response.ok) throw new Error(t('client_download_failed', { status: response.status }));
     const blob = await response.blob();
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
