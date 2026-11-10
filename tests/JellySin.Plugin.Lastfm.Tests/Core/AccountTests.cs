@@ -52,6 +52,8 @@ public sealed class AccountTests
         Assert.Null(accounts.GetCaptureBinding(fixture.UserId));
         Assert.Empty(await accounts.GetAccountsAsync(TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.SetScrobblingAsync(fixture.UserId, true, TestContext.Current.CancellationToken));
     }
 
     [Fact]

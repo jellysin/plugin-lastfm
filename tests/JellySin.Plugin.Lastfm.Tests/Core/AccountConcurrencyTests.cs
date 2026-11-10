@@ -51,6 +51,29 @@ public sealed class AccountConcurrencyTests
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
     }
 
+    /// <summary>A scrobbling change waits for a pending grant and is cancelled when the account disconnects.</summary>
+    [Fact]
+    public async Task ScrobblingChangeWaitsForAPendingGrantAndEndsWithDisconnect()
+    {
+        using var fixture = new CoreFixture();
+        var (_, finish, _, release) = await StartBlockedGrantAsync(fixture);
+        var change = fixture.Accounts.SetScrobblingAsync(fixture.UserId, false, TestContext.Current.CancellationToken);
+        Task disconnect;
+        try
+        {
+            await Assert.ThrowsAsync<TimeoutException>(() => change.WaitAsync(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken));
+            disconnect = fixture.Accounts.DisconnectAsync(fixture.UserId, TestContext.Current.CancellationToken);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => change.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => finish);
+        await disconnect;
+        Assert.Null(await fixture.Accounts.GetAsync(fixture.UserId, TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task SequentialUsersDoNotExhaustConcurrentMutationLeaseCapacity()
     {
