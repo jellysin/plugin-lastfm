@@ -22,6 +22,8 @@ def run(arguments: list[str], directory: Path, timeout: int = 600) -> None:
     executable = shutil.which(arguments[0])
     if executable is None:
         raise RuntimeError(f"Required executable is unavailable: {arguments[0]}")
+    # Every caller below names git, npm or dotnet as a literal; the rest are build arguments, and no shell runs.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
     result = subprocess.run(  # nosec B603  # noqa: S603 - absolute executable path resolved by shutil.which
         [executable, *arguments[1:]], cwd=directory, timeout=timeout,
         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=False,
