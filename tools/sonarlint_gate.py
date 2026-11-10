@@ -33,6 +33,8 @@ GENERATED_COMMENT = (
     "Do not edit; see CONTRIBUTING.md."
 )
 PLANTED_CASES = 8
+# CR is left out because XML parsers turn it into LF.
+XML_VALUE = re.compile(r"[\t\n\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]*")
 
 
 def plain_int(value) -> bool:
@@ -65,6 +67,8 @@ def parameters(key: str, raw: list, *, sort: bool = False) -> list[tuple[str, st
             raise GateError(f"{key}: invalid parameter name {name!r}")
         if not isinstance(value, str):
             raise GateError(f"{key}: parameter {name} value must be a string")
+        if not XML_VALUE.fullmatch(value):
+            raise GateError(f"{key}: parameter {name} value has a character XML 1.0 cannot carry unchanged")
         if name in seen or (not sort and result and name <= result[-1][0]):
             raise GateError(f"{key}: parameter {name} is duplicated or out of order")
         seen.add(name)

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+import xml.etree.ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import sonarlint_gate  # noqa: E402 - module imported after sys.path manipulation
@@ -181,6 +182,25 @@ class SnapshotTests(unittest.TestCase):
         for parameters in cases:
             with self.subTest(parameters=parameters), self.assertRaisesRegex(sonarlint_gate.GateError, "S110"):
                 sonarlint_gate.load_snapshot(snapshot([{"key": "S110", "parameters": parameters}]))
+
+    def test_xml_forbidden_parameter_values(self):
+        """Values XML forbids or normalizes are refused before rendering."""
+        for value in ("\x01", "\x0b", "\x1f", "\r", "\ufffe", "\uffff", "\ud800"):
+            with self.subTest(value=value), self.assertRaisesRegex(sonarlint_gate.GateError, "S110"):
+                sonarlint_gate.load_snapshot(snapshot([
+                    {"key": "S110", "parameters": [{"name": "max", "value": value}]},
+                ]))
+
+    def test_xml_parameter_value_boundaries(self):
+        """Allowed XML character boundaries survive rendering and parsing unchanged."""
+        for value in ("\t", "\n", " ", "\ud7ff", "\ue000", "\ufffd", "\U00010000", "\U0010ffff"):
+            with self.subTest(value=value):
+                rules = sonarlint_gate.load_snapshot(snapshot([
+                    {"key": "S110", "parameters": [{"name": "max", "value": value}]},
+                ]))
+                text = sonarlint_gate.render(rules)
+                root = ET.fromstring(text)  # nosec B314  # noqa: S314 - parsing XML this test just rendered
+                self.assertEqual(root.findtext("Rules/Rule/Parameters/Parameter/Value"), value)
 
     def test_empty_rules(self):
         """No enabled rules is an invalid snapshot."""
