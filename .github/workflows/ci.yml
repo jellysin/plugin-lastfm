@@ -299,3 +299,7 @@ jobs:
         run: |
           python3 tools/ruff_gate.py --self-test
           python3 tools/ruff_gate.py
+      - name: Root SonarLint.xml matches the Codacy SonarC# snapshot (sonarlint)
+        run: |
+          python3 tools/sonarlint_gate.py --self-test
+          python3 tools/sonarlint_gate.py

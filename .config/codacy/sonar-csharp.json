@@ -1,0 +1,598 @@
+{
+  "tool": "SonarC#",
+  "toolUuid": "8954dff3-f19c-429c-ac76-c45fa5e73b62",
+  "source": "Codacy API v3 repository tool patterns of jellysin/plugin-lastfm, enabled patterns only",
+  "codingStandard": {
+    "id": 172687,
+    "name": "Default coding standard"
+  },
+  "readDate": "2026-11-10",
+  "rules": [
+    {
+      "key": "S110",
+      "parameters": [
+        {
+          "name": "filteredClasses",
+          "value": ""
+        },
+        {
+          "name": "max",
+          "value": "5"
+        }
+      ]
+    },
+    {
+      "key": "S112",
+      "parameters": []
+    },
+    {
+      "key": "S127",
+      "parameters": []
+    },
+    {
+      "key": "S131",
+      "parameters": []
+    },
+    {
+      "key": "S1006",
+      "parameters": []
+    },
+    {
+      "key": "S1104",
+      "parameters": []
+    },
+    {
+      "key": "S1118",
+      "parameters": []
+    },
+    {
+      "key": "S1163",
+      "parameters": []
+    },
+    {
+      "key": "S1172",
+      "parameters": []
+    },
+    {
+      "key": "S1186",
+      "parameters": []
+    },
+    {
+      "key": "S1206",
+      "parameters": []
+    },
+    {
+      "key": "S1210",
+      "parameters": []
+    },
+    {
+      "key": "S1215",
+      "parameters": []
+    },
+    {
+      "key": "S1226",
+      "parameters": []
+    },
+    {
+      "key": "S1244",
+      "parameters": []
+    },
+    {
+      "key": "S1313",
+      "parameters": []
+    },
+    {
+      "key": "S1449",
+      "parameters": []
+    },
+    {
+      "key": "S1481",
+      "parameters": []
+    },
+    {
+      "key": "S1643",
+      "parameters": []
+    },
+    {
+      "key": "S1656",
+      "parameters": []
+    },
+    {
+      "key": "S1698",
+      "parameters": []
+    },
+    {
+      "key": "S1699",
+      "parameters": []
+    },
+    {
+      "key": "S1764",
+      "parameters": []
+    },
+    {
+      "key": "S1854",
+      "parameters": []
+    },
+    {
+      "key": "S1862",
+      "parameters": []
+    },
+    {
+      "key": "S1871",
+      "parameters": []
+    },
+    {
+      "key": "S1944",
+      "parameters": []
+    },
+    {
+      "key": "S1994",
+      "parameters": []
+    },
+    {
+      "key": "S2053",
+      "parameters": []
+    },
+    {
+      "key": "S2068",
+      "parameters": [
+        {
+          "name": "credentialWords",
+          "value": "password, passwd, pwd, passphrase"
+        }
+      ]
+    },
+    {
+      "key": "S2115",
+      "parameters": []
+    },
+    {
+      "key": "S2123",
+      "parameters": []
+    },
+    {
+      "key": "S2178",
+      "parameters": []
+    },
+    {
+      "key": "S2184",
+      "parameters": []
+    },
+    {
+      "key": "S2190",
+      "parameters": []
+    },
+    {
+      "key": "S2197",
+      "parameters": []
+    },
+    {
+      "key": "S2201",
+      "parameters": []
+    },
+    {
+      "key": "S2223",
+      "parameters": []
+    },
+    {
+      "key": "S2225",
+      "parameters": []
+    },
+    {
+      "key": "S2245",
+      "parameters": []
+    },
+    {
+      "key": "S2257",
+      "parameters": []
+    },
+    {
+      "key": "S2259",
+      "parameters": []
+    },
+    {
+      "key": "S2275",
+      "parameters": []
+    },
+    {
+      "key": "S2291",
+      "parameters": []
+    },
+    {
+      "key": "S2328",
+      "parameters": []
+    },
+    {
+      "key": "S2330",
+      "parameters": []
+    },
+    {
+      "key": "S2339",
+      "parameters": []
+    },
+    {
+      "key": "S2345",
+      "parameters": []
+    },
+    {
+      "key": "S2357",
+      "parameters": []
+    },
+    {
+      "key": "S2360",
+      "parameters": []
+    },
+    {
+      "key": "S2368",
+      "parameters": []
+    },
+    {
+      "key": "S2372",
+      "parameters": []
+    },
+    {
+      "key": "S2386",
+      "parameters": []
+    },
+    {
+      "key": "S2387",
+      "parameters": []
+    },
+    {
+      "key": "S2486",
+      "parameters": []
+    },
+    {
+      "key": "S2551",
+      "parameters": []
+    },
+    {
+      "key": "S2583",
+      "parameters": []
+    },
+    {
+      "key": "S2612",
+      "parameters": []
+    },
+    {
+      "key": "S2674",
+      "parameters": []
+    },
+    {
+      "key": "S2681",
+      "parameters": []
+    },
+    {
+      "key": "S2688",
+      "parameters": []
+    },
+    {
+      "key": "S2692",
+      "parameters": []
+    },
+    {
+      "key": "S2696",
+      "parameters": []
+    },
+    {
+      "key": "S2743",
+      "parameters": []
+    },
+    {
+      "key": "S2755",
+      "parameters": []
+    },
+    {
+      "key": "S2757",
+      "parameters": []
+    },
+    {
+      "key": "S2760",
+      "parameters": []
+    },
+    {
+      "key": "S2761",
+      "parameters": []
+    },
+    {
+      "key": "S2930",
+      "parameters": []
+    },
+    {
+      "key": "S2931",
+      "parameters": []
+    },
+    {
+      "key": "S2934",
+      "parameters": []
+    },
+    {
+      "key": "S2952",
+      "parameters": []
+    },
+    {
+      "key": "S2953",
+      "parameters": []
+    },
+    {
+      "key": "S2955",
+      "parameters": []
+    },
+    {
+      "key": "S2995",
+      "parameters": []
+    },
+    {
+      "key": "S2996",
+      "parameters": []
+    },
+    {
+      "key": "S2997",
+      "parameters": []
+    },
+    {
+      "key": "S3005",
+      "parameters": []
+    },
+    {
+      "key": "S3010",
+      "parameters": []
+    },
+    {
+      "key": "S3168",
+      "parameters": []
+    },
+    {
+      "key": "S3169",
+      "parameters": []
+    },
+    {
+      "key": "S3172",
+      "parameters": []
+    },
+    {
+      "key": "S3215",
+      "parameters": []
+    },
+    {
+      "key": "S3216",
+      "parameters": []
+    },
+    {
+      "key": "S3217",
+      "parameters": []
+    },
+    {
+      "key": "S3220",
+      "parameters": []
+    },
+    {
+      "key": "S3237",
+      "parameters": []
+    },
+    {
+      "key": "S3241",
+      "parameters": []
+    },
+    {
+      "key": "S3244",
+      "parameters": []
+    },
+    {
+      "key": "S3247",
+      "parameters": []
+    },
+    {
+      "key": "S3249",
+      "parameters": []
+    },
+    {
+      "key": "S3251",
+      "parameters": []
+    },
+    {
+      "key": "S3263",
+      "parameters": []
+    },
+    {
+      "key": "S3329",
+      "parameters": []
+    },
+    {
+      "key": "S3397",
+      "parameters": []
+    },
+    {
+      "key": "S3427",
+      "parameters": []
+    },
+    {
+      "key": "S3440",
+      "parameters": []
+    },
+    {
+      "key": "S3443",
+      "parameters": []
+    },
+    {
+      "key": "S3444",
+      "parameters": []
+    },
+    {
+      "key": "S3445",
+      "parameters": []
+    },
+    {
+      "key": "S3447",
+      "parameters": []
+    },
+    {
+      "key": "S3449",
+      "parameters": []
+    },
+    {
+      "key": "S3450",
+      "parameters": []
+    },
+    {
+      "key": "S3451",
+      "parameters": []
+    },
+    {
+      "key": "S3453",
+      "parameters": []
+    },
+    {
+      "key": "S3456",
+      "parameters": []
+    },
+    {
+      "key": "S3457",
+      "parameters": []
+    },
+    {
+      "key": "S3459",
+      "parameters": []
+    },
+    {
+      "key": "S3466",
+      "parameters": []
+    },
+    {
+      "key": "S3597",
+      "parameters": []
+    },
+    {
+      "key": "S3600",
+      "parameters": []
+    },
+    {
+      "key": "S3603",
+      "parameters": []
+    },
+    {
+      "key": "S3610",
+      "parameters": []
+    },
+    {
+      "key": "S3655",
+      "parameters": []
+    },
+    {
+      "key": "S3869",
+      "parameters": []
+    },
+    {
+      "key": "S3871",
+      "parameters": []
+    },
+    {
+      "key": "S3874",
+      "parameters": []
+    },
+    {
+      "key": "S3875",
+      "parameters": []
+    },
+    {
+      "key": "S3876",
+      "parameters": []
+    },
+    {
+      "key": "S3877",
+      "parameters": []
+    },
+    {
+      "key": "S3880",
+      "parameters": []
+    },
+    {
+      "key": "S3889",
+      "parameters": []
+    },
+    {
+      "key": "S3898",
+      "parameters": []
+    },
+    {
+      "key": "S3926",
+      "parameters": []
+    },
+    {
+      "key": "S4347",
+      "parameters": []
+    },
+    {
+      "key": "S4423",
+      "parameters": []
+    },
+    {
+      "key": "S4426",
+      "parameters": []
+    },
+    {
+      "key": "S4433",
+      "parameters": []
+    },
+    {
+      "key": "S4502",
+      "parameters": []
+    },
+    {
+      "key": "S4790",
+      "parameters": []
+    },
+    {
+      "key": "S4830",
+      "parameters": []
+    },
+    {
+      "key": "S5042",
+      "parameters": []
+    },
+    {
+      "key": "S5332",
+      "parameters": []
+    },
+    {
+      "key": "S5344",
+      "parameters": []
+    },
+    {
+      "key": "S5542",
+      "parameters": []
+    },
+    {
+      "key": "S5547",
+      "parameters": []
+    },
+    {
+      "key": "S5659",
+      "parameters": []
+    },
+    {
+      "key": "S5753",
+      "parameters": []
+    },
+    {
+      "key": "S5766",
+      "parameters": []
+    },
+    {
+      "key": "S5773",
+      "parameters": []
+    },
+    {
+      "key": "S6377",
+      "parameters": []
+    },
+    {
+      "key": "S6444",
+      "parameters": []
+    },
+    {
+      "key": "S6781",
+      "parameters": []
+    }
+  ]
+}
