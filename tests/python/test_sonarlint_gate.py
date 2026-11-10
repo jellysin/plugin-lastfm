@@ -8,7 +8,9 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
-import xml.etree.ElementTree as ET
+# This module parses only XML these tests render.
+# nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+import xml.etree.ElementTree as ET  # nosec B405
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import sonarlint_gate  # noqa: E402 - module imported after sys.path manipulation
@@ -199,6 +201,7 @@ class SnapshotTests(unittest.TestCase):
                     {"key": "S110", "parameters": [{"name": "max", "value": value}]},
                 ]))
                 text = sonarlint_gate.render(rules)
+                # nosemgrep: python_xml_rule-element
                 root = ET.fromstring(text)  # nosec B314  # noqa: S314 - parsing XML this test just rendered
                 self.assertEqual(root.findtext("Rules/Rule/Parameters/Parameter/Value"), value)
 
