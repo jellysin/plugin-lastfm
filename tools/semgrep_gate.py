@@ -11,11 +11,12 @@ scanners never see them.
 import argparse
 from datetime import date
 import json
+from pathlib import Path
 import shutil
 import subprocess  # nosec B404
 import sys
 import tempfile
-from pathlib import Path
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS = ROOT / ".config" / "semgrep" / "requirements.txt"
@@ -25,12 +26,25 @@ PACKS = ("p/csharp", "p/typescript", "p/javascript", "p/python", "p/github-actio
 # Registry reference; the rule text is not copied here.
 AUDIT_RULE = "python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit"
 AUDIT_RULES = (f"r/{AUDIT_RULE}",)
+
+
+class Exemption(NamedTuple):
+    """One declared exception: expiry, MEL category, entry date, reason and the excepted lines."""
+
+    expires: str
+    category: str
+    entered: str
+    reason: str
+    lines: tuple[int, ...]
+
+
 EXCEPTIONS = {
-    (".config/lefthook/scripts/common.py", AUDIT_RULE): (
+    (".config/lefthook/scripts/common.py", AUDIT_RULE): Exemption(
         "2026-11-20",
         "C",
         "2026-11-10",
         "Praetor renders this hook runner; it starts argv lists without a shell",
+        lines=(281, 334),
     ),
 }
 SUFFIXES = frozenset({".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"})
@@ -192,36 +206,46 @@ def expected_lines(text: str) -> set[int]:
     return {number for number, line in enumerate(text.splitlines(), 1) if line.rstrip().endswith(MARK)}
 
 
-def exception_problems(exceptions: dict[tuple[str, str], tuple[str, str, str, str]], today: date) -> list[str]:
-    """Return a problem for an unparseable date, a category outside A-D, an empty reason, or today after expiry."""
+def exception_problems(exceptions: dict[tuple[str, str], Exemption], today: date) -> list[str]:
+    """Return a problem for an unparseable date, a category outside A-D, an empty reason, no or non-positive lines,
+    or today after expiry."""
     problems = []
-    for (path, _rule), (expires, category, entered, reason) in exceptions.items():
-        if category not in {"A", "B", "C", "D"}:
-            problems.append(f"{path}: category {category!r} outside A-D")
-        if not reason or not reason.strip():
+    for (path, _rule), exemption in exceptions.items():
+        if exemption.category not in {"A", "B", "C", "D"}:
+            problems.append(f"{path}: category {exemption.category!r} outside A-D")
+        if not exemption.reason or not exemption.reason.strip():
             problems.append(f"{path}: empty reason")
+        if not exemption.lines:
+            problems.append(f"{path}: no lines")
+        for line in exemption.lines:
+            if not isinstance(line, int) or isinstance(line, bool) or line < 1:
+                problems.append(f"{path}: line {line} is not a positive integer")
         try:
-            date.fromisoformat(entered)
+            date.fromisoformat(exemption.entered)
         except ValueError:
-            problems.append(f"{path}: unparseable entered date {entered!r}")
+            problems.append(f"{path}: unparseable entered date {exemption.entered!r}")
         try:
-            expiry = date.fromisoformat(expires)
+            expiry = date.fromisoformat(exemption.expires)
         except ValueError:
-            problems.append(f"{path}: unparseable expiry date {expires!r}")
+            problems.append(f"{path}: unparseable expiry date {exemption.expires!r}")
             continue
         if expiry < today:
-            problems.append(f"{path}: exception expired on {expires}")
+            problems.append(f"{path}: exception expired on {exemption.expires}")
     return problems
 
 
-def excepted(finding: dict, exceptions: dict[tuple[str, str], tuple[str, str, str, str]]) -> bool:
-    """Return True when the finding's path relative to ROOT and check_id form an exception key."""
+def excepted(finding: dict, exceptions: dict[tuple[str, str], Exemption]) -> bool:
+    """Return True when the finding's path relative to ROOT and check_id form an exception key and its line is listed."""
     raw = Path(finding["path"])
     try:
         rel = raw.resolve().relative_to(ROOT) if raw.is_absolute() else raw
     except ValueError:
         rel = raw
-    return (rel.as_posix(), finding.get("check_id", "")) in exceptions
+    entry = exceptions.get((rel.as_posix(), finding.get("check_id", "")))
+    if entry is None:
+        return False
+    line = finding.get("start", {}).get("line") if isinstance(finding.get("start"), dict) else None
+    return line in entry.lines
 
 
 def self_test(command: list[str]) -> list[str]:
@@ -249,17 +273,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument("files", nargs="*", help="files to scan; every tracked file when none is given")
     arguments = parser.parse_args(argv)
     try:
+        problems = exception_problems(EXCEPTIONS, date.today())
+        for problem in problems:
+            print(f"semgrep-gate: {problem}", file=sys.stderr)
+        if problems:
+            return 1
         command = launcher(pinned_version(read_bounded(REQUIREMENTS, 64 * 1024)))
         if arguments.self_test:
             problems = self_test(command)
             for problem in problems:
                 print(f"semgrep-gate self-test: {problem}", file=sys.stderr)
             return 1 if problems else 0
-        problems = exception_problems(EXCEPTIONS, date.today())
-        for problem in problems:
-            print(f"semgrep-gate: {problem}", file=sys.stderr)
-        if problems:
-            return 1
         targets = scanned(arguments.files or tracked())
         if not targets:
             return 0
