@@ -14,7 +14,6 @@ the install in place of an installed one, a planted failure the check must refus
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import secrets
 import sys
@@ -25,8 +24,17 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from catalog_over_canary import DESCRIPTOR, install, listed, restart  # noqa: E402
-from smoke import Client, DockerHost, SmokeFailure, add_server_options, chosen_image, docker, require, setup_server  # noqa: E402
+from catalog_over_canary import DESCRIPTOR, finish, install, listed, restart
+from smoke import (
+    Client,
+    DockerHost,
+    SmokeFailure,
+    add_server_options,
+    chosen_image,
+    docker,
+    require,
+    setup_server,
+)
 
 CATALOG = "https://raw.githubusercontent.com/jellysin/repo/main/manifest.json"
 # The server downloads the catalog and the release archive from the internet, which takes longer than a local catalog.
@@ -100,11 +108,7 @@ def main() -> int:
         report["failure"] = str(failure)
         print(f"FAIL: {failure}", file=sys.stderr, flush=True)
     finally:
-        if host.started:
-            report["log"] = [line for line in docker("logs", host.name).splitlines() if "lugin" in line][-60:]
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
-        host.cleanup()
+        finish(host, (host,), args.report, report)
     return 0 if report.get("passed") else 1
 
 

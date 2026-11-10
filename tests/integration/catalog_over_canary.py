@@ -235,6 +235,26 @@ def run(host: DockerHost, stand_in: StandInContainer, plant: str | None, report:
     report["passed"] = True
 
 
+def finish(host: DockerHost, parts: tuple[Any, ...], path: Path, report: dict[str, Any]) -> None:
+    """Writes the report with the server's plugin log, then removes every part, even when the log, the write or a removal fails."""
+    try:
+        if host.started:
+            try:
+                report["log"] = [line for line in docker("logs", host.name).splitlines() if "lugin" in line][-60:]
+            except SmokeFailure as failure:
+                report["log-failure"] = str(failure)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    finally:
+        failures = []
+        for part in parts:
+            try:
+                part.cleanup()
+            except SmokeFailure as failure:
+                failures.append(str(failure))
+        require(not failures, " ".join(failures))
+
+
 def main() -> int:
     """Runs the catalog check against a disposable server and writes its report; 0 on pass, 1 on failure."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -264,12 +284,7 @@ def main() -> int:
             report["failure"] = str(failure)
             print(f"FAIL: {failure}", file=sys.stderr, flush=True)
         finally:
-            if host.started:
-                report["log"] = [line for line in docker("logs", host.name).splitlines() if "lugin" in line][-60:]
-            args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
-            for part in (host, repository, stand_in):
-                part.cleanup()
+            finish(host, (host, repository, stand_in), args.report, report)
     return 0 if report.get("passed") else 1
 
 
