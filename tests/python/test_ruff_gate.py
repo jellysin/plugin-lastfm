@@ -14,7 +14,9 @@ import ruff_gate  # noqa: E402 - module imported after sys.path manipulation
 from ruff_gate import (  # noqa: E402 - module imported after sys.path manipulation
     GateError,
     PLANTED_PY,
+    checks_executable_bit,
     exception_problems,
+    host_checks_executable_bit,
     launcher,
     pinned_version,
     planted_lines,
@@ -305,11 +307,76 @@ class PlantedTests(unittest.TestCase):
         self.assertTrue(PLANTED_PY.splitlines()[0].startswith("#!"))
         self.assertIn(1, planted_lines(PLANTED_PY, True))
 
-    def test_planted_shebang_is_not_expected_off_posix(self):
-        """Line 1 is omitted from expected lines when not on POSIX."""
+    def test_planted_shebang_is_not_expected_when_the_bit_is_unchecked(self):
+        """Line 1 is omitted from expected lines where Ruff skips the executable bit."""
         lines = planted_lines(PLANTED_PY, False)
         self.assertNotIn(1, lines)
         self.assertEqual(lines, expected_lines(PLANTED_PY) - {1})
+
+    def self_test_with(self, rows: set[int], bit_checked: bool) -> list[str]:
+        """Run self_test with Ruff reporting the given rows and the host decision given."""
+        findings = [{"location": {"row": row}} for row in sorted(rows)]
+        with (
+            mock.patch.object(ruff_gate, "run", return_value=findings),
+            mock.patch.object(ruff_gate, "host_checks_executable_bit", return_value=bit_checked),
+        ):
+            return ruff_gate.self_test(["ruff"])
+
+    def test_self_test_requires_the_shebang_where_the_bit_is_checked(self):
+        """Where the bit is checked, a missing line-1 finding fails the self-test."""
+        rows = expected_lines(PLANTED_PY)
+        self.assertEqual(self.self_test_with(rows, True), [])
+        self.assertEqual(self.self_test_with(rows - {1}, True), ["planted.py:1: planted case not reported"])
+
+    def test_self_test_refuses_the_shebang_where_the_bit_is_unchecked(self):
+        """Where the bit is unchecked, a line-1 finding is an unmarked report."""
+        rows = expected_lines(PLANTED_PY)
+        self.assertEqual(self.self_test_with(rows - {1}, False), [])
+        self.assertEqual(self.self_test_with(rows, False), ["planted.py:1: reported but not planted"])
+
+
+WSL2 = "5.15.167.4-microsoft-standard-WSL2"
+
+
+class PlatformTests(unittest.TestCase):
+    """The executable-bit decision follows Ruff's WSL detection, container exception included."""
+
+    def test_linux_checks_the_bit(self):
+        """A Linux kernel without the WSL mark keeps the bit checked."""
+        self.assertTrue(checks_executable_bit(True, True, "6.17.0-cachyos", False))
+
+    def test_wsl_outside_a_container_skips_the_bit(self):
+        """WSL2 and the capitalised WSL1 kernel string both skip the bit."""
+        self.assertFalse(checks_executable_bit(True, True, WSL2, False))
+        self.assertFalse(checks_executable_bit(True, True, "4.4.0-19041-Microsoft", False))
+
+    def test_container_on_wsl_checks_the_bit(self):
+        """A container on a WSL2 host has Unix file modes, so the bit is checked."""
+        self.assertTrue(checks_executable_bit(True, True, WSL2, True))
+
+    def test_boundaries_without_wsl(self):
+        """An unreadable kernel or a non-Linux POSIX system checks the bit; a non-POSIX system never does."""
+        self.assertTrue(checks_executable_bit(True, True, None, False))
+        self.assertTrue(checks_executable_bit(True, False, WSL2, False))
+        self.assertFalse(checks_executable_bit(False, False, None, False))
+
+    def host(self, files: dict[str, str], present: frozenset[str] = frozenset()) -> bool:
+        """Return the host decision on Linux with the given readable files and existing paths."""
+        return host_checks_executable_bit(files.get, present.__contains__, True, "linux")
+
+    def test_host_reads_osrelease_then_version(self):
+        """The kernel string comes from osrelease, or from /proc/version when osrelease is unreadable."""
+        self.assertFalse(self.host({"/proc/sys/kernel/osrelease": WSL2}))
+        self.assertFalse(self.host({"/proc/version": f"Linux version {WSL2}"}))
+        self.assertTrue(self.host({"/proc/sys/kernel/osrelease": "6.17.0", "/proc/version": WSL2}))
+
+    def test_host_detects_containers(self):
+        """Container files and cgroup marks each turn WSL detection off."""
+        wsl = {"/proc/sys/kernel/osrelease": WSL2}
+        self.assertTrue(self.host(wsl, frozenset({"/.dockerenv"})))
+        self.assertTrue(self.host(wsl, frozenset({"/run/.containerenv"})))
+        self.assertTrue(self.host({**wsl, "/proc/self/cgroup": "0::/KubePods/burstable/pod1"}))
+        self.assertFalse(self.host({**wsl, "/proc/self/cgroup": "0::/user.slice"}))
 
 
 if __name__ == "__main__":

@@ -79,10 +79,13 @@ Semgrep parses only in part, such as C# primary constructors, are listed, not pa
 silently. `--self-test` writes planted cases to a temporary directory and fails when a
 rule misses one or reports an unmarked line.
 Ruff runs through `tools/ruff_gate.py` in the CI scanners job, with the release pinned in
-`.config/ruff/requirements.txt`. `ruff.toml` lists the Ruff patterns Codacy enables, plus
-the EXE shebang rules Codacy reports on pull requests, and is the only place to change them.
+`.config/ruff/requirements.txt`. `ruff.toml` lists the Ruff patterns Codacy enables plus
+the five EXE shebang rules, and is the only place to change them; Codacy reported EXE001 on
+a pull request although its pattern list shows the EXE rules disabled.
 A Python file that starts with a shebang line is committed executable (mode 100755), and
-an executable Python file starts with one. Suppress a finding on its line with
+an executable Python file starts with one. The one exception is the Praetor-rendered
+`.config/lefthook/scripts/checkpoint.py`, declared in `ruff.toml` until its expiry date.
+Suppress a finding on its line with
 `# noqa: <code> - <reason>`. A per-file exception in `ruff.toml` needs the line
 `# expires YYYY-MM-DD (MEL <A-D>, entered YYYY-MM-DD): <reason>` directly above it, and
 the gate fails once that date has passed.
