@@ -57,6 +57,21 @@ public sealed class AccountTests
     }
 
     [Fact]
+    public async Task DisabledHostUserIsRefusedBeforeTheCallbackIsChecked()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        var user = new User("listener", "auth", "password") { Id = fixture.UserId };
+        var users = new Mock<IUserManager>();
+        users.Setup(value => value.GetUserById(fixture.UserId)).Returns(user);
+        using var accounts = new AccountService(fixture.Store, fixture.Client, fixture.Credentials, fixture.Protection, fixture.Clock, users.Object);
+        user.SetPermission(PermissionKind.IsDisabled, true);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.BeginAsync(fixture.UserId,
+            new Uri("ftp://jellyfin.example/JellySin/Lastfm/Callback"), false, TestContext.Current.CancellationToken));
+        Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task NativeDeletionEventCancelsAndRemovesPrivateAccountState()
     {
         using var fixture = new CoreFixture();

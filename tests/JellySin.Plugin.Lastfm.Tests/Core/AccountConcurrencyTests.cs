@@ -49,6 +49,27 @@ public sealed class AccountConcurrencyTests
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
     }
 
+    [Fact]
+    public async Task CancelledScrobblingWaitLeavesTheAccountGateFree()
+    {
+        using var fixture = new CoreFixture();
+        var (_, finish, _, release) = await StartBlockedGrantAsync(fixture);
+        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        try
+        {
+            var change = fixture.Accounts.SetScrobblingAsync(fixture.UserId, false, waiting.Token);
+            await waiting.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => change);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        await finish;
+        await fixture.Accounts.SetScrobblingAsync(fixture.UserId, false, TestContext.Current.CancellationToken);
+        Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).ScrobblingEnabled);
+    }
+
     /// <summary>A scrobbling change waits for a pending grant and is cancelled when the account disconnects.</summary>
     [Fact]
     public async Task ScrobblingChangeWaitsForAPendingGrantAndEndsWithDisconnect()
