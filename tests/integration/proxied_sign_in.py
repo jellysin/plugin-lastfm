@@ -218,6 +218,7 @@ def read_results(path: Path, status: int) -> list[dict[str, Any]]:
 
 
 def run(host: DockerHost, configured: bool, report: Path, only: str) -> int:
+    """Run the browser sign-in scenarios through the TLS proxy; return the browser exit status, or 1 when it passed but the log check failed."""
     print("Starting isolated Jellyfin 12 with the published address " + PUBLISHED + " and no trusted proxy.", flush=True)
     host.start()
     accounts = seed(host, configured)

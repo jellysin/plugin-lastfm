@@ -124,6 +124,7 @@ def nonnegative_integer(value, label, positive=False):
 
 
 def load_xml(path):
+    """Read and parse a Cobertura XML report; raise CoverageError if oversized, malformed, or declaring DTDs."""
     with Path(path).open("rb") as stream:
         data = stream.read(MAX_REPORT_BYTES + 1)
     if len(data) > MAX_REPORT_BYTES:
@@ -133,6 +134,7 @@ def load_xml(path):
         upper = document.upper()
         if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
             raise CoverageError("DTD/entity declarations are not allowed")
+        # nosemgrep: python_xml_rule-element - DTD and entity declarations are refused before the parse
         root = ET.fromstring(document)  # nosec B314  # noqa: S314 - parsing Cobertura coverage XML written by test runner
     except (ET.ParseError, UnicodeError) as error:
         raise CoverageError("Invalid UTF-8 coverage XML") from error

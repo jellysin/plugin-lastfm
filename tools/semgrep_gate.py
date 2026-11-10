@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS = ROOT / ".config" / "semgrep" / "requirements.txt"
 LOCAL_RULES = ROOT / ".config" / "semgrep"
 PACKS = ("p/csharp", "p/typescript", "p/javascript", "p/python", "p/github-actions")
-SUFFIXES = {".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"}
+SUFFIXES = frozenset({".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"})
 # Two scans (self-test, then the tree) plus the earlier steps fit the CI scanners job's 15 minutes; both took 25 s
 # together on ubuntu-24.04 (run 41312005329).
 SCAN_TIMEOUT_SECONDS = 300
@@ -106,7 +106,7 @@ def read_bounded(path: Path | str, limit: int) -> str:
     return target.read_text(encoding="utf-8")
 
 
-def scanned(paths: list[str], suffixes: set[str] = SUFFIXES) -> list[str]:
+def scanned(paths: list[str], suffixes: frozenset[str] = SUFFIXES) -> list[str]:
     """Return the paths with a scanned suffix, in order.
 
     Targets are files of this repository (staged or tracked names): a path that resolves outside the repository, or a

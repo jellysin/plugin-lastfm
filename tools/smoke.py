@@ -61,6 +61,7 @@ def require(condition: Any, description: str) -> None:
 
 
 def docker(*arguments: str, timeout: int = 90) -> str:
+    """Run a Docker command and return stdout; raise SmokeFailure on failure."""
     command = subprocess.run(  # nosec B603  # noqa: S603 - fixed docker command with caller-supplied arguments
         ["docker", *arguments],  # noqa: S607 - standard docker executable
         capture_output=True, text=True,
@@ -89,6 +90,7 @@ class Client:
         expected: int | tuple[int, ...] = 200, headers: dict[str, str] | None = None,
         raw: bool = False, timeout: float = 20,
     ) -> Any:
+        """Send an HTTP request to the server and return the response; raise SmokeFailure on error or unexpected status."""
         authorization = f'MediaBrowser Client="JellySin smoke", Device="Test", DeviceId="{self.device}", Version="1.0.0"'
         if self.token:
             authorization += f', Token="{self.token}"'

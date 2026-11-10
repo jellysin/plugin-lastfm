@@ -103,6 +103,7 @@ def evaluate_browser_result(result_path: Path, exit_code: int, plant: str) -> No
 
 
 def run(image: str, plugin: Path, evidence: Path, plant: str) -> None:
+    """Run settings-entry browser checks against an isolated container; raise SmokeFailure on verification failures."""
     evidence.mkdir(parents=True, exist_ok=True)
     host = DockerHost(plugin, image)
     try:

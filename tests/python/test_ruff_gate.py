@@ -21,7 +21,7 @@ from semgrep_gate import MAX_TARGETS  # noqa: E402 - module imported after sys.p
 
 ENTRY = '".config/lefthook/scripts/common.py" = ["S603"]'
 NOTE = "# expires 2026-11-20 (MEL C, entered 2026-11-10): rendered by Praetor"
-PY = {".py"}
+PY = frozenset({".py"})
 
 
 def config(*lines: str) -> str:
@@ -139,6 +139,31 @@ class ExceptionTests(unittest.TestCase):
         """A file without per-file-ignores has nothing to check."""
         self.assertEqual(exception_problems('[lint]\nselect = ["S603"]\n', date(2026, 11, 10)), [])
 
+    def test_refuses_malformed_toml(self):
+        """A configuration with TOML syntax errors raises GateError."""
+        with self.assertRaises(GateError) as context:
+            exception_problems("[lint\n", date(2026, 11, 10))
+        self.assertIn("ruff.toml", str(context.exception))
+        self.assertIn("not valid TOML", str(context.exception))
+
+    def test_refuses_impossible_calendar_date(self):
+        """An impossible calendar date in an exception note raises GateError."""
+        note = "# expires 2026-13-40 (MEL B, entered 2026-11-10): reason"
+        with self.assertRaises(GateError) as context:
+            exception_problems(config(note, ENTRY), date(2026, 11, 10))
+        self.assertIn("ruff.toml", str(context.exception))
+        self.assertIn("2026-13-40", str(context.exception))
+
+    def test_checks_leap_year_boundary(self):
+        """February 29 is refused in a common year and accepted in a leap year."""
+        non_leap = "# expires 2026-02-29 (MEL B, entered 2026-11-10): reason"
+        with self.assertRaises(GateError) as context:
+            exception_problems(config(non_leap, ENTRY), date(2026, 11, 10))
+        self.assertIn("ruff.toml", str(context.exception))
+        self.assertIn("2026-02-29", str(context.exception))
+        leap = "# expires 2028-02-29 (MEL B, entered 2028-01-10): reason"
+        self.assertEqual(exception_problems(config(leap, ENTRY), date(2028, 2, 29)), [])
+
     def test_main_fails_on_an_expired_exception(self):
         """The gate exits 1 before scanning when an exception has expired."""
         with tempfile.TemporaryDirectory() as directory:
@@ -200,6 +225,7 @@ class RunTests(unittest.TestCase):
     def test_exit_code_two_raises_gate_error_with_stderr(self):
         """Exit code 2 raises GateError carrying stderr text."""
         def fake_run(arguments, **kwargs):
+            """Simulate a subprocess failure by writing to stderr and returning exit code 2."""
             stderr = kwargs.get("stderr")
             if stderr:
                 stderr.write("unexpected failure in ruff check")

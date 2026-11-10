@@ -223,6 +223,7 @@ def listener_flows(origin: str, stand_in: StandInContainer, state: dict[str, Any
 
 
 def write_evidence(evidence: Path, host: DockerHost, stand_in: StandInContainer) -> None:
+    """Write the server and stand-in logs to the evidence directory; raise SmokeFailure, before writing, if the server log holds the session key."""
     log = subprocess.run(  # nosec B603  # noqa: S603 - fixed docker logs command with managed host container
         ["docker", "logs", host.name],  # noqa: S607 - standard docker executable for container log collection
         capture_output=True, text=True, encoding="utf-8",
@@ -236,6 +237,7 @@ def write_evidence(evidence: Path, host: DockerHost, stand_in: StandInContainer)
 
 
 def run(image: str, plugin: Path, evidence: Path) -> None:
+    """Run browser and listener flow integration checks against an isolated container; raise SmokeFailure on failure."""
     evidence.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="jellysin-page-check-") as name:
         directory = Path(name)

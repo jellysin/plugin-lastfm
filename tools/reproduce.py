@@ -18,6 +18,7 @@ PROJECT = Path("src/JellySin.Plugin.Lastfm")
 
 
 def run(arguments: list[str], directory: Path, timeout: int = 600) -> None:
+    """Run a command in the given directory with output discarded; raise RuntimeError if the executable is missing or exits non-zero."""
     executable = shutil.which(arguments[0])
     if executable is None:
         raise RuntimeError(f"Required executable is unavailable: {arguments[0]}")

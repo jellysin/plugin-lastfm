@@ -66,6 +66,7 @@ def references(root):
         if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
             raise FloorError(f"{path.name} declares a document type or entity; project files carry neither")
         try:
+            # nosemgrep: python_xml_rule-element - DTD and entity declarations are refused before the parse
             elements = ElementTree.fromstring(  # nosec B314  # noqa: S314 - parsing repository C# project XML file
                 text
             ).iter("PackageReference")

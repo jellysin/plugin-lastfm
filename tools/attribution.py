@@ -58,6 +58,7 @@ def scan(source, text):
 
 
 def git(repository, *arguments):
+    """Run a git command against the repository and return stdout; raise AttributionError on failure."""
     try:
         done = subprocess.run(  # nosec B603  # noqa: S603 - fixed git command with caller-supplied arguments on repository
             ["git", "-C", str(repository), *arguments],  # noqa: S607 - standard git executable

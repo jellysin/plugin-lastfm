@@ -97,6 +97,7 @@ def render(findings, revision):
 
 
 def forge(arguments, text=None):
+    """Run a GitHub CLI command and return stdout; raise AuditError on failure."""
     result = subprocess.run(  # nosec B603  # noqa: S603 - fixed gh command with caller-supplied arguments
         ["gh", *arguments],  # noqa: S607 - standard gh CLI executable
         input=text, capture_output=True, text=True, timeout=FORGE_TIMEOUT_SECONDS, check=False,

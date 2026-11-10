@@ -57,16 +57,28 @@ def exception_problems(text: str, today: date) -> list[str]:
 
     The line above each `[lint.per-file-ignores]` entry must read
     `# expires YYYY-MM-DD (MEL <A-D>, entered YYYY-MM-DD): <reason>`; an entry is still valid on its expiry day.
+    A malformed file or an invalid calendar date raises GateError naming ruff.toml.
     """
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
+        raise GateError(f"ruff.toml: not valid TOML: {error}") from error
     lines = text.splitlines()
     problems = []
-    for path in tomllib.loads(text).get("lint", {}).get("per-file-ignores", {}):
+    for path in data.get("lint", {}).get("per-file-ignores", {}):
         index = next((number for number, line in enumerate(lines) if line.startswith(f'"{path}" =')), 0)
         note = EXCEPTION_NOTE.fullmatch(lines[index - 1]) if index else None
         if note is None:
             problems.append(f"{path}: exception without a `# expires YYYY-MM-DD (MEL <A-D>, entered ...): ` note")
-        elif date.fromisoformat(note.group(1)) < today:
-            problems.append(f"{path}: exception expired on {note.group(1)}")
+        else:
+            try:
+                expiry = date.fromisoformat(note.group(1))
+            except ValueError as error:
+                raise GateError(
+                    f"ruff.toml: {path}: expiry date {note.group(1)} is not a calendar date"
+                ) from error
+            if expiry < today:
+                problems.append(f"{path}: exception expired on {note.group(1)}")
     return problems
 
 
@@ -154,7 +166,7 @@ def main(argv: list[str]) -> int:
             for problem in problems:
                 print(f"ruff-gate self-test: {problem}", file=sys.stderr)
             return 1 if problems else 0
-        targets = scanned(arguments.files or tracked(), suffixes={".py"})
+        targets = scanned(arguments.files or tracked(), suffixes=frozenset({".py"}))
         if not targets:
             return 0
         findings = run(command, targets)
