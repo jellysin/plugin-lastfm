@@ -5,6 +5,7 @@ using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using static JellySin.NativeProbe.ProbeFixtures;
 
 namespace JellySin.NativeProbe;
 
@@ -19,7 +20,7 @@ public sealed class LibraryProbeController(IUserDataManager data, IUserManager u
     [HttpPost("Match")]
     public object Match(LibraryFixture input, CancellationToken ct)
     {
-        var user = FixtureUser(input.UserId);
+        var user = FixtureUser(users, input.UserId);
         var tracks = input.Tracks.Select(track => Invoke("Features.IMusicLibrary", "Match", "Features.MusicTrack", user.Id, track, ct))
             .Select(match => new { Status = match.GetProperty("Status").GetString(), ItemId = match.GetProperty("ItemId").GetString() }).ToArray();
         var entities = input.Entities.Select(entity => Invoke("Features.IDiscoveryLibrary", "MatchEntity", "Features.DiscoveryEntity", user.Id, entity, ct))
@@ -29,18 +30,9 @@ public sealed class LibraryProbeController(IUserDataManager data, IUserManager u
 
     private JsonElement Invoke(string contractName, string method, string argumentName, Guid userId, object argument, CancellationToken ct)
     {
-        var contract = ProductionType(contractName);
-        var value = JsonSerializer.Deserialize(JsonSerializer.Serialize(argument), ProductionType(argumentName))!;
+        var contract = ProductionType(data, contractName);
+        var value = JsonSerializer.Deserialize(JsonSerializer.Serialize(argument), ProductionType(data, argumentName))!;
         return JsonSerializer.SerializeToElement(contract.GetMethod(method)!.Invoke(services.GetRequiredService(contract), [userId, value, ct]));
-    }
-
-    private Type ProductionType(string suffix) => data.GetType().Assembly.GetType("JellySin.Plugin.Lastfm." + suffix, throwOnError: true)!;
-
-    private User FixtureUser(Guid id)
-    {
-        var user = users.GetUserById(id) ?? throw new KeyNotFoundException("Fixture user missing.");
-        if (!user.Username.StartsWith("JellySin Probe ", StringComparison.Ordinal)) throw new UnauthorizedAccessException();
-        return user;
     }
 }
 

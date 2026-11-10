@@ -10,6 +10,7 @@ using MediaBrowser.Model.Playlists;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using static JellySin.NativeProbe.ProbeFixtures;
 
 namespace JellySin.NativeProbe;
 
@@ -24,7 +25,7 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
     [HttpPost("Prepare")]
     public async Task<IActionResult> Prepare(PlaylistFixture input, CancellationToken ct)
     {
-        var user = FixtureUser(input.UserId);
+        var user = FixtureUser(users, input.UserId);
         using var preparation = fault.TryBeginPreparation();
         if (preparation is null || await HasPendingOperationAsync(user.Id, ct).ConfigureAwait(false)) return Conflict();
         if (!fault.Configured || input.Items.Length is < 2 or > 20 || input.Items.Distinct().Count() != input.Items.Length)
@@ -36,7 +37,7 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
                 throw new UnauthorizedAccessException();
         }
         var recipeId = Guid.NewGuid();
-        var name = "JellySin Probe " + recipeId.ToString("N");
+        var name = NamePrefix + recipeId.ToString("N");
         var created = await playlists.CreatePlaylist(new PlaylistCreationRequest
         { Name = name, UserId = user.Id, Public = false, MediaType = MediaType.Audio, ItemIdList = input.Items }).ConfigureAwait(false);
         var playlistId = Guid.Parse(created.Id);
@@ -64,11 +65,11 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
     [HttpPost("Recover")]
     public async Task<object> Recover(PlaylistRecovery input, CancellationToken ct)
     {
-        var user = FixtureUser(input.UserId);
+        var user = FixtureUser(users, input.UserId);
         var playlist = library.GetItemById<Playlist>(input.PlaylistId, user.Id);
         if (playlist is null || playlist.OwnerUserId != user.Id || playlist.IsFile
-            || !playlist.Name.StartsWith("JellySin Probe ", StringComparison.Ordinal)) throw new UnauthorizedAccessException();
-        var contract = ProductionType("Features.PlaylistService");
+            || !playlist.Name.StartsWith(NamePrefix, StringComparison.Ordinal)) throw new UnauthorizedAccessException();
+        var contract = ProductionType(data, "Features.PlaylistService");
         var service = services.GetRequiredService(contract);
         try
         {
@@ -83,9 +84,9 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
 
     private async Task PersistOperationAsync(Guid userId, object document, CancellationToken ct)
     {
-        var operationType = ProductionType("Features.PlaylistOperation");
+        var operationType = ProductionType(data, "Features.PlaylistOperation");
         var operation = JsonSerializer.Deserialize(JsonSerializer.Serialize(document), operationType)!;
-        var contract = ProductionType("Storage.IStateStore");
+        var contract = ProductionType(data, "Storage.IStateStore");
         var store = services.GetRequiredService(contract);
         var write = contract.GetMethod("WriteAsync")!.MakeGenericMethod(operationType);
         await ((Task)write.Invoke(store, [userId, "feature-playlist-operation", operation, ct])!).ConfigureAwait(false);
@@ -93,21 +94,12 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
 
     private async Task<bool> HasPendingOperationAsync(Guid userId, CancellationToken ct)
     {
-        var contract = ProductionType("Storage.IStateStore");
+        var contract = ProductionType(data, "Storage.IStateStore");
         var store = services.GetRequiredService(contract);
-        var read = contract.GetMethod("ReadAsync")!.MakeGenericMethod(ProductionType("Features.PlaylistOperation"));
+        var read = contract.GetMethod("ReadAsync")!.MakeGenericMethod(ProductionType(data, "Features.PlaylistOperation"));
         var task = (Task)read.Invoke(store, [userId, "feature-playlist-operation", ct])!;
         await task.ConfigureAwait(false);
         return task.GetType().GetProperty("Result")!.GetValue(task) is not null;
-    }
-
-    private Type ProductionType(string suffix) => data.GetType().Assembly.GetType("JellySin.Plugin.Lastfm." + suffix, throwOnError: true)!;
-
-    private User FixtureUser(Guid id)
-    {
-        var user = users.GetUserById(id) ?? throw new KeyNotFoundException("Fixture user missing.");
-        if (!user.Username.StartsWith("JellySin Probe ", StringComparison.Ordinal)) throw new UnauthorizedAccessException();
-        return user;
     }
 }
 

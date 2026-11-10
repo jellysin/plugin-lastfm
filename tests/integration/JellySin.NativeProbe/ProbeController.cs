@@ -7,6 +7,7 @@ using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using static JellySin.NativeProbe.ProbeFixtures;
 
 namespace JellySin.NativeProbe;
 
@@ -92,10 +93,9 @@ public sealed class ProbeController(IUserDataManager data, IUserManager users, I
 
     private (User User, Audio Item) Target(FixtureItem input)
     {
-        var user = users.GetUserById(input.UserId) ?? throw new KeyNotFoundException("Fixture user missing.");
+        var user = FixtureUser(users, input.UserId);
         var item = library.GetItemById<Audio>(input.ItemId, user.Id) ?? throw new KeyNotFoundException("Fixture track missing.");
-        if (!user.Username.StartsWith("JellySin Probe ", StringComparison.Ordinal)
-            || !item.Path.StartsWith("/media/Public/", StringComparison.Ordinal)) throw new UnauthorizedAccessException();
+        if (!item.Path.StartsWith("/media/Public/", StringComparison.Ordinal)) throw new UnauthorizedAccessException();
         if (data.GetType().FullName != WrapperType) throw new InvalidOperationException("Native userdata decorator was not registered.");
         return (user, item);
     }
@@ -105,8 +105,7 @@ public sealed class ProbeController(IUserDataManager data, IUserManager users, I
 
     private void InvokeWriter(string method, params object[] arguments)
     {
-        // Jellyfin isolates plugin assemblies: obtain the actual registered service type from the injected decorator.
-        var contract = data.GetType().Assembly.GetType("JellySin.Plugin.Lastfm.Features.IMusicWriter", throwOnError: true)!;
+        var contract = ProductionType(data, "Features.IMusicWriter");
         var writer = services.GetRequiredService(contract);
         contract.GetMethod(method)!.Invoke(writer, arguments);
     }
