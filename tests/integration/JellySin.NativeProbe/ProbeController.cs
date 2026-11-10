@@ -91,6 +91,7 @@ public sealed class ProbeController(IUserDataManager data, IUserManager users, I
         return new { Accepted = accepted, Favourite = ReadLatest(user, item.Id).IsFavorite, Revision = InvokeWrapper("FavouriteRevision", user, item) };
     }
 
+    /// <summary>Resolves the fixture user and public fixture track, and refuses when the native userdata decorator is not registered.</summary>
     private (User User, Audio Item) Target(FixtureItem input)
     {
         var user = FixtureUser(users, input.UserId);
@@ -109,6 +110,7 @@ public sealed class ProbeController(IUserDataManager data, IUserManager users, I
     private object? InvokeWrapper(string method, params object[] arguments)
         => data.GetType().GetMethod(method)!.Invoke(data, arguments);
 
+    /// <summary>Calls one production music writer method with the given arguments.</summary>
     private void InvokeWriter(string method, params object[] arguments)
     {
         var contract = ProductionType(data, "Features.IMusicWriter");
@@ -130,9 +132,10 @@ internal static class ProbeFixtures
 {
     internal const string NamePrefix = "JellySin Probe ";
 
-    // Jellyfin isolates plugin assemblies: obtain the actual registered service type from the injected decorator.
+    /// <summary>Returns the plugin type named by the suffix from the injected decorator's assembly, because Jellyfin isolates plugin assemblies.</summary>
     internal static Type ProductionType(IUserDataManager data, string suffix) => data.GetType().Assembly.GetType("JellySin.Plugin.Lastfm." + suffix, throwOnError: true)!;
 
+    /// <summary>Returns the fixture user for the id, and refuses a missing user or one whose name lacks the probe prefix.</summary>
     internal static User FixtureUser(IUserManager users, Guid id)
     {
         var user = users.GetUserById(id) ?? throw new KeyNotFoundException("Fixture user missing.");

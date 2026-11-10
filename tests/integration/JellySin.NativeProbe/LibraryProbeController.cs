@@ -17,6 +17,7 @@ namespace JellySin.NativeProbe;
 [RequestSizeLimit(16_384)]
 public sealed class LibraryProbeController(IUserDataManager data, IUserManager users, IServiceProvider services) : ControllerBase
 {
+    /// <summary>Matches the fixture tracks and discovery entities for a fixture user through the production library services.</summary>
     [HttpPost("Match")]
     public object Match(LibraryFixture input, CancellationToken ct)
     {
@@ -28,6 +29,7 @@ public sealed class LibraryProbeController(IUserDataManager data, IUserManager u
         return new { Tracks = tracks, Entities = entities };
     }
 
+    /// <summary>Calls one production contract method with the argument converted to the plugin's own type and returns the result as JSON.</summary>
     private JsonElement Invoke(string contractName, string method, string argumentName, Guid userId, object argument, CancellationToken ct)
     {
         var contract = ProductionType(data, contractName);

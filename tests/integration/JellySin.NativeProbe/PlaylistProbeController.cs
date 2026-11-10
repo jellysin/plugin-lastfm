@@ -22,6 +22,7 @@ namespace JellySin.NativeProbe;
 public sealed class PlaylistProbeController(IUserDataManager data, IUserManager users, ILibraryManager library,
     IPlaylistManager playlists, PlaylistFaultState fault, IServiceProvider services) : ControllerBase
 {
+    /// <summary>Creates a private probe playlist from public fixture tracks, stores its pending operation and arms the fault hook; returns 409 while another preparation or operation is pending.</summary>
     [HttpPost("Prepare")]
     public async Task<IActionResult> Prepare(PlaylistFixture input, CancellationToken ct)
     {
@@ -62,6 +63,7 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
         return Ok(new { PlaylistId = playlistId, RecipeId = recipeId, OperationId = operationId, IntendedItems = input.Items.Reverse().ToArray() });
     }
 
+    /// <summary>Runs the production playlist refresh for the fixture user's own probe playlist and reports whether the injected failure fired.</summary>
     [HttpPost("Recover")]
     public async Task<object> Recover(PlaylistRecovery input, CancellationToken ct)
     {
@@ -82,6 +84,7 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
         }
     }
 
+    /// <summary>Writes a pending playlist operation through the production state store.</summary>
     private async Task PersistOperationAsync(Guid userId, object document, CancellationToken ct)
     {
         var operationType = ProductionType(data, "Features.PlaylistOperation");
@@ -92,6 +95,7 @@ public sealed class PlaylistProbeController(IUserDataManager data, IUserManager 
         await ((Task)write.Invoke(store, [userId, "feature-playlist-operation", operation, ct])!).ConfigureAwait(false);
     }
 
+    /// <summary>Reports whether the production state store holds a pending playlist operation for the user.</summary>
     private async Task<bool> HasPendingOperationAsync(Guid userId, CancellationToken ct)
     {
         var contract = ProductionType(data, "Storage.IStateStore");
