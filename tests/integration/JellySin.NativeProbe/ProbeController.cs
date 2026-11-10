@@ -7,6 +7,7 @@ using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using static JellySin.NativeProbe.ProbeFixtures;
 
 namespace JellySin.NativeProbe;
 
@@ -90,23 +91,29 @@ public sealed class ProbeController(IUserDataManager data, IUserManager users, I
         return new { Accepted = accepted, Favourite = ReadLatest(user, item.Id).IsFavorite, Revision = InvokeWrapper("FavouriteRevision", user, item) };
     }
 
+    /// <summary>Resolves the fixture user and public fixture track, and refuses when the native userdata decorator is not registered.</summary>
     private (User User, Audio Item) Target(FixtureItem input)
     {
-        var user = users.GetUserById(input.UserId) ?? throw new KeyNotFoundException("Fixture user missing.");
+        var user = FixtureUser(users, input.UserId);
         var item = library.GetItemById<Audio>(input.ItemId, user.Id) ?? throw new KeyNotFoundException("Fixture track missing.");
-        if (!user.Username.StartsWith("JellySin Probe ", StringComparison.Ordinal)
-            || !item.Path.StartsWith("/media/Public/", StringComparison.Ordinal)) throw new UnauthorizedAccessException();
-        if (data.GetType().FullName != WrapperType) throw new InvalidOperationException("Native userdata decorator was not registered.");
+        if (!item.Path.StartsWith("/media/Public/", StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException();
+        }
+        if (data.GetType().FullName != WrapperType)
+        {
+            throw new InvalidOperationException("Native userdata decorator was not registered.");
+        }
         return (user, item);
     }
 
     private object? InvokeWrapper(string method, params object[] arguments)
         => data.GetType().GetMethod(method)!.Invoke(data, arguments);
 
+    /// <summary>Calls one production music writer method with the given arguments.</summary>
     private void InvokeWriter(string method, params object[] arguments)
     {
-        // Jellyfin isolates plugin assemblies: obtain the actual registered service type from the injected decorator.
-        var contract = data.GetType().Assembly.GetType("JellySin.Plugin.Lastfm.Features.IMusicWriter", throwOnError: true)!;
+        var contract = ProductionType(data, "Features.IMusicWriter");
         var writer = services.GetRequiredService(contract);
         contract.GetMethod(method)!.Invoke(writer, arguments);
     }
@@ -119,3 +126,23 @@ public sealed class ProbeController(IUserDataManager data, IUserManager users, I
 
 public sealed record FixtureItem(Guid UserId, Guid ItemId);
 public sealed record FavouriteReview(Guid UserId, Guid ItemId, [Required, MaxLength(128)] string Revision);
+
+/// <summary>Fixture checks and production type lookup shared by the probe controllers.</summary>
+internal static class ProbeFixtures
+{
+    internal const string NamePrefix = "JellySin Probe ";
+
+    /// <summary>Returns the plugin type named by the suffix from the injected decorator's assembly, because Jellyfin isolates plugin assemblies.</summary>
+    internal static Type ProductionType(IUserDataManager data, string suffix) => data.GetType().Assembly.GetType("JellySin.Plugin.Lastfm." + suffix, throwOnError: true)!;
+
+    /// <summary>Returns the fixture user for the id, and refuses a missing user or one whose name lacks the probe prefix.</summary>
+    internal static User FixtureUser(IUserManager users, Guid id)
+    {
+        var user = users.GetUserById(id) ?? throw new KeyNotFoundException("Fixture user missing.");
+        if (!user.Username.StartsWith(NamePrefix, StringComparison.Ordinal))
+        {
+            throw new UnauthorizedAccessException();
+        }
+        return user;
+    }
+}
