@@ -22,7 +22,8 @@ namespace JellySin.NativeProbe;
 public sealed class PlaylistProbeController(IUserDataManager data, IUserManager users, ILibraryManager library,
     IPlaylistManager playlists, PlaylistFaultState fault, IServiceProvider services) : ControllerBase
 {
-    /// <summary>Creates a private probe playlist from public fixture tracks, stores its pending operation and arms the fault hook; returns 409 while another preparation or operation is pending.</summary>
+    /// <summary>Creates a private probe playlist from public fixture tracks, stores its pending operation and arms the fault hook.</summary>
+    /// <remarks>Returns 409 while another preparation runs or an operation is already pending.</remarks>
     [HttpPost("Prepare")]
     public async Task<IActionResult> Prepare(PlaylistFixture input, CancellationToken ct)
     {
