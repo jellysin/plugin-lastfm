@@ -77,7 +77,13 @@ Semgrep on Python 3.14 with `uvx`, or `pipx` 1.5.0 or newer when uv is missing, 
 says which one ran. Files that
 Semgrep parses only in part, such as C# primary constructors, are listed, not passed
 silently. `--self-test` writes planted cases to a temporary directory and fails when a
-rule misses one or reports an unmarked line.
+rule misses one or reports an unmarked line. The gate also runs the Opengrep audit rule
+for subprocess calls that Codacy applies. Suppress one of its findings with a reason
+comment and `# nosemgrep: <rule id>` on the lines directly above the call. A finding in
+a file Praetor renders goes in the gate's `EXCEPTIONS` table with an expiry date, MEL
+category, entry date, reason and line numbers, and the gate fails once that date has
+passed. Any other finding of that rule in the file is still reported, and the gate
+checks the table on every run, the self-test included.
 Ruff runs through `tools/ruff_gate.py` in the CI scanners job, with the release pinned in
 `.config/ruff/requirements.txt`. `ruff.toml` lists the Ruff patterns Codacy enables plus
 the five EXE shebang rules, and is the only place to change them; Codacy reported EXE001 on

@@ -59,6 +59,8 @@ def audit(directory, production_only=False, registry=None):
     command = ["npm", "audit", "--json", "--package-lock-only"]
     command += ["--omit=dev"] if production_only else []
     command += ["--registry", registry, "--fetch-retries=0"] if registry else []
+    # Argv list of npm audit options plus the caller's registry URL as one element; no shell.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
     result = subprocess.run(  # nosec B603  # noqa: S603 - fixed npm audit command on directory
         command, cwd=directory, capture_output=True, text=True, timeout=AUDIT_TIMEOUT_SECONDS, check=False
     )
