@@ -95,6 +95,19 @@ Suppress a finding on its line with
 `# noqa: <code> - <reason>`. A per-file exception in `ruff.toml` needs the line
 `# expires YYYY-MM-DD (MEL <A-D>, entered YYYY-MM-DD): <reason>` directly above it, and
 the gate fails once that date has passed.
+
+Codacy runs SonarC# in configuration-file mode: it reads rules from the root
+`SonarLint.xml` and runs every Sonar rule when that file is missing.
+`python3 tools/sonarlint_gate.py --write` renders it from
+`.config/codacy/sonar-csharp.json`, the snapshot of the SonarC# patterns Codacy enables
+for this repository. Change the snapshot, never the XML. `--from-api` rebuilds the
+snapshot from saved pages of the Codacy API v3 pattern listing; supply
+`--read-date YYYY-MM-DD` and optionally `--output PATH`. The Makefile and CI scanners
+gate fails when the XML differs from the snapshot, but cannot see a pattern change
+made in the Codacy UI because that API needs a token. Refresh the snapshot after
+such a change. `tools/JellySin.CodePolicy/SonarLint.xml` stays separate and only sets
+the S3776 threshold for the C# source policy.
+
 Report unavailable checks and remaining limitations rather than claiming they ran.
 
 Tests should cover observed behavior, cancellation, isolation, absent metadata,

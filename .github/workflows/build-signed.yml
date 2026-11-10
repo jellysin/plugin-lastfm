@@ -75,7 +75,7 @@ jobs:
           dotnet restore --locked-mode
           dotnet build src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj -c Release --no-restore
       - name: Package the plugin, release metadata, checksums and SPDX SBOM
-        uses: jellysin/release-helper/actions/package@8e75bfdf6eb89283afb68c5bc50d5645c984752c # v1.7.0
+        uses: jellysin/release-helper/actions/package@fdc3bacd4a87749466c1af6d25a08fdefb4c500f # v1.7.2
         with:
           publish-directory: src/JellySin.Plugin.Lastfm/bin/Release/net10.0
           tag: ${{ inputs.tag }}
@@ -88,7 +88,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jellysin/release-helper
-          ref: 8e75bfdf6eb89283afb68c5bc50d5645c984752c # v1.7.0
+          ref: fdc3bacd4a87749466c1af6d25a08fdefb4c500f # v1.7.2
           path: build/repro-tooling
           persist-credentials: false
       - name: Verify production artifact reproducibility with the embedded application
@@ -107,7 +107,7 @@ jobs:
         with:
           subject-path: dist/*.zip
           sbom-path: dist/sbom.spdx.json
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
           cosign-release: v3.1.4
       - name: Sign every artifact with cosign keyless
