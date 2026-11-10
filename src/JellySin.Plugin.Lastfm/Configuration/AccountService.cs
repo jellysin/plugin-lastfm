@@ -172,18 +172,14 @@ public sealed class AccountService(
         return pending is null || string.IsNullOrEmpty(pending.ProtectedToken) || pending.ExpiresAt <= clock.GetUtcNow() || pending.Revision != revision ? null : pending;
     }
 
+    /// <summary>Exchanges the approved token for a Last.fm session and stores the account.</summary>
     public async Task<AccountStatus> FinishAsync(Guid userId, CancellationToken cancellationToken)
     {
-        RequireUser(userId);
-        RequireHostAccess(userId);
-        var operation = GetOperation(userId);
-        var authorization = operation.Authorization;
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, authorization.Token);
-        cancellationToken = linked.Token;
-        using var lease = await _connectionGates.AcquireAsync(userId, cancellationToken).ConfigureAwait(false);
+        using var scope = await EnterAccountAsync(userId, cancellationToken).ConfigureAwait(false);
+        cancellationToken = scope.Token;
         try
         {
-            var pending = await ReadApprovedAsync(userId, authorization.Id, cancellationToken).ConfigureAwait(false)
+            var pending = await ReadApprovedAsync(userId, scope.Authorization.Id, cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("Connection attempt is missing or expired. Start again.");
             string token;
             try { token = _protector.Unprotect(pending.ProtectedToken); }
@@ -214,7 +210,7 @@ public sealed class AccountService(
                     Pending = (current ?? outbox).Pending.Select(item => item.BlockedCode == 9 ? item with { BlockedCode = null, NextAttemptAt = null } : item).ToList()
                 }, cancellationToken).ConfigureAwait(false);
             await store.DeleteAsync(userId, "attempt", cancellationToken).ConfigureAwait(false);
-            operation.Renew(authorization, () =>
+            scope.Operation.Renew(scope.Authorization, () =>
             {
                 _hostSuspended.TryRemove(userId, out _);
                 if (previous?.ScrobblingEnabled ?? true) _captures[userId] = new(generation, Guid.NewGuid());
@@ -288,6 +284,42 @@ public sealed class AccountService(
         if (!HasHostAccess(userId)) throw new UnauthorizedAccessException("The Jellyfin user is unavailable.");
     }
 
+    /// <summary>Checks the caller, links the token to the current authorization and holds the account gate until the scope is disposed.</summary>
+    private async Task<AccountScope> EnterAccountAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        RequireUser(userId);
+        RequireHostAccess(userId);
+        var operation = GetOperation(userId);
+        var authorization = operation.Authorization;
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, authorization.Token);
+        try
+        {
+            var lease = await _connectionGates.AcquireAsync(userId, linked.Token).ConfigureAwait(false);
+            return new AccountScope(operation, authorization, linked, lease);
+        }
+        catch
+        {
+            linked.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>One checked account call: disposing releases the gate first, then the linked token.</summary>
+    private sealed class AccountScope(AccountOperation operation, AuthorizationRevision authorization, CancellationTokenSource linked, IDisposable lease) : IDisposable
+    {
+        public AccountOperation Operation => operation;
+
+        public AuthorizationRevision Authorization => authorization;
+
+        public CancellationToken Token => linked.Token;
+
+        public void Dispose()
+        {
+            lease.Dispose();
+            linked.Dispose();
+        }
+    }
+
     private async Task<string> ApplicationIdentityAsync(CancellationToken cancellationToken)
         => ApplicationCredentialService.Identity(await credentials.GetAsync(cancellationToken).ConfigureAwait(false));
 
@@ -321,18 +353,14 @@ public sealed class AccountService(
         await store.DeleteUserAsync(userId, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Turns scrobbling on or off for a connected account.</summary>
     public async Task SetScrobblingAsync(Guid userId, bool enabled, CancellationToken cancellationToken)
     {
-        RequireUser(userId);
-        RequireHostAccess(userId);
-        var operation = GetOperation(userId);
-        var authorization = operation.Authorization;
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, authorization.Token);
-        cancellationToken = linked.Token;
-        using var lease = await _connectionGates.AcquireAsync(userId, cancellationToken).ConfigureAwait(false);
+        using var scope = await EnterAccountAsync(userId, cancellationToken).ConfigureAwait(false);
+        cancellationToken = scope.Token;
         var account = await store.UpdateAsync<StoredAccount>(userId, "account", current => (current ?? throw new NotConnectedException()) with { ScrobblingEnabled = enabled }, cancellationToken).ConfigureAwait(false);
         if (enabled && await GetAsync(userId, cancellationToken).ConfigureAwait(false) is { NeedsReconnect: false })
-            operation.Publish(authorization, () => _captures[userId] = new(account.Generation, Guid.NewGuid()));
+            scope.Operation.Publish(scope.Authorization, () => _captures[userId] = new(account.Generation, Guid.NewGuid()));
         else _captures.TryRemove(userId, out _);
     }
 

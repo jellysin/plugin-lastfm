@@ -52,6 +52,24 @@ public sealed class AccountTests
         Assert.Null(accounts.GetCaptureBinding(fixture.UserId));
         Assert.Empty(await accounts.GetAccountsAsync(TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.BeginAsync(fixture.UserId, CoreFixture.Callback, false, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.FinishAsync(fixture.UserId, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.SetScrobblingAsync(fixture.UserId, true, TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>A disabled host user is refused before the callback is validated.</summary>
+    [Fact]
+    public async Task DisabledHostUserIsRefusedBeforeTheCallbackIsChecked()
+    {
+        using var fixture = new CoreFixture();
+        await fixture.ConfigureApplicationAsync();
+        var user = new User("listener", "auth", "password") { Id = fixture.UserId };
+        var users = new Mock<IUserManager>();
+        users.Setup(value => value.GetUserById(fixture.UserId)).Returns(user);
+        using var accounts = new AccountService(fixture.Store, fixture.Client, fixture.Credentials, fixture.Protection, fixture.Clock, users.Object);
+        user.SetPermission(PermissionKind.IsDisabled, true);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.BeginAsync(fixture.UserId,
+            new Uri("ftp://jellyfin.example/JellySin/Lastfm/Callback"), false, TestContext.Current.CancellationToken));
+        Assert.Null(await fixture.Store.ReadAsync<AccountService.StoredAttempt>(fixture.UserId, "attempt", TestContext.Current.CancellationToken));
     }
 
     [Fact]
