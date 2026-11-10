@@ -81,6 +81,8 @@ def listed_files(root):
     """Tracked files and untracked files git does not ignore."""
     command = ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
     try:
+        # Fixed git ls-files argv on the repository root; no shell.
+        # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
         result = subprocess.run(  # nosec B603  # noqa: S603 - fixed git ls-files command on repository root
             command, capture_output=True, check=True, timeout=LIST_TIMEOUT_SECONDS
         )

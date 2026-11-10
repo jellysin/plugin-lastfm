@@ -18,6 +18,8 @@ FINDING = Finding("brace-expansion", "high", "4.0.0 - 5.0.11", (ADVISORY,), "yes
 
 
 def completed(stdout, returncode=0, stderr=""):
+    # Builds the result object a mocked subprocess.run returns; starts no process.
+    # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
     return subprocess.CompletedProcess([], returncode, stdout, stderr)
 
 

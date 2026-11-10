@@ -1,11 +1,20 @@
 """The Semgrep gate reads one pinned release, scans only source suffixes and knows which planted lines to expect."""
 
+from datetime import date
+import io
 import unittest
 from unittest import mock
 
 from tools import semgrep_gate
 from tools.semgrep_gate import (
+    AUDIT_RULE,
+    AUDIT_RULES,
+    EXCEPTIONS,
     GateError,
+    PACKS,
+    ROOT,
+    excepted,
+    exception_problems,
     expected_lines,
     launcher,
     pinned_version,
@@ -79,6 +88,133 @@ class PlantedTests(unittest.TestCase):
 
     def test_keeps_the_fixture_order_regex_from_pr_248(self):
         self.assertIn("(?:\\.[A-Za-z_$][\\w$]*|\\[[^\\]]+\\])+", semgrep_gate.FIXTURE_ORDER_REGEX)
+
+
+class ExceptionTests(unittest.TestCase):
+    def test_accepts_before_expiry(self):
+        """An exception is accepted before its expiry date."""
+        exceptions = {("a.py", AUDIT_RULE): ("2026-11-20", "C", "2026-11-10", "reason")}
+        self.assertEqual(exception_problems(exceptions, date(2026, 11, 19)), [])
+
+    def test_accepts_on_expiry_day(self):
+        """An exception is accepted on its expiry date."""
+        exceptions = {("a.py", AUDIT_RULE): ("2026-11-20", "C", "2026-11-10", "reason")}
+        self.assertEqual(exception_problems(exceptions, date(2026, 11, 20)), [])
+
+    def test_refuses_the_day_after_expiry(self):
+        """An exception is refused the day after its expiry date."""
+        exceptions = {("a.py", AUDIT_RULE): ("2026-11-20", "C", "2026-11-10", "reason")}
+        problems = exception_problems(exceptions, date(2026, 11, 21))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("expired on 2026-11-20", problems[0])
+
+    def test_refuses_category_outside_a_to_d(self):
+        """Category E outside A-D is refused."""
+        exceptions = {("a.py", AUDIT_RULE): ("2026-11-20", "E", "2026-11-10", "reason")}
+        problems = exception_problems(exceptions, date(2026, 11, 10))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("category 'E' outside A-D", problems[0])
+
+    def test_refuses_unparseable_date(self):
+        """An unparseable date in an exception entry is refused."""
+        for invalid in ("not-a-date", "2026-13-40", "2026-02-29"):
+            with self.subTest(invalid=invalid):
+                exceptions = {("a.py", AUDIT_RULE): (invalid, "C", "2026-11-10", "reason")}
+                problems = exception_problems(exceptions, date(2026, 11, 10))
+                self.assertEqual(len(problems), 1)
+                self.assertIn("unparseable", problems[0])
+
+    def test_refuses_empty_reason(self):
+        """An empty or whitespace reason is refused."""
+        for reason in ("", "   "):
+            with self.subTest(reason=reason):
+                exceptions = {("a.py", AUDIT_RULE): ("2026-11-20", "C", "2026-11-10", reason)}
+                problems = exception_problems(exceptions, date(2026, 11, 10))
+                self.assertEqual(len(problems), 1)
+                self.assertIn("empty reason", problems[0])
+
+    def test_committed_exceptions_give_no_problem(self):
+        """The committed EXCEPTIONS give no problem on 2026-11-10."""
+        self.assertEqual(exception_problems(EXCEPTIONS, date(2026, 11, 10)), [])
+
+    def test_excepted_matches_relative_and_absolute_paths(self):
+        """excepted is true for relative path and absolute path under ROOT."""
+        rel_finding = {"path": ".config/lefthook/scripts/common.py", "check_id": AUDIT_RULE}
+        abs_finding = {"path": str(ROOT / ".config/lefthook/scripts/common.py"), "check_id": AUDIT_RULE}
+        self.assertTrue(excepted(rel_finding, EXCEPTIONS))
+        self.assertTrue(excepted(abs_finding, EXCEPTIONS))
+
+    def test_excepted_false_for_another_rule_or_file(self):
+        """excepted is false for another rule on the file and the same rule on another file."""
+        other_rule = {"path": ".config/lefthook/scripts/common.py", "check_id": "other.rule"}
+        other_file = {"path": "tools/semgrep_gate.py", "check_id": AUDIT_RULE}
+        self.assertFalse(excepted(other_rule, EXCEPTIONS))
+        self.assertFalse(excepted(other_file, EXCEPTIONS))
+
+
+class MainTests(unittest.TestCase):
+    def test_main_without_self_test_passes_packs_and_audit_rules(self):
+        """main without --self-test passes PACKS + AUDIT_RULES as packs to run."""
+        with (
+            mock.patch.object(semgrep_gate, "launcher", return_value=["semgrep"]),
+            mock.patch.object(semgrep_gate, "date", wraps=date) as mock_date,
+            mock.patch.object(semgrep_gate, "scanned", return_value=["a.py"]),
+            mock.patch.object(semgrep_gate, "run", return_value=[]) as fake_run,
+        ):
+            mock_date.today.return_value = date(2026, 11, 10)
+            self.assertEqual(semgrep_gate.main(["a.py"]), 0)
+            fake_run.assert_called_once()
+            self.assertEqual(fake_run.call_args.args[2], PACKS + AUDIT_RULES)
+
+    def test_self_test_passes_audit_rules(self):
+        """--self-test passes AUDIT_RULES as packs to run."""
+        with mock.patch.object(semgrep_gate, "run", return_value=[]) as fake_run:
+            semgrep_gate.self_test(["semgrep"])
+            fake_run.assert_called_once()
+            self.assertEqual(fake_run.call_args.args[2], AUDIT_RULES)
+
+    def test_main_fails_on_an_expired_exception(self):
+        """main returns 1 and names the entry when an exception has expired."""
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(semgrep_gate, "launcher", return_value=["semgrep"]),
+            mock.patch.object(semgrep_gate, "date", wraps=date) as mock_date,
+            mock.patch.object(semgrep_gate, "run") as fake_run,
+            mock.patch("sys.stderr", stderr),
+        ):
+            mock_date.today.return_value = date(2026, 11, 21)
+            self.assertEqual(semgrep_gate.main([]), 1)
+            fake_run.assert_not_called()
+            self.assertIn(".config/lefthook/scripts/common.py", stderr.getvalue())
+
+    def test_main_drops_excepted_findings_and_reports_non_excepted(self):
+        """main drops an excepted finding and still reports and returns 1 for a non-excepted one."""
+        excepted_finding = {
+            "path": ".config/lefthook/scripts/common.py",
+            "check_id": AUDIT_RULE,
+            "start": {"line": 281},
+            "extra": {"message": "dangerous subprocess call"},
+        }
+        active_finding = {
+            "path": "tools/other.py",
+            "check_id": AUDIT_RULE,
+            "start": {"line": 10},
+            "extra": {"message": "dangerous subprocess call"},
+        }
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(semgrep_gate, "launcher", return_value=["semgrep"]),
+            mock.patch.object(semgrep_gate, "date", wraps=date) as mock_date,
+            mock.patch.object(semgrep_gate, "scanned", return_value=["tools/other.py"]),
+            mock.patch.object(semgrep_gate, "run", return_value=[excepted_finding, active_finding]),
+            mock.patch("sys.stderr", stderr),
+        ):
+            mock_date.today.return_value = date(2026, 11, 10)
+            status = semgrep_gate.main(["tools/other.py"])
+            self.assertEqual(status, 1)
+            output = stderr.getvalue()
+            self.assertNotIn("common.py", output)
+            self.assertIn("tools/other.py:10:", output)
 
 
 if __name__ == "__main__":

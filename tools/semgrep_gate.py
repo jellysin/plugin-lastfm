@@ -1,13 +1,15 @@
-"""Run the repository's Semgrep rules: the registry packs CI used before and the local rules in .config/semgrep.
+"""Run the repository's Semgrep rules: the registry packs CI used before, the audit rule Codacy applies and local rules.
 
 `make verify-all`, the lefthook pre-commit job and the CI scanners job all start Semgrep through this file, so the
 three run one pinned release (.config/semgrep/requirements.txt) with one rule set. With no file arguments it scans
-every tracked source file; with arguments it scans those that have a scanned suffix. `--self-test` writes planted
-cases to a temporary directory and requires the rules to report exactly the planted lines. The planted cases are not
-committed, so the repository's own scanners never see them.
+every tracked source file; with arguments it scans those that have a scanned suffix. The scan also runs the audit rule
+Codacy applies (issue #271). `--self-test` writes planted cases to a temporary directory and requires the local rules
+plus that rule to report exactly the planted lines. The planted cases are not committed, so the repository's own
+scanners never see them.
 """
 
 import argparse
+from datetime import date
 import json
 import shutil
 import subprocess  # nosec B404
@@ -19,6 +21,18 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIREMENTS = ROOT / ".config" / "semgrep" / "requirements.txt"
 LOCAL_RULES = ROOT / ".config" / "semgrep"
 PACKS = ("p/csharp", "p/typescript", "p/javascript", "p/python", "p/github-actions")
+# Codacy applies this Opengrep audit rule and none of PACKS holds it (issue #271).
+# Registry reference; the rule text is not copied here.
+AUDIT_RULE = "python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit"
+AUDIT_RULES = (f"r/{AUDIT_RULE}",)
+EXCEPTIONS = {
+    (".config/lefthook/scripts/common.py", AUDIT_RULE): (
+        "2026-11-20",
+        "C",
+        "2026-11-10",
+        "Praetor renders this hook runner; it starts argv lists without a shell",
+    ),
+}
 SUFFIXES = frozenset({".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"})
 # Two scans (self-test, then the tree) plus the earlier steps fit the CI scanners job's 15 minutes; both took 25 s
 # together on ubuntu-24.04 (run 41312005329).
@@ -42,8 +56,12 @@ PLANTED = {
     ]),
     "planted.py": "\n".join([
         "import re",
+        "import subprocess",
+        'COMMAND = ["git", "status"]',
         'NESTED = re.compile("^(a+)+$")  # ' + MARK,
         'SAFE = re.compile("^[a-z]+$")',
+        f"subprocess.run(COMMAND, check=False, timeout=5)  # {MARK}",
+        'subprocess.run(["git", "status"], check=False, timeout=5)',
         "",
     ]),
     "planted.cs": "\n".join([
@@ -174,8 +192,40 @@ def expected_lines(text: str) -> set[int]:
     return {number for number, line in enumerate(text.splitlines(), 1) if line.rstrip().endswith(MARK)}
 
 
+def exception_problems(exceptions: dict[tuple[str, str], tuple[str, str, str, str]], today: date) -> list[str]:
+    """Return a problem for an unparseable date, a category outside A-D, an empty reason, or today after expiry."""
+    problems = []
+    for (path, _rule), (expires, category, entered, reason) in exceptions.items():
+        if category not in {"A", "B", "C", "D"}:
+            problems.append(f"{path}: category {category!r} outside A-D")
+        if not reason or not reason.strip():
+            problems.append(f"{path}: empty reason")
+        try:
+            date.fromisoformat(entered)
+        except ValueError:
+            problems.append(f"{path}: unparseable entered date {entered!r}")
+        try:
+            expiry = date.fromisoformat(expires)
+        except ValueError:
+            problems.append(f"{path}: unparseable expiry date {expires!r}")
+            continue
+        if expiry < today:
+            problems.append(f"{path}: exception expired on {expires}")
+    return problems
+
+
+def excepted(finding: dict, exceptions: dict[tuple[str, str], tuple[str, str, str, str]]) -> bool:
+    """Return True when the finding's path relative to ROOT and check_id form an exception key."""
+    raw = Path(finding["path"])
+    try:
+        rel = raw.resolve().relative_to(ROOT) if raw.is_absolute() else raw
+    except ValueError:
+        rel = raw
+    return (rel.as_posix(), finding.get("check_id", "")) in exceptions
+
+
 def self_test(command: list[str]) -> list[str]:
-    """Return a problem for every planted case the local rules miss and every unmarked line they report."""
+    """Return a problem for every planted case the local and audit rules miss and every unmarked line they report."""
     problems = []
     with tempfile.TemporaryDirectory(prefix="semgrep-gate-") as directory:
         files = {}
@@ -183,7 +233,7 @@ def self_test(command: list[str]) -> list[str]:
             path = Path(directory) / name
             path.write_text(text, encoding="utf-8")
             files[str(path)] = text
-        findings = run(command, list(files), ())
+        findings = run(command, list(files), AUDIT_RULES)
         for path, text in files.items():
             reported = {finding["start"]["line"] for finding in findings if finding["path"] == path}
             name = Path(path).name
@@ -193,7 +243,7 @@ def self_test(command: list[str]) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    """Scan the given files, or every tracked file, or run the self-test; return the exit status."""
+    """Scan given or tracked files with the packs and audit rule Codacy applies, or self-test; return exit status."""
     parser = argparse.ArgumentParser(description="Run the repository's pinned Semgrep rules.")
     parser.add_argument("--self-test", action="store_true", help="check the local rules against planted cases")
     parser.add_argument("files", nargs="*", help="files to scan; every tracked file when none is given")
@@ -205,16 +255,22 @@ def main(argv: list[str]) -> int:
             for problem in problems:
                 print(f"semgrep-gate self-test: {problem}", file=sys.stderr)
             return 1 if problems else 0
+        problems = exception_problems(EXCEPTIONS, date.today())
+        for problem in problems:
+            print(f"semgrep-gate: {problem}", file=sys.stderr)
+        if problems:
+            return 1
         targets = scanned(arguments.files or tracked())
         if not targets:
             return 0
-        findings = run(command, targets, PACKS)
+        findings = run(command, targets, PACKS + AUDIT_RULES)
     except (GateError, subprocess.SubprocessError, OSError, json.JSONDecodeError) as error:
         print(f"semgrep-gate: {error}", file=sys.stderr)
         return 2
-    for finding in findings:
+    active = [finding for finding in findings if not excepted(finding, EXCEPTIONS)]
+    for finding in active:
         print(describe(finding), file=sys.stderr)
-    return 1 if findings else 0
+    return 1 if active else 0
 
 
 if __name__ == "__main__":
