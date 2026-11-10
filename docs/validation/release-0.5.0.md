@@ -74,8 +74,16 @@ and passed, and #67 merged as `faeb534` on 2026-11-10.
 A fresh Jellyfin 12.2.0 server (image digest
 `sha256:357724bf0ae27a672c7cbaa899db2d9abeb13dbd8657ccce750258a4c059d037`) then installed
 the release from `https://raw.githubusercontent.com/jellysin/repo/main/manifest.json` on
-2026-11-10, which listed 0.5.0.0, 0.4.0.0, 0.2.0.0 and 0.1.0.0. The run used the startup
-wizard and client of `tools/smoke.py`:
+2026-11-10, which listed 0.5.0.0, 0.4.0.0, 0.2.0.0 and 0.1.0.0.
+`tests/integration/catalog_install.py` makes this check with the startup wizard and
+client of `tools/smoke.py`. This command, run from the repository root, passed:
+
+```sh
+python3 tests/integration/catalog_install.py --version 0.5.0.0 --server 12.2 \
+  --report build/catalog-install-0.5.0.json
+```
+
+Its report records each step:
 
 1. Before the install `GET /Plugins` listed no JellySin plugin.
 2. `POST /Repositories` added the catalog, `GET /Packages` offered the plugin's GUID, and
@@ -98,10 +106,19 @@ Two different digests tie the install to the release:
   `d96498fadd577011aef33785b9e2be094cfbf9c8c2ca045de7ab4a47cfb78cc2`, the ZIP digest in
   the asset table above.
 
-The check also refuses when it should. Run on 2026-11-10 before #67 merged, it failed
-because the catalog on `main` did not offer 0.5.0.0: the same install request answered
-404. Run after the merge with the pre-install listing judged in place of the
-installed one, it failed on that empty listing.
+The check also refuses when it should. On 2026-11-10 before #67 merged, an earlier,
+uncommitted version of the script failed because the catalog on `main` did not offer
+0.5.0.0: the same install request answered 404. After the merge, `--plant
+none-installed` makes the script judge the listing from before the install in place of
+the installed one. `tools/expect_refusal.py` passes only when that run exits 1 and its
+report names the empty listing, and this command passed:
+
+```sh
+python3 tools/expect_refusal.py --report build/catalog-install-0.5.0-planted.json \
+  --expect "Before the install the server lists []" \
+  -- python3 tests/integration/catalog_install.py --version 0.5.0.0 --server 12.2 \
+  --plant none-installed --report build/catalog-install-0.5.0-planted.json
+```
 
 ## Release workflows afterwards
 

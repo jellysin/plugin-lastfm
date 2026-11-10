@@ -178,16 +178,16 @@ def connect(host: DockerHost, stand_in: StandInContainer, password: str, admin: 
     return admin
 
 
-def install(admin: Client) -> None:
-    """Adds the repository and installs the release from it through Jellyfin's package API."""
-    admin.request("/Repositories", "POST", [{"Name": "JellySin catalog check", "Url": MANIFEST_URL, "Enabled": True}], expected=204)
-    deadline = time.monotonic() + PACKAGE_SECONDS
-    while not any(item["guid"].replace("-", "") == PLUGIN_ID.replace("-", "") for item in admin.request("/Packages")):
-        require(time.monotonic() < deadline, "The server does not list the package of the local repository.")
+def install(admin: Client, manifest: str = MANIFEST_URL, version: str = RELEASE_VERSION, seconds: int = PACKAGE_SECONDS) -> None:
+    """Adds the repository at manifest and installs version from it through Jellyfin's package API within seconds."""
+    admin.request("/Repositories", "POST", [{"Name": "JellySin catalog check", "Url": manifest, "Enabled": True}], expected=204)
+    deadline = time.monotonic() + seconds
+    while not any(item["guid"].replace("-", "") == PLUGIN_ID.replace("-", "") for item in admin.request("/Packages", timeout=seconds)):
+        require(time.monotonic() < deadline, f"The server does not list the package of the repository at {manifest}.")
         time.sleep(1)
-    query = urllib.parse.urlencode({"assemblyGuid": DESCRIPTOR["guid"], "version": RELEASE_VERSION, "repositoryUrl": MANIFEST_URL})
+    query = urllib.parse.urlencode({"assemblyGuid": DESCRIPTOR["guid"], "version": version, "repositoryUrl": manifest})
     admin.request("/Packages/Installed/" + urllib.parse.quote(DESCRIPTOR["name"]) + "?" + query, "POST", expected=204,
-                  timeout=PACKAGE_SECONDS)
+                  timeout=seconds)
 
 
 def restart(host: DockerHost, password: str) -> Client:
