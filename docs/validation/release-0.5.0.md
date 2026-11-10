@@ -83,7 +83,8 @@ python3 tests/integration/catalog_install.py --version 0.5.0.0 --server 12.2 \
   --report build/catalog-install-0.5.0.json
 ```
 
-Its report records each step:
+The check took these steps. Its report records the plugin listing before the install,
+after it and after each restart, but not the requests themselves:
 
 1. Before the install `GET /Plugins` listed no JellySin plugin.
 2. `POST /Repositories` added the catalog, `GET /Packages` offered the plugin's GUID, and
