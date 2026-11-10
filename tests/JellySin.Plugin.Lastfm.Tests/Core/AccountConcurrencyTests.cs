@@ -49,17 +49,22 @@ public sealed class AccountConcurrencyTests
         Assert.False((await fixture.Accounts.GetStatusAsync(fixture.UserId, TestContext.Current.CancellationToken)).NeedsReconnect);
     }
 
+    /// <summary>Cancelled scrobbling waits return their waiter slots and leave the account gate free.</summary>
     [Fact]
     public async Task CancelledScrobblingWaitLeavesTheAccountGateFree()
     {
         using var fixture = new CoreFixture();
         var (_, finish, _, release) = await StartBlockedGrantAsync(fixture);
-        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        const int ordinaryWaiterLimit = 8; // AccountGatePool's per-user limit includes the holder.
         try
         {
-            var change = fixture.Accounts.SetScrobblingAsync(fixture.UserId, false, waiting.Token);
-            await waiting.CancelAsync();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => change);
+            for (var round = 0; round < ordinaryWaiterLimit; round++)
+            {
+                using var waiting = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+                var change = fixture.Accounts.SetScrobblingAsync(fixture.UserId, false, waiting.Token);
+                await waiting.CancelAsync();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => change);
+            }
         }
         finally
         {

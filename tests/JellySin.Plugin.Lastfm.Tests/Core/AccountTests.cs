@@ -56,6 +56,7 @@ public sealed class AccountTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => accounts.SetScrobblingAsync(fixture.UserId, true, TestContext.Current.CancellationToken));
     }
 
+    /// <summary>A disabled host user is refused before the callback is validated.</summary>
     [Fact]
     public async Task DisabledHostUserIsRefusedBeforeTheCallbackIsChecked()
     {
