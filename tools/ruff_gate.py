@@ -8,8 +8,10 @@ Every per-file exception in ruff.toml carries a dated note on the line above it;
 """
 
 import argparse
+from collections.abc import Callable
 from datetime import date
 import json
+import os
 from pathlib import Path
 import re
 import subprocess  # nosec B404
@@ -35,9 +37,14 @@ MAX_REPORT_BYTES = 16 * 1024 * 1024
 MAX_CONFIG_BYTES = 256 * 1024
 MAX_PRINTED = 200
 CHECK_TIMEOUT_SECONDS = 120
+# Ruff 0.17.4 skips the executable-bit rules under WSL outside a container: cgroup marks from
+# crates/ruff_linter/src/rules/flake8_executable/helpers.rs; recheck them when the Ruff pin moves.
+CONTAINER_MARKS = ("docker", "/container", "/lxc", "kubepods")
+MAX_PROC_BYTES = 64 * 1024
 EXCEPTION_NOTE = re.compile(r"# expires (\d{4}-\d{2}-\d{2}) \(MEL [ABCD], entered \d{4}-\d{2}-\d{2}\): \S.*")
 
 PLANTED_PY = "\n".join([
+    f"#!/usr/bin/env python3  # {MARK}",
     "import subprocess",
     "",
     'text = "echo safe"',
@@ -132,6 +139,45 @@ def describe(finding: dict) -> str:
     return f"{rel_path}:{row}:{col}: {code} {message}"
 
 
+def planted_lines(text: str, bit_checked: bool) -> set[int]:
+    """Return the numbers of the marked lines Ruff must report; without line 1 where the bit is unchecked."""
+    lines = expected_lines(text)
+    if not bit_checked:
+        return lines - {1}
+    return lines
+
+
+def proc_text(path: str) -> str | None:
+    """Return the text of a small system file, or None when it cannot be read."""
+    try:
+        return read_bounded(path, MAX_PROC_BYTES)
+    except (OSError, UnicodeDecodeError, GateError):
+        return None
+
+
+def checks_executable_bit(posix: bool, linux: bool, kernel: str | None, container: bool) -> bool:
+    """Return whether Ruff checks the executable bit: on Unix-like systems, except WSL outside a container."""
+    wsl = linux and kernel is not None and "microsoft" in kernel.lower() and not container
+    return posix and not wsl
+
+
+def host_checks_executable_bit(
+    read: Callable[[str], str | None] = proc_text,
+    exists: Callable[[str], bool] = os.path.exists,
+    posix: bool = os.name == "posix",
+    platform: str = sys.platform,
+) -> bool:
+    """Read the facts Ruff's WSL detection reads on this host and return whether it checks the executable bit."""
+    kernel = read("/proc/sys/kernel/osrelease")
+    if kernel is None:
+        kernel = read("/proc/version")
+    cgroup = (read("/proc/self/cgroup") or "").lower()
+    container = (
+        exists("/.dockerenv") or exists("/run/.containerenv") or any(mark in cgroup for mark in CONTAINER_MARKS)
+    )
+    return checks_executable_bit(posix, platform.startswith("linux"), kernel, container)
+
+
 def self_test(command: list[str]) -> list[str]:
     """Return a problem for every planted case the rules miss and every unmarked line they report."""
     problems = []
@@ -140,7 +186,7 @@ def self_test(command: list[str]) -> list[str]:
         path.write_text(PLANTED_PY, encoding="utf-8")
         findings = run(command, [str(path)])
         reported = {finding["location"]["row"] for finding in findings}
-        expected = expected_lines(PLANTED_PY)
+        expected = planted_lines(PLANTED_PY, host_checks_executable_bit())
         name = path.name
         problems += [f"{name}:{line}: planted case not reported" for line in sorted(expected - reported)]
         problems += [f"{name}:{line}: reported but not planted" for line in sorted(reported - expected)]
