@@ -11,7 +11,8 @@ Tag `v0.3.0` has no release and no catalog entry. Its
 2026-10-18 passed the checks and the build and failed at the publish step. 0.4.0 followed
 the same day and contains every 0.3.0 change (`git merge-base --is-ancestor v0.3.0 v0.4.0`
 exits 0). The tag stays because the [changelog](../CHANGELOG.md) compares 0.4.0 against
-it; on 2026-11-10 the maintainer decided to publish no 0.3.0 release.
+it; on 2026-11-10 the maintainer decided to publish no 0.3.0 release, as recorded in
+[pull request 282](https://github.com/jellysin/plugin-lastfm/pull/282).
 
 The plugin is compiled against Jellyfin 12.0.0 and supports Jellyfin 12 from there
 up. The automated server checks run on Jellyfin 12.0.0 and 12.2.0 on every change, and
