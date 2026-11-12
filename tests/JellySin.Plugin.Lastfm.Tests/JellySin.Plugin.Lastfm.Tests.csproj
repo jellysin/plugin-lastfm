@@ -4,7 +4,7 @@
     <ProjectReference Include="../../src/JellySin.Plugin.Lastfm/JellySin.Plugin.Lastfm.csproj" />
     <PackageReference Include="Jellyfin.Controller" Version="12.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.2" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" PrivateAssets="all" />
     <PackageReference Include="coverlet.collector" Version="10.1.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.11.0" />
