@@ -18,6 +18,6 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "minimatch": "11.0.4"
+    "minimatch": "11.0.5"
   }
 }
