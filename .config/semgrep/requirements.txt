@@ -1,2 +1,2 @@
 # Semgrep release run by tools/semgrep.sh; the update bot's pip_requirements manager moves it.
-semgrep==1.184.0
+semgrep==1.185.0
