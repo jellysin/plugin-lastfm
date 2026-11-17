@@ -59,7 +59,11 @@ vulnerable lock first. Renovate raises security fixes without the three-day wait
 The local gate's SDK images in `tools/sdk.sh` move in one pull request with
 `global.json` and `.node-version`. Their registries give no release time, so the
 images skip the wait and follow the version files, which still wait; the Python
-tests fail when either rule is missing.
+tests fail when either rule is missing. `tools/sdk.sh` adds the shared frameworks
+of the ASP.NET Core runtime image to the SDK image because the plugin, its tests
+and the code policy run on the .NET release of `TargetFramework` (the Jellyfin 12
+host runtime), which a newer SDK lacks. Renovate keeps that image on the target's
+major; the Python tests fail when the image, its layer or that rule is missing.
 `make verify-all` also runs `reuse lint` (REUSE 6, the release line of the required
 REUSE lint check) through `tools/reuse-lint.sh`, which fails when reuse 6 is not
 installed. Because `REUSE.toml` labels the whole tree, the same script then runs

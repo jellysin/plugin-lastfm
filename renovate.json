@@ -56,7 +56,7 @@
         "/^tools/sdk\\.sh$/"
       ],
       "matchStrings": [
-        "_IMAGE=\"(?<depName>mcr\\.microsoft\\.com/dotnet/sdk|node):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+        "_IMAGE=\"(?<depName>mcr\\.microsoft\\.com/dotnet/(?:sdk|aspnet)|node):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
@@ -193,6 +193,16 @@
         "docker"
       ],
       "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
+      "description": "The runtime image in tools/sdk.sh carries the .NET release of TargetFramework in Directory.Build.props (the Jellyfin 12 host runtime); only its patch release and digest move. tests/python/test_sdk_pin.py compares this pattern with the target.",
+      "matchFileNames": [
+        "tools/sdk.sh"
+      ],
+      "matchPackageNames": [
+        "mcr.microsoft.com/dotnet/aspnet"
+      ],
+      "allowedVersions": "/^10\\./"
     },
     {
       "description": "praetor-managed engine: updates arrive in one coordinated adoption pull request",

@@ -1,16 +1,21 @@
 #!/bin/sh
 # Runs dotnet or npm in the pinned SDK container, so the local gate builds with the toolchain CI uses
 # (global.json and .node-version) whatever the host has installed. Python stays on the host.
+# The dotnet container adds the plugin's target runtime alongside the SDK's own runtime.
 #
 #   tools/sdk.sh dotnet build ...
 #   tools/sdk.sh npm ci
 #
 # Each container is limited in processors and memory and keeps the NuGet and npm caches in named volumes.
-# A missing Docker or an image that cannot be pulled fails with the reason; the gate never skips a step.
+# A missing Docker or an image that cannot be pulled or built fails with the reason; the gate never skips a step.
 set -eu
 
 # The update bot keeps these with global.json and .node-version; tests/python/test_sdk_pin.py refuses drift.
 DOTNET_IMAGE="mcr.microsoft.com/dotnet/sdk:11.0.100@sha256:65f3c7c6a25a239ab3e6719f2896147e7b68242ff2d8818dd70498bde6ef8bea"
+# The SDK image carries only its own runtime. The plugin, its tests and the code policy run on the .NET release
+# of TargetFramework in Directory.Build.props, so the dotnet container adds this image's shared frameworks.
+# The update bot keeps it on that major.
+DOTNET_RUNTIME_IMAGE="mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:bfd912c83295ce66d4b706ebb8541b9f14259b0e76fbb88b2751f58ce2399d2e"
 NODE_IMAGE="node:26.13.1@sha256:e18c3ccdf7d71619990b0e85639f506e2028a95410999cab24cc373cbd10e0ac"
 CPUS=4
 MEMORY=4g
@@ -22,14 +27,32 @@ fail() {
 
 [ $# -ge 1 ] || fail "usage: tools/sdk.sh dotnet|npm ARGUMENTS"
 case "$1" in
-  dotnet) image=$DOTNET_IMAGE ;;
+  dotnet)
+    sdk_version=${DOTNET_IMAGE#*:}
+    sdk_version=${sdk_version%%@*}
+    sdk_digest=$(printf '%.12s' "${DOTNET_IMAGE##*@sha256:}")
+    runtime_version=${DOTNET_RUNTIME_IMAGE#*:}
+    runtime_version=${runtime_version%%@*}
+    runtime_digest=$(printf '%.12s' "${DOTNET_RUNTIME_IMAGE##*@sha256:}")
+    image="plugin-lastfm-dotnet:$sdk_version-$sdk_digest-$runtime_version-$runtime_digest"
+    ;;
   npm) image=$NODE_IMAGE ;;
   *) fail "only dotnet and npm run in the SDK container, not $1" ;;
 esac
 
 command -v docker > /dev/null 2>&1 || fail "Docker is required to run $1 in the pinned SDK container and was not found"
 docker info > /dev/null 2>&1 || fail "the Docker daemon is not reachable; $1 needs the pinned SDK container"
-docker image inspect "$image" > /dev/null 2>&1 || docker pull --quiet "$image" > /dev/null || fail "could not pull $image"
+if ! docker image inspect "$image" > /dev/null 2>&1; then
+  case "$1" in
+    dotnet)
+      printf '%s\n' "FROM $DOTNET_RUNTIME_IMAGE AS runtime" "FROM $DOTNET_IMAGE" \
+        'COPY --from=runtime /usr/share/dotnet/shared/ /usr/share/dotnet/shared/' \
+        | docker build --quiet --tag "$image" - > /dev/null \
+        || fail "could not build $image from $DOTNET_IMAGE and $DOTNET_RUNTIME_IMAGE"
+      ;;
+    npm) docker pull --quiet "$image" > /dev/null || fail "could not pull $image" ;;
+  esac
+fi
 
 repository=$(git rev-parse --show-toplevel 2> /dev/null || pwd)
 user="$(id -u):$(id -g)"
