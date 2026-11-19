@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.0](https://github.com/jellysin/plugin-lastfm/compare/v0.5.0...v0.6.0) (2026-11-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove the plugin's anonymous Quick Connect status endpoint ([#210](https://github.com/jellysin/plugin-lastfm/issues/210))
+
+### Features
+
+* **web:** add a Last.fm row to the Jellyfin user settings ([#204](https://github.com/jellysin/plugin-lastfm/issues/204)) ([5729ae8](https://github.com/jellysin/plugin-lastfm/commit/5729ae888c16819bfc0c21c89a04ef673902967f)), closes [#197](https://github.com/jellysin/plugin-lastfm/issues/197)
+* **web:** open the Last.fm page inside the Jellyfin web client ([#206](https://github.com/jellysin/plugin-lastfm/issues/206)) ([73abaac](https://github.com/jellysin/plugin-lastfm/commit/73abaac9beec439eeda3166db0254a7c2d9602d7))
+
+
+### Bug Fixes
+
+* **deps:** override minimatch to 11.0.3 for GHSA-g3hv-75wg-m249 ([#247](https://github.com/jellysin/plugin-lastfm/issues/247)) ([7a77e49](https://github.com/jellysin/plugin-lastfm/commit/7a77e492c598f144b7063d0da530ce1d8aa187b3))
+* **web:** keep the in-client Last.fm view below Jellyfin's header ([#214](https://github.com/jellysin/plugin-lastfm/issues/214)) ([292f5e2](https://github.com/jellysin/plugin-lastfm/commit/292f5e2474f567142a2048c255b41363a9873161))
+* **web:** open the Last.fm view below Jellyfin's header after the sign-in return ([ae63934](https://github.com/jellysin/plugin-lastfm/commit/ae6393475f5f6e6a005de350ed34c2d24767e9c5)), closes [#218](https://github.com/jellysin/plugin-lastfm/issues/218)
+* **web:** open the Last.fm view below Jellyfin's header after the sign-in return ([#219](https://github.com/jellysin/plugin-lastfm/issues/219)) ([ae63934](https://github.com/jellysin/plugin-lastfm/commit/ae6393475f5f6e6a005de350ed34c2d24767e9c5))
+
+
+### Performance Improvements
+
+* cut the local gate below three minutes ([#205](https://github.com/jellysin/plugin-lastfm/issues/205)) ([a3d9146](https://github.com/jellysin/plugin-lastfm/commit/a3d9146479579f99421db06ce869eac267770796))
+
+
+### Code Refactoring
+
+* remove the plugin's anonymous Quick Connect status endpoint ([#210](https://github.com/jellysin/plugin-lastfm/issues/210)) ([4fd26c7](https://github.com/jellysin/plugin-lastfm/commit/4fd26c794eca95542259b0673ba584988b23925c)), closes [#197](https://github.com/jellysin/plugin-lastfm/issues/197)
+
 ## [0.5.0](https://github.com/jellysin/plugin-lastfm/compare/v0.4.0...v0.5.0) (2026-10-19)
 
 

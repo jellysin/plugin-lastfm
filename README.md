@@ -9,7 +9,7 @@
 
   <!-- badge block: groups in the fleet README standard's fixed order -->
   <!-- 1 release/version -->
-  [![Release](https://img.shields.io/static/v1?label=release&message=v0.5.0&style=for-the-badge&color=3b82f6&labelColor=111a35)](https://github.com/jellysin/plugin-lastfm/releases) <!-- x-release-please-version -->
+  [![Release](https://img.shields.io/static/v1?label=release&message=v0.6.0&style=for-the-badge&color=3b82f6&labelColor=111a35)](https://github.com/jellysin/plugin-lastfm/releases) <!-- x-release-please-version -->
   <!-- 2 CI/build -->
   [![CI](https://github.com/jellysin/plugin-lastfm/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/jellysin/plugin-lastfm/actions/workflows/ci.yml)
   <!-- 3 security/scorecard -->
