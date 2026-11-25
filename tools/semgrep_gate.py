@@ -166,6 +166,11 @@ def tracked() -> list[str]:
     return [name for name in result.stdout.decode().split("\0") if name]
 
 
+def is_object_list(value: object) -> bool:
+    """Return whether a JSON value is a list containing only objects."""
+    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
+
 def run(command: list[str], targets: list[str], packs: tuple[str, ...]) -> list[dict]:
     """Run Semgrep on the targets and return its findings; fail on scan errors and unexpected exit codes."""
     configs = [part for pack in packs for part in ("--config", pack)]
@@ -177,7 +182,8 @@ def run(command: list[str], targets: list[str], packs: tuple[str, ...]) -> list[
     # targets are repository paths (scanned() refuses any other) after `--`; no shell. Tests: TargetTests, LauncherTests.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit
     result = subprocess.run(  # nosec B603  # noqa: S603 - fixed launcher with validated target paths
-        arguments, check=False, cwd=ROOT, capture_output=True, text=True, timeout=SCAN_TIMEOUT_SECONDS
+        arguments, check=False, cwd=ROOT, capture_output=True, encoding="utf-8", errors="replace",
+        timeout=SCAN_TIMEOUT_SECONDS,
     )
     if result.returncode not in (0, 1):
         raise GateError(f"semgrep exited {result.returncode}: {result.stderr.strip()[-2000:]}")
@@ -187,6 +193,14 @@ def run(command: list[str], targets: list[str], packs: tuple[str, ...]) -> list[
         raise GateError(
             f"semgrep exited {result.returncode} without a JSON report: {result.stderr.strip()[-2000:]}"
         ) from error
+    if (
+        not isinstance(report, dict)
+        or not is_object_list(report.get("results"))
+        or not is_object_list(report.get("errors", []))
+    ):
+        raise GateError(
+            f"semgrep exited {result.returncode} with a malformed JSON report: {result.stderr.strip()[-2000:]}"
+        )
     errors = report.get("errors", [])
     fatal = [error for error in errors if error.get("level") != "warn"]
     if fatal:

@@ -126,9 +126,12 @@ def run(command: list[str], targets: list[str]) -> list[dict]:
             report_size = report_path.stat().st_size
             if report_size > MAX_REPORT_BYTES:
                 raise GateError(f"ruff report size {report_size} exceeds the limit of {MAX_REPORT_BYTES} bytes")
-            return json.loads(report_path.read_text(encoding="utf-8"))
+            report = json.loads(report_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, IsADirectoryError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise GateError(f"{no_report}: {stderr_tail(stderr_path)}") from error
+        if not isinstance(report, list) or not all(isinstance(finding, dict) for finding in report):
+            raise GateError(f"ruff exited {result.returncode} with a malformed JSON report: {stderr_tail(stderr_path)}")
+        return report
 
 
 def describe(finding: dict) -> str:

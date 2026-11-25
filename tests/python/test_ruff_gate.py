@@ -253,6 +253,22 @@ class RunTests(unittest.TestCase):
         ):
             ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
 
+    def test_rejects_malformed_json_reports_with_stderr(self):
+        """Valid JSON with an unexpected report shape preserves the scanner error."""
+        for report in ("{}", "[1]"):
+            def fake_run(arguments, *, stderr, content=report, **kwargs):
+                """Write a malformed report and return exit code 1."""
+                Path(arguments[arguments.index("--output-file") + 1]).write_text(content, encoding="utf-8")
+                stderr.write("bad Ruff report")
+                return mock.Mock(returncode=1)
+
+            with (
+                self.subTest(report=report),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                self.assertRaisesRegex(GateError, "exited 1 with a malformed JSON report: bad Ruff report"),
+            ):
+                ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
+
     def test_exit_code_two_raises_gate_error_with_stderr(self):
         """Exit code 2 raises GateError carrying stderr text."""
         def fake_run(arguments, **kwargs):
