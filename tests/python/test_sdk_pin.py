@@ -39,13 +39,32 @@ def drift(script, versions):
             problems.append(f"{name} image {image} is not a release pinned by digest")
         elif pinned[1] != versions[name]:
             problems.append(f"{name} image carries {pinned[1]}, the toolchain needs {versions[name]}")
-    if "COPY --from=runtime /usr/share/dotnet/shared/ /usr/share/dotnet/shared/" not in script:
+    if "'COPY --from=runtime /usr/share/dotnet/shared/ /usr/share/dotnet/shared/'" not in script:
         problems.append("the dotnet container does not copy the target runtime's shared frameworks")
-    if "$DOTNET_RUNTIME_IMAGE" not in IMAGE.sub("", script):
-        problems.append("the dotnet container never uses DOTNET_RUNTIME_IMAGE outside its assignment")
+    if '"FROM $DOTNET_RUNTIME_IMAGE AS runtime"' not in script:
+        problems.append("the dotnet container does not use DOTNET_RUNTIME_IMAGE as its runtime stage")
     memory = LIMIT.findall(script)
     if len(memory) != 1 or not 1 <= int(memory[0]) <= 4:
         problems.append(f"the container memory limit {memory} is not one value of at most 4g")
+    return problems
+
+
+def bot_capture_drift(script, matches):
+    """Return the missing or incorrect update captures for the script's image pins."""
+    pins = {}
+    for _, image in IMAGE.findall(script):
+        tagged, _, digest = image.partition("@")
+        name, _, version = tagged.rpartition(":")
+        pins[name] = (version, digest)
+    problems = []
+    for match in matches:
+        name = match.get("depName", "")
+        for group, pinned in zip(("currentValue", "currentDigest"), pins.get(name, ("", ""))):
+            value = match.get(group)
+            if not value:
+                problems.append(f"the update entry reads no {group} for {name}")
+            elif value != pinned:
+                problems.append(f"the update entry reads {group} {value!r} for {name} instead of the pinned {pinned!r}")
     return problems
 
 
@@ -54,17 +73,21 @@ def bot_drift(script, updates, major):
     managers = [entry for entry in updates["customManagers"] if entry["managerFilePatterns"] == ["/^tools/sdk\\.sh$/"]]
     if len(managers) != 1 or managers[0].get("datasourceTemplate") != "docker":
         return ["no single update entry reads the script's images"]
-    read = sorted(match["depName"] for match in re.finditer(managers[0]["matchStrings"][0].replace("(?<", "(?P<"), script))
+    regex = managers[0]["matchStrings"][0].replace("(?<", "(?P<")
+    matches = [match.groupdict("") for match in re.finditer(regex, script)]
+    read = sorted(match.get("depName", "") for match in matches)
+    problems = bot_capture_drift(script, matches)
     if read != ["mcr.microsoft.com/dotnet/aspnet", "mcr.microsoft.com/dotnet/sdk", "node"]:
-        return [f"the update entry reads {read}"]
+        return [f"the update entry reads {read}", *problems]
     grouped = [rule for rule in updates["packageRules"]
                if sorted(rule.get("matchFileNames", [])) == [".node-version", "global.json", "tools/sdk.sh"] and rule.get("groupName")]
     if len(grouped) != 1:
-        return ["no single rule puts the script and both version files into one pull request"]
+        return ["no single rule puts the script and both version files into one pull request", *problems]
     # The image registries give no release time; without this rule the three-day wait holds the images forever.
     timeless = [rule for rule in updates["packageRules"] if rule.get("matchFileNames") == ["tools/sdk.sh"]
                 and rule.get("matchDatasources") == ["docker"] and rule.get("minimumReleaseAgeBehaviour") == "timestamp-optional"]
-    problems = [] if len(timeless) == 1 else ["no rule lets the images move without a release time"]
+    if len(timeless) != 1:
+        problems.append("no rule lets the images move without a release time")
     held = [rule for rule in updates["packageRules"]
             if rule.get("matchPackageNames") == ["mcr.microsoft.com/dotnet/aspnet"]]
     pattern = f"/^{major}\\./"
@@ -98,6 +121,21 @@ class SdkPinTests(unittest.TestCase):
         changed = re.sub(r'aspnet:\d+\.\d+\.\d+@', "aspnet:" + versions["DOTNET_RUNTIME"] + ".0.0@", script)
         self.assertNotEqual(script, changed)
         self.assertEqual([], drift(changed, versions))
+
+    def test_runtime_stage_must_use_the_pinned_image(self):
+        """A runtime stage using another image fails even with references to the pin elsewhere."""
+        script = SCRIPT.read_text(encoding="utf-8")
+        changed = script.replace("FROM $DOTNET_RUNTIME_IMAGE AS runtime",
+                                 "FROM mcr.microsoft.com/dotnet/aspnet:9.0.0 AS runtime", 1)
+        self.assertNotEqual(script, changed)
+        self.assertNotEqual([], drift(changed, expected()))
+
+    def test_runtime_copy_must_be_active(self):
+        """A commented Dockerfile COPY does not install the shared frameworks."""
+        script = SCRIPT.read_text(encoding="utf-8")
+        changed = script.replace("'COPY --from=runtime", "'# COPY --from=runtime", 1)
+        self.assertNotEqual(script, changed)
+        self.assertNotEqual([], drift(changed, expected()))
 
     def test_an_older_an_unpinned_a_missing_image_and_a_larger_limit_are_drift(self):
         """Planted image, layer and resource drift must each be rejected."""
@@ -146,6 +184,32 @@ class SdkPinTests(unittest.TestCase):
             with self.subTest(label):
                 self.assertNotEqual(UPDATES, changed)
                 self.assertNotEqual([], bot_drift(script, changed, major))
+
+    def test_update_bot_requires_complete_pin_captures(self):
+        """Each image needs both named captures with the full value from its pin."""
+        script = SCRIPT.read_text(encoding="utf-8")
+        major = expected()["DOTNET_RUNTIME"]
+        managers = UPDATES["customManagers"]
+        manager, = (entry for entry in managers if entry["managerFilePatterns"] == ["/^tools/sdk\\.sh$/"])
+        pattern = manager["matchStrings"][0]
+        partials = {
+            "currentValue": pattern.replace("(?<currentValue>[0-9]+", "(?<currentValue>[0-9])(?:[0-9]*"),
+            "currentDigest": pattern.replace("[a-f0-9]{64})", "[a-f0-9]{63})[a-f0-9]"),
+        }
+        for group, partial in partials.items():
+            capture = f"(?<{group}>"
+            for label, changed in {
+                "missing": pattern.replace(capture, "(?:"),
+                "empty": pattern.replace(capture, capture + ")(?:"),
+                "partial": partial,
+            }.items():
+                with self.subTest(group=group, mutation=label):
+                    self.assertNotEqual(pattern, changed)
+                    updates = {**UPDATES, "customManagers": [
+                        {**entry, "matchStrings": [changed]} if entry is manager else entry for entry in managers]}
+                    problems = bot_drift(script, updates, major)
+                    self.assertEqual(3, len(problems), problems)
+                    self.assertTrue(all(group in problem for problem in problems), problems)
 
 
 if __name__ == "__main__":
