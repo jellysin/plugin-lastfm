@@ -1,7 +1,7 @@
 """The Semgrep gate reads one pinned release, scans only source suffixes and knows which planted lines to expect."""
 
 import contextlib
-from datetime import date
+from datetime import date, timedelta
 import io
 import unittest
 from unittest import mock
@@ -25,6 +25,10 @@ from tools.semgrep_gate import (
 EXPECTED_AUDIT_RULES = (
     "r/python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit",
 )
+# The day after the committed common.py exception expires, so a renewal does not need a test edit.
+AFTER_COMMITTED_EXPIRY = date.fromisoformat(
+    EXCEPTIONS[(".config/lefthook/scripts/common.py", AUDIT_RULE)].expires
+) + timedelta(days=1)
 
 
 class PinTests(unittest.TestCase):
@@ -230,7 +234,7 @@ class MainTests(unittest.TestCase):
 
     def test_main_fails_on_an_expired_exception(self):
         """main returns 1 and names the entry when an exception has expired."""
-        status, fake_run, stderr = self.main_with([], date(2026, 11, 21))
+        status, fake_run, stderr = self.main_with([], AFTER_COMMITTED_EXPIRY)
         self.assertEqual(status, 1)
         fake_run.assert_not_called()
         self.assertIn(".config/lefthook/scripts/common.py", stderr)
@@ -261,7 +265,7 @@ class MainTests(unittest.TestCase):
 
     def test_self_test_fails_on_an_expired_exception(self):
         """main with --self-test returns 1 and never calls run when an exception has expired."""
-        status, fake_run, stderr = self.main_with(["--self-test"], date(2026, 11, 21))
+        status, fake_run, stderr = self.main_with(["--self-test"], AFTER_COMMITTED_EXPIRY)
         self.assertEqual(status, 1)
         fake_run.assert_not_called()
         self.assertIn(".config/lefthook/scripts/common.py", stderr)

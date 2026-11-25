@@ -40,10 +40,10 @@ class Exemption(NamedTuple):
 
 EXCEPTIONS = {
     (".config/lefthook/scripts/common.py", AUDIT_RULE): Exemption(
-        "2026-11-20",
+        "2026-12-05",
         "C",
-        "2026-11-10",
-        "Praetor renders this hook runner; it starts argv lists without a shell",
+        "2026-11-25",
+        "Praetor renders this digest-pinned hook runner; it starts argv lists without a shell (praetor#1854)",
         lines=(281, 334),
     ),
 }
