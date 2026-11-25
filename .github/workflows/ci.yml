@@ -274,6 +274,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # Semgrep and Ruff use Python 3.14 (SEMGREP_PYTHON in tools/semgrep_gate.py) so pipx can use PATH and skip the unauthenticated GitHub API.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
       # The checkout fetches every branch; only the history of the commit under test is scanned.
       - name: No secret in the history (gitleaks)
         env:
