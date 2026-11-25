@@ -222,6 +222,23 @@ class LauncherTests(unittest.TestCase):
 class RunTests(unittest.TestCase):
     """The run helper runs Ruff check, bounds its report size and captures stderr on failure."""
 
+    def test_launcher_failure_without_json_includes_exit_code_and_stderr(self):
+        """Exit code 1 with an absent or invalid report preserves the launcher error."""
+        for report in (None, "not JSON"):
+            def fake_run(arguments, *, stderr, content=report, **kwargs):
+                """Return exit code 1 and optionally leave an invalid report."""
+                if content is not None:
+                    Path(arguments[arguments.index("--output-file") + 1]).write_text(content, encoding="utf-8")
+                stderr.write("pipx: API rate limit exceeded")
+                return mock.Mock(returncode=1)
+
+            with (
+                self.subTest(report=report),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                self.assertRaisesRegex(GateError, "exited 1 without a JSON report: pipx: API rate limit exceeded"),
+            ):
+                ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
+
     def test_oversized_report_raises_gate_error(self):
         """A report file larger than MAX_REPORT_BYTES raises GateError."""
         def fake_run(arguments, **kwargs):
@@ -235,6 +252,22 @@ class RunTests(unittest.TestCase):
             self.assertRaisesRegex(GateError, "exceeds the limit of 10 bytes"),
         ):
             ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
+
+    def test_rejects_malformed_json_reports_with_stderr(self):
+        """Valid JSON with an unexpected report shape preserves the scanner error."""
+        for report in ("{}", "[1]"):
+            def fake_run(arguments, *, stderr, content=report, **kwargs):
+                """Write a malformed report and return exit code 1."""
+                Path(arguments[arguments.index("--output-file") + 1]).write_text(content, encoding="utf-8")
+                stderr.write("bad Ruff report")
+                return mock.Mock(returncode=1)
+
+            with (
+                self.subTest(report=report),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                self.assertRaisesRegex(GateError, "exited 1 with a malformed JSON report: bad Ruff report"),
+            ):
+                ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
 
     def test_exit_code_two_raises_gate_error_with_stderr(self):
         """Exit code 2 raises GateError carrying stderr text."""

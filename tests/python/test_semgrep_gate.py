@@ -3,6 +3,8 @@
 import contextlib
 from datetime import date, timedelta
 import io
+import re
+import sys
 import unittest
 from unittest import mock
 
@@ -29,6 +31,92 @@ EXPECTED_AUDIT_RULES = (
 AFTER_COMMITTED_EXPIRY = date.fromisoformat(
     EXCEPTIONS[(".config/lefthook/scripts/common.py", AUDIT_RULE)].expires
 ) + timedelta(days=1)
+CI = ROOT / ".github" / "workflows" / "ci.yml"
+SEMGREP_SELF_TEST = "          python3 tools/semgrep_gate.py --self-test"
+RUFF_SELF_TEST = "          python3 tools/ruff_gate.py --self-test"
+
+
+def scanners_python_problems(workflow: str) -> list[str]:
+    """Check that the scanners job puts the launcher Python on PATH before both scanners."""
+    job = re.search(r"^  scanners:$", workflow, re.MULTILINE)
+    if job is None:
+        return ["missing scanners job"]
+    scanners = re.split(r"^  [a-z][a-z0-9_-]*:$", workflow[job.end():], maxsplit=1, flags=re.MULTILINE)[0]
+    steps = re.split(r"^      - ", scanners, flags=re.MULTILINE)[1:]
+    setup = next(
+        (
+            (index, step)
+            for index, step in enumerate(steps)
+            if re.search(r"^(?:        )?uses: actions/setup-python@", step, re.MULTILINE)
+        ),
+        None,
+    )
+    if setup is None:
+        return ["scanners job is missing actions/setup-python"]
+    setup_index, setup_step = setup
+    version = re.search(r"^          python-version:([^#\n]+)", setup_step, re.MULTILINE)
+    if version is None or version[1].strip().strip("\"'") != semgrep_gate.SEMGREP_PYTHON:
+        return [f"scanners setup-python must use Python {semgrep_gate.SEMGREP_PYTHON}"]
+    problems = []
+    for scanner, command in (("Semgrep", SEMGREP_SELF_TEST), ("Ruff", RUFF_SELF_TEST)):
+        self_tests = [index for index, step in enumerate(steps) if command in step.splitlines()]
+        if not self_tests or any(index <= setup_index for index in self_tests):
+            problems.append(f"scanners setup-python must run before the {scanner} self-test")
+    return problems
+
+
+class ScannersPythonTests(unittest.TestCase):
+    def test_committed_workflow_sets_up_the_launcher_python(self):
+        """The committed workflow sets up the scanner interpreter before both self-tests."""
+        self.assertEqual(scanners_python_problems(CI.read_text(encoding="utf-8")), [])
+
+    def test_refuses_missing_wrong_or_late_setup(self):
+        """Removing, changing or moving the setup step each produces a problem."""
+        workflow = CI.read_text(encoding="utf-8")
+        setup = re.compile(
+            r"^      - uses: actions/setup-python@[^\n]+\n        with:\n          python-version:[^\n]+\n",
+            re.MULTILINE,
+        ).search(workflow, workflow.index("\n  scanners:\n"))
+        self.assertIsNotNone(setup)
+        without_setup = workflow[:setup.start()] + workflow[setup.end():]
+        semgrep_end = without_setup.index("\n      - ", without_setup.index(SEMGREP_SELF_TEST)) + 1
+        cases = {
+            "missing actions/setup-python": without_setup,
+            f"must use Python {semgrep_gate.SEMGREP_PYTHON}": (
+                workflow[:setup.start()] + setup[0].replace(semgrep_gate.SEMGREP_PYTHON, "3.13") + workflow[setup.end():]
+            ),
+            "must run before the Semgrep self-test": (
+                without_setup[:semgrep_end] + setup[0] + without_setup[semgrep_end:]
+            ),
+        }
+        for problem, changed in cases.items():
+            with self.subTest(problem=problem):
+                self.assertNotEqual(workflow, changed)
+                self.assertIn(problem, " ".join(scanners_python_problems(changed)))
+
+    def test_refuses_ruff_steps_before_setup(self):
+        """Moving or copying the Ruff step before setup-python produces a problem."""
+        workflow = CI.read_text(encoding="utf-8")
+        scanners_start = workflow.index("\n  scanners:\n")
+        setup_start = workflow.index("\n      - uses: actions/setup-python@", scanners_start)
+        ruff_start = workflow.rindex("\n      - ", scanners_start, workflow.index(RUFF_SELF_TEST, scanners_start))
+        ruff_end = workflow.find("\n      - ", workflow.index(RUFF_SELF_TEST, ruff_start))
+        if ruff_end == -1:
+            ruff_end = len(workflow)
+        ruff_step = workflow[ruff_start:ruff_end]
+        for case, suffix in (("moved", workflow[ruff_end:]), ("copied", workflow[ruff_start:])):
+            with self.subTest(case=case):
+                changed = workflow[:setup_start] + ruff_step + workflow[setup_start:ruff_start] + suffix
+                self.assertIn("must run before the Ruff self-test", " ".join(scanners_python_problems(changed)))
+
+    def test_refuses_missing_scanner_self_test(self):
+        """Each scanner must have a self-test step."""
+        workflow = CI.read_text(encoding="utf-8")
+        for scanner, command in (("Semgrep", SEMGREP_SELF_TEST), ("Ruff", RUFF_SELF_TEST)):
+            with self.subTest(scanner=scanner):
+                changed = workflow.replace(command + "\n", "")
+                self.assertNotEqual(workflow, changed)
+                self.assertIn(f"must run before the {scanner} self-test", " ".join(scanners_python_problems(changed)))
 
 
 class PinTests(unittest.TestCase):
@@ -83,6 +171,40 @@ class LauncherTests(unittest.TestCase):
     def test_fails_without_a_launcher(self):
         with mock.patch.object(semgrep_gate.shutil, "which", return_value=None), self.assertRaises(GateError):
             launcher("1.2.3")
+
+
+class RunTests(unittest.TestCase):
+    def test_launcher_failure_without_json_includes_exit_code_and_stderr(self):
+        """Exit code 1 with empty stdout preserves the launcher error."""
+        completed = semgrep_gate.subprocess.CompletedProcess([], 1, stdout="", stderr="pipx: API rate limit exceeded")
+        with (
+            mock.patch.object(semgrep_gate.subprocess, "run", return_value=completed),
+            self.assertRaisesRegex(GateError, "exited 1 without a JSON report: pipx: API rate limit exceeded"),
+        ):
+            semgrep_gate.run(["semgrep"], ["tools/semgrep_gate.py"], ())
+
+    def test_rejects_malformed_json_reports_with_stderr(self):
+        """Valid JSON with an unexpected report shape preserves the scanner error."""
+        reports = (
+            "[]", "{}", '{"results": {}}', '{"results": [], "errors": "x"}',
+            '{"results": [1]}', '{"results": [], "errors": [1]}',
+        )
+        for report in reports:
+            completed = semgrep_gate.subprocess.CompletedProcess([], 1, stdout=report, stderr="bad Semgrep report")
+            with (
+                self.subTest(report=report),
+                mock.patch.object(semgrep_gate.subprocess, "run", return_value=completed),
+                self.assertRaisesRegex(GateError, "exited 1 with a malformed JSON report: bad Semgrep report"),
+            ):
+                semgrep_gate.run(["semgrep"], ["tools/semgrep_gate.py"], ())
+
+    def test_invalid_utf8_stdout_preserves_stderr(self):
+        """Invalid subprocess stdout bytes reach the existing missing-report error."""
+        command = [
+            sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe'); sys.stderr.write('bad bytes')",
+        ]
+        with self.assertRaisesRegex(GateError, "exited 0 without a JSON report: bad bytes"):
+            semgrep_gate.run(command, ["tools/semgrep_gate.py"], ())
 
 
 class PlantedTests(unittest.TestCase):
