@@ -21,7 +21,5 @@ select = [
 
 # Each exception names one file and its codes; tools/ruff_gate.py fails once the date on the line above has passed.
 [lint.per-file-ignores]
-# expires 2026-11-20 (MEL C, entered 2026-11-10): Praetor renders this hook runner; it starts argv lists without a shell
+# expires 2026-12-05 (MEL C, entered 2026-11-25): Praetor renders this digest-pinned hook runner; it starts argv lists without a shell (praetor#1854)
 ".config/lefthook/scripts/common.py" = ["S603", "S607"]
-# expires 2026-11-20 (MEL C, entered 2026-11-10): Praetor renders this hook script with a shebang at mode 100644
-".config/lefthook/scripts/checkpoint.py" = ["EXE001"]

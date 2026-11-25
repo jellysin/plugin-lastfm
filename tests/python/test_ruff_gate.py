@@ -277,6 +277,8 @@ class MainTests(unittest.TestCase):
             mock.patch.object(ruff_gate, "launcher", return_value=["ruff"]),
             mock.patch.object(ruff_gate, "run", return_value=fake_findings),
             mock.patch.object(ruff_gate, "scanned", return_value=["a.py"]),
+            # Exception expiry has its own tests; this one must not read the clock.
+            mock.patch.object(ruff_gate, "exception_problems", return_value=[]),
             mock.patch("sys.stderr", stderr),
         ):
             status = ruff_gate.main(["a.py"])
