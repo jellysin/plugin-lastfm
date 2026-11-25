@@ -211,7 +211,9 @@
         "github.com/cordanaLLM/praetor/**",
         "github.com/cordanaLLM/praetor/cmd/standardsctl",
         "cordanaLLM/praetor",
-        "cordanaLLM/praetor/**"
+        "cordanaLLM/praetor/**",
+        "tekmora/praetor",
+        "tekmora/praetor/**"
       ],
       "enabled": false
     }

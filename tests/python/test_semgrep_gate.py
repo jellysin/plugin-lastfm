@@ -27,10 +27,14 @@ from tools.semgrep_gate import (
 EXPECTED_AUDIT_RULES = (
     "r/python.lang.security.audit.dangerous-subprocess-use-audit.dangerous-subprocess-use-audit",
 )
-# The day after the committed common.py exception expires, so a renewal does not need a test edit.
-AFTER_COMMITTED_EXPIRY = date.fromisoformat(
-    EXCEPTIONS[(".config/lefthook/scripts/common.py", AUDIT_RULE)].expires
-) + timedelta(days=1)
+COMMON = ".config/lefthook/scripts/common.py"
+# The committed common.py exception: its expiry and lines come from tools/semgrep_gate.py, so a renewal or a
+# re-adoption that moves the excepted calls does not need a test edit.
+COMMON_EXEMPTION = EXCEPTIONS[(COMMON, AUDIT_RULE)]
+FIRST_LINE, SECOND_LINE = COMMON_EXEMPTION.lines
+# A common.py line the exception does not name.
+UNEXCEPTED_LINE = FIRST_LINE + 1
+AFTER_COMMITTED_EXPIRY = date.fromisoformat(COMMON_EXEMPTION.expires) + timedelta(days=1)
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 SEMGREP_SELF_TEST = "          python3 tools/semgrep_gate.py --self-test"
 RUFF_SELF_TEST = "          python3 tools/ruff_gate.py --self-test"
@@ -268,17 +272,25 @@ class ExceptionTests(unittest.TestCase):
         """The committed EXCEPTIONS give no problem on 2026-11-10."""
         self.assertEqual(exception_problems(EXCEPTIONS, date(2026, 11, 10)), [])
 
+    def test_common_exemption_lines_start_the_excepted_calls(self):
+        """Each excepted common.py line starts a Popen call, so a re-adoption that moves the calls fails here."""
+        source = (ROOT / COMMON).read_text(encoding="utf-8").splitlines()
+        for line in COMMON_EXEMPTION.lines:
+            with self.subTest(line=line):
+                text = source[line - 1] if 0 < line <= len(source) else "<past end of file>"
+                self.assertIn("subprocess.Popen(", text, f"{COMMON}:{line} is no Popen call: {text.strip()!r}")
+
     def test_excepted_matches_relative_and_absolute_paths(self):
         """excepted is true for relative path and absolute path under ROOT."""
         rel_finding = {
             "path": ".config/lefthook/scripts/common.py",
             "check_id": AUDIT_RULE,
-            "start": {"line": 281},
+            "start": {"line": FIRST_LINE},
         }
         abs_finding = {
             "path": str(ROOT / ".config/lefthook/scripts/common.py"),
             "check_id": AUDIT_RULE,
-            "start": {"line": 334},
+            "start": {"line": SECOND_LINE},
         }
         self.assertTrue(excepted(rel_finding, EXCEPTIONS))
         self.assertTrue(excepted(abs_finding, EXCEPTIONS))
@@ -288,12 +300,12 @@ class ExceptionTests(unittest.TestCase):
         other_rule = {
             "path": ".config/lefthook/scripts/common.py",
             "check_id": "other.rule",
-            "start": {"line": 281},
+            "start": {"line": FIRST_LINE},
         }
         other_file = {
             "path": "tools/semgrep_gate.py",
             "check_id": AUDIT_RULE,
-            "start": {"line": 281},
+            "start": {"line": FIRST_LINE},
         }
         self.assertFalse(excepted(other_rule, EXCEPTIONS))
         self.assertFalse(excepted(other_file, EXCEPTIONS))
@@ -366,7 +378,7 @@ class MainTests(unittest.TestCase):
         excepted_finding = {
             "path": ".config/lefthook/scripts/common.py",
             "check_id": AUDIT_RULE,
-            "start": {"line": 281},
+            "start": {"line": FIRST_LINE},
             "extra": {"message": "dangerous subprocess call"},
         }
         active_finding = {
@@ -393,17 +405,17 @@ class MainTests(unittest.TestCase):
         self.assertIn(".config/lefthook/scripts/common.py", stderr)
 
     def test_main_drops_excepted_line_and_reports_unexcepted_line(self):
-        """main drops the common.py finding at line 281 but reports a common.py finding at line 300."""
+        """main drops a common.py finding on an excepted line and reports one on a line the exception omits."""
         excepted_finding = {
             "path": ".config/lefthook/scripts/common.py",
             "check_id": AUDIT_RULE,
-            "start": {"line": 281},
+            "start": {"line": FIRST_LINE},
             "extra": {"message": "dangerous subprocess call"},
         }
         active_finding = {
             "path": ".config/lefthook/scripts/common.py",
             "check_id": AUDIT_RULE,
-            "start": {"line": 300},
+            "start": {"line": UNEXCEPTED_LINE},
             "extra": {"message": "dangerous subprocess call"},
         }
         status, _, output = self.main_with(
@@ -413,8 +425,8 @@ class MainTests(unittest.TestCase):
             targets=[".config/lefthook/scripts/common.py"],
         )
         self.assertEqual(status, 1)
-        self.assertNotIn(":281:", output)
-        self.assertIn(".config/lefthook/scripts/common.py:300:", output)
+        self.assertNotIn(f":{FIRST_LINE}:", output)
+        self.assertIn(f"{COMMON}:{UNEXCEPTED_LINE}:", output)
 
     def test_self_test_arguments_include_local_and_audit_rules_without_packs(self):
         """self_test invokes semgrep with local rules and audit rule but without registry packs."""

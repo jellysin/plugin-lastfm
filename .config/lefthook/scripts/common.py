@@ -22,6 +22,97 @@ class HookError(Exception):
     """An actionable local gate failure."""
 
 
+# The bootstrap and failure diagnostics use the same repository-owned Lefthook pin.
+LEFTHOOK_MODULE = "tools/lefthook"
+LEFTHOOK = "github.com/evilmartians/lefthook/v2"
+# Versions come from tool-floors.txt; Go tools retain their repository-owned pins.
+TOOL_RESTORES = {
+    "actionlint": "go install github.com/rhysd/actionlint/cmd/actionlint@v{floor}",
+    "yamllint": "{python} -m pip install --require-hashes -r .config/hook-lint/requirements.txt",
+    "shellcheck": (
+        "download shellcheck v{floor} for your platform from "
+        "https://github.com/koalaman/shellcheck/releases"
+    ),
+    "hadolint": (
+        "install hadolint from a system package or "
+        "https://github.com/hadolint/hadolint/releases"
+    ),
+    "lefthook": "go -C {module} install " + LEFTHOOK,
+    "gosec": (
+        "go -C {root_q} install -modfile=tools/go/go.mod "
+        "github.com/securego/gosec/v2/cmd/gosec"
+    ),
+    "govulncheck": (
+        "go -C {root_q} install -modfile=tools/go/go.mod "
+        "golang.org/x/vuln/cmd/govulncheck"
+    ),
+}
+
+
+def _shell_quote_path(value):
+    """Quote a restore path for Command Prompt on Windows or the POSIX shell."""
+    text = str(value)
+    if os.name == "nt":
+        return '"' + text + '"'
+    return "'" + text.replace("'", "'\"'\"'") + "'"
+
+
+def _module_restore_template(name, template, root, module):
+    """Prefix the restore of a missing tools module before the install command that needs it."""
+    if name == "lefthook" and not (module / "go.mod").is_file():
+        module_file = "tools/lefthook/go.mod"
+    elif (
+        "-modfile=tools/go/go.mod" in (template or "")
+        and not (root / "tools/go/go.mod").is_file()
+    ):
+        module_file = "tools/go/go.mod"
+    else:
+        return template
+    return (
+        f"restore {module_file} from version control (git restore -- {module_file}) "
+        "and run: "
+        + template
+        + "; or install {name} at the floor in .config/lefthook/tool-floors.txt"
+    )
+
+
+def missing_tool_line(name, root=None, *, reason=None, floor=None):
+    """Name the tool's failure and its restore source, keeping a supplied reason first."""
+    template = TOOL_RESTORES.get(name)
+    root = Path(__file__).resolve().parents[3] if root is None else Path(root)
+    module = root / LEFTHOOK_MODULE
+    template = _module_restore_template(name, template, root, module)
+    if template is None or ("{floor}" in template and floor is None):
+        template = (
+            "read .config/lefthook/tool-floors.txt and install {name} for your platform"
+        )
+    quoted = {
+        key: _shell_quote_path(value)
+        for key, value in {
+            "module": module,
+            "python": sys.executable,
+            "root_q": root,
+        }.items()
+    }
+    restore = template.format(
+        name=name,
+        floor=floor,
+        root=root,
+        **quoted,
+    )
+    reason = reason or (
+        f"Praetor: {name} not found on PATH; shared hook policy cannot run, call refused"
+    )
+    version = "version" if name == "lefthook" else "--version"
+    return f"{reason}. Restore: {restore}; read-back: {name} {version}"
+
+
+def require_tool(name):
+    """Fail before starting a shared job when its tool is unavailable."""
+    if shutil.which(name) is None:
+        raise HookError(missing_tool_line(name))
+
+
 KILL_TREE_TIMEOUT = 10
 # The praetor CLI runs each git or go command in a process group of its own. Asked to stop by a
 # catchable signal, it forwards that signal to each command's group, waits up to its
@@ -181,6 +272,7 @@ class _SharedBound:
     """Output two reader threads collect under one byte limit."""
 
     def __init__(self, maximum):
+        """Initialize the shared output buffers and reader synchronization state."""
         self.maximum = maximum
         self.output = {"stdout": bytearray(), "stderr": bytearray()}
         self.total = 0
@@ -200,12 +292,14 @@ class _SharedBound:
             return True
 
     def finish(self):
+        """Record a completed reader and wake the output collector."""
         with self.changed:
             self.finished += 1
             self.changed.notify_all()
 
 
 def _drain(stream, key, bound):
+    """Drain one process stream into the shared bounded output buffer."""
     # Every read consumes at least one byte or observes EOF, so maximum + 2 reads is enough.
     try:
         for _ in range(bound.maximum + 2):
@@ -216,6 +310,13 @@ def _drain(stream, key, bound):
         return  # The pipe closed because the process was stopped.
     finally:
         bound.finish()
+
+
+def _command_timeout(args, timeout):
+    """Name the original limit and bounded command words, excluding directory paths."""
+    words = [str(word).replace("\\", "/").rsplit("/", 1)[-1][:80] for word in args[:4]]
+    command = " ".join(words)[:240]
+    return HookError(f"checkpoint command timed out after {timeout:g} s: {command}")
 
 
 def _bounded_output_threaded(process, timeout, maximum):
@@ -239,12 +340,13 @@ def _bounded_output_threaded(process, timeout, maximum):
         if bound.exceeded:
             raise HookError("checkpoint command output exceeded its byte limit")
         if not done:
-            raise HookError("checkpoint command timed out")
+            raise _command_timeout(process.args, timeout)
     process.wait(timeout=max(0.001, deadline - time.monotonic()))
     return bytes(bound.output["stdout"])
 
 
 def _bounded_output(process, timeout, maximum):
+    """Collect process output within a shared byte limit and deadline."""
     if os.name == "nt":
         return _bounded_output_threaded(process, timeout, maximum)
     deadline = time.monotonic() + timeout
@@ -260,10 +362,10 @@ def _bounded_output(process, timeout, maximum):
                 return bytes(output["stdout"])
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise HookError("checkpoint command timed out")
+                raise _command_timeout(process.args, timeout)
             events = selector.select(remaining)
             if not events:
-                raise HookError("checkpoint command timed out")
+                raise _command_timeout(process.args, timeout)
             for key, _mask in events:
                 chunk = os.read(key.fileobj.fileno(), min(65536, maximum - total + 1))
                 if not chunk:
@@ -319,9 +421,16 @@ def run_bounded(
                 )
             return stdout
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise HookError(
-            f"{args[0]} checkpoint process failed ({type(error).__name__})"
-        ) from error
+        raise _process_error(args, timeout, error) from error
+
+
+def _process_error(args, timeout, error):
+    """The HookError run_bounded raises for a spawn or wait failure of args."""
+    if isinstance(error, subprocess.TimeoutExpired):
+        return _command_timeout(args, timeout)
+    if isinstance(error, FileNotFoundError) and error.filename == "lefthook":
+        return HookError(missing_tool_line("lefthook"))
+    return HookError(f"{args[0]} checkpoint process failed ({type(error).__name__})")
 
 
 def run(
@@ -426,6 +535,7 @@ class HookBudget:
     """
 
     def __init__(self, seconds):
+        """Set the monotonic deadline shared by this hook's commands."""
         self.expires = time.monotonic() + seconds
 
     def timeout(self, cap):
@@ -448,6 +558,7 @@ def refuse_after(seconds, refuse):
     """
 
     def expire():
+        """Refuse the hook when its wall-clock watchdog expires."""
         code = refuse()
         if code is not None:
             os._exit(code)
@@ -532,10 +643,12 @@ def session_root(root, cwd, budget):
 
 
 def paths(raw):
+    """Decode nonempty filesystem paths from NUL-separated Git output."""
     return [os.fsdecode(item) for item in raw.split(b"\0") if item]
 
 
 def changed(base, head="HEAD"):
+    """List paths changed between the selected Git revisions."""
     return paths(git("diff", "--name-only", "-z", "--no-renames", base, head, "--"))
 
 
@@ -565,6 +678,7 @@ def index_env():
 
 
 def clean_env():
+    """Remove inherited repository selection from the hook's index environment."""
     env = index_env()
     for key in (
         "GIT_DIR",
@@ -589,6 +703,7 @@ def clean_env():
 SNAPSHOT_PREFIX = "praetor-hook-"
 SNAPSHOT_STALE_S = 3 * 60 * 60
 MAX_STALE_SNAPSHOTS = 256
+MAX_SNAPSHOT_REFS = 4096
 
 
 def _writable_retry(function, path, _exc):
@@ -658,6 +773,24 @@ def _export_index(dest, env):
     run(["git", "init", "--quiet", str(dest)], env=env)
 
 
+def _snapshot_ref_updates(refs):
+    """Build one Git stdin transaction, refusing remote refs beyond the snapshot bound."""
+    entries = refs.decode().splitlines()
+    if len(entries) > MAX_SNAPSHOT_REFS:
+        raise HookError(f"origin exceeds {MAX_SNAPSHOT_REFS} remote-tracking refs")
+    updates = []
+    for line in entries[:MAX_SNAPSHOT_REFS]:
+        fields = line.split(maxsplit=2)
+        if len(fields) != 2:
+            raise HookError(
+                f"origin snapshot (limit {MAX_SNAPSHOT_REFS} remote-tracking refs): "
+                f"malformed ref line {line[:200]!r}"
+            )
+        oid, name = fields
+        updates.append(f"update {name} {oid}\n")
+    return "".join(updates).encode()
+
+
 def _export_commit(dest, ref, env):
     """Clone this repository into dest with origin and its refs, detached at ref."""
     source = git("rev-parse", "--show-toplevel", env=env).decode().strip()
@@ -676,12 +809,12 @@ def _export_commit(dest, ref, env):
         "refs/remotes/origin/",
         env=env,
     )
+    updates = _snapshot_ref_updates(refs)
     run([*SNAPSHOT_CLONE, source, str(dest)], env=env)
     if origin:
         run(["git", "remote", "add", "origin", origin], cwd=dest, env=env)
-    for line in refs.decode().splitlines():
-        oid, name = line.split()
-        run(["git", "update-ref", name, oid], cwd=dest, env=env)
+    if updates:
+        run(["git", "update-ref", "--stdin"], cwd=dest, env=env, data=updates)
     run(
         ["git", *SNAPSHOT_GIT_CONFIG, "checkout", "--quiet", "--detach", ref],
         cwd=dest,
@@ -690,6 +823,7 @@ def _export_commit(dest, ref, env):
 
 
 def present_files(directory, names):
+    """Select existing regular files while refusing changed symbolic links."""
     files = []
     for name in names:
         path = directory / name
@@ -730,6 +864,7 @@ def _git_common_dir(root, budget):
     raw = run_bounded(
         ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
         cwd=root,
+        env=clean_env(),
         timeout=budget.timeout(SESSION_GIT_TIMEOUT),
         max_output=SESSION_GIT_OUTPUT,
         grace=SESSION_GIT_GRACE,
@@ -742,6 +877,7 @@ def _listed_worktrees(root, budget):
     raw = run_bounded(
         ["git", "worktree", "list", "--porcelain", "-z"],
         cwd=root,
+        env=clean_env(),
         timeout=budget.timeout(SESSION_GIT_TIMEOUT),
         max_output=SESSION_INPUT_LIMIT,
         grace=SESSION_GIT_GRACE,
@@ -836,6 +972,7 @@ def _read_session_record(record_file):
         if isinstance(data, list):
             return {str(Path(p).resolve()) for p in data if isinstance(p, str)}
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        # Missing or malformed optional session records contribute no worktree paths.
         pass
     return set()
 
@@ -859,6 +996,7 @@ def _write_session_record(sessions_dir, record_file, paths):
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:
+                # Best-effort cleanup must preserve the original atomic-write failure.
                 pass
 
 

@@ -44,7 +44,7 @@ EXCEPTIONS = {
         "C",
         "2026-11-25",
         "Praetor renders this digest-pinned hook runner; it starts argv lists without a shell (praetor#1854)",
-        lines=(281, 334),
+        lines=(383, 443),
     ),
 }
 SUFFIXES = frozenset({".cs", ".js", ".mjs", ".cjs", ".ts", ".mts", ".py", ".yml", ".yaml"})

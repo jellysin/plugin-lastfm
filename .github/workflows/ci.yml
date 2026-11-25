@@ -10,7 +10,7 @@ permissions:
   contents: read
 env:
   # Engine the local Praetor hooks install and run (.config/lefthook/engine.sh).
-  PRAETOR_REF: "a6fc702c3b00d97bebeb99fc52900cf2fb259865"
+  PRAETOR_REF: "e0280ac6844747ac9da8f0d7741c4d4f036f7754"
 # A newer push replaces an older run only on a pull request. Main pushes,
 # dispatches and calls get a group of their own (the run id), so neither a
 # newer merge nor a queued third run cancels them and every merge keeps its
