@@ -11,7 +11,7 @@
 set -eu
 
 # The update bot keeps these with global.json and .node-version; tests/python/test_sdk_pin.py refuses drift.
-DOTNET_IMAGE="mcr.microsoft.com/dotnet/sdk:11.0.100@sha256:65f3c7c6a25a239ab3e6719f2896147e7b68242ff2d8818dd70498bde6ef8bea"
+DOTNET_IMAGE="mcr.microsoft.com/dotnet/sdk:11.0.100@sha256:2794448a07118a6eaf00f29ab5d2bf44928517ce5ff86505a63a69230374f599"
 # The SDK image carries only its own runtime. The plugin, its tests and the code policy run on the .NET release
 # of TargetFramework in Directory.Build.props, so the dotnet container adds this image's shared frameworks.
 # The update bot keeps it on that major.
