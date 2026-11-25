@@ -181,7 +181,12 @@ def run(command: list[str], targets: list[str], packs: tuple[str, ...]) -> list[
     )
     if result.returncode not in (0, 1):
         raise GateError(f"semgrep exited {result.returncode}: {result.stderr.strip()[-2000:]}")
-    report = json.loads(result.stdout)
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise GateError(
+            f"semgrep exited {result.returncode} without a JSON report: {result.stderr.strip()[-2000:]}"
+        ) from error
     errors = report.get("errors", [])
     fatal = [error for error in errors if error.get("level") != "warn"]
     if fatal:

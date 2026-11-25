@@ -222,6 +222,23 @@ class LauncherTests(unittest.TestCase):
 class RunTests(unittest.TestCase):
     """The run helper runs Ruff check, bounds its report size and captures stderr on failure."""
 
+    def test_launcher_failure_without_json_includes_exit_code_and_stderr(self):
+        """Exit code 1 with an absent or invalid report preserves the launcher error."""
+        for report in (None, "not JSON"):
+            def fake_run(arguments, *, stderr, content=report, **kwargs):
+                """Return exit code 1 and optionally leave an invalid report."""
+                if content is not None:
+                    Path(arguments[arguments.index("--output-file") + 1]).write_text(content, encoding="utf-8")
+                stderr.write("pipx: API rate limit exceeded")
+                return mock.Mock(returncode=1)
+
+            with (
+                self.subTest(report=report),
+                mock.patch("subprocess.run", side_effect=fake_run),
+                self.assertRaisesRegex(GateError, "exited 1 without a JSON report: pipx: API rate limit exceeded"),
+            ):
+                ruff_gate.run(["ruff"], ["tools/ruff_gate.py"])
+
     def test_oversized_report_raises_gate_error(self):
         """A report file larger than MAX_REPORT_BYTES raises GateError."""
         def fake_run(arguments, **kwargs):

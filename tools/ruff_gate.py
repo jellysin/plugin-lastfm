@@ -89,6 +89,14 @@ def exception_problems(text: str, today: date) -> list[str]:
     return problems
 
 
+def stderr_tail(path: Path) -> str:
+    """Read at most the last 2,000 bytes of Ruff stderr."""
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        handle.seek(max(size - 2000, 0))
+        return handle.read(2000).decode("utf-8", errors="replace").strip()
+
+
 def run(command: list[str], targets: list[str]) -> list[dict]:
     """Run Ruff on the targets and return its findings; fail on scan errors and unexpected exit codes."""
     if CONFIG.is_symlink() or not CONFIG.exists():
@@ -110,18 +118,17 @@ def run(command: list[str], targets: list[str]) -> list[dict]:
                 timeout=CHECK_TIMEOUT_SECONDS,
             )
         if result.returncode not in (0, 1):
-            stderr_size = stderr_path.stat().st_size
-            with open(stderr_path, "rb") as handle:
-                if stderr_size > 2000:
-                    handle.seek(stderr_size - 2000)
-                tail = handle.read(2000).decode("utf-8", errors="replace").strip()
-            raise GateError(f"ruff exited {result.returncode}: {tail}")
+            raise GateError(f"ruff exited {result.returncode}: {stderr_tail(stderr_path)}")
+        no_report = f"ruff exited {result.returncode} without a JSON report"
         if not report_path.is_file():
-            raise GateError("ruff produced no report file")
-        report_size = report_path.stat().st_size
-        if report_size > MAX_REPORT_BYTES:
-            raise GateError(f"ruff report size {report_size} exceeds the limit of {MAX_REPORT_BYTES} bytes")
-        return json.loads(report_path.read_text(encoding="utf-8"))
+            raise GateError(f"{no_report}: {stderr_tail(stderr_path)}")
+        try:
+            report_size = report_path.stat().st_size
+            if report_size > MAX_REPORT_BYTES:
+                raise GateError(f"ruff report size {report_size} exceeds the limit of {MAX_REPORT_BYTES} bytes")
+            return json.loads(report_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, IsADirectoryError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise GateError(f"{no_report}: {stderr_tail(stderr_path)}") from error
 
 
 def describe(finding: dict) -> str:
