@@ -1,5 +1,6 @@
 """The Semgrep gate reads one pinned release, scans only source suffixes and knows which planted lines to expect."""
 
+import ast
 import contextlib
 from datetime import date, timedelta
 import io
@@ -33,11 +34,24 @@ COMMON = ".config/lefthook/scripts/common.py"
 COMMON_EXEMPTION = EXCEPTIONS[(COMMON, AUDIT_RULE)]
 FIRST_LINE, SECOND_LINE = COMMON_EXEMPTION.lines
 # A common.py line the exception does not name.
-UNEXCEPTED_LINE = FIRST_LINE + 1
+UNEXCEPTED_LINE = max(COMMON_EXEMPTION.lines) + 1
 AFTER_COMMITTED_EXPIRY = date.fromisoformat(COMMON_EXEMPTION.expires) + timedelta(days=1)
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 SEMGREP_SELF_TEST = "          python3 tools/semgrep_gate.py --self-test"
 RUFF_SELF_TEST = "          python3 tools/ruff_gate.py --self-test"
+
+
+def subprocess_popen_lines(source: str) -> list[int]:
+    """Return the starting lines of subprocess.Popen calls in Python source."""
+    return [
+        node.lineno
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "Popen"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "subprocess"
+    ]
 
 
 def scanners_python_problems(workflow: str) -> list[str]:
@@ -273,12 +287,11 @@ class ExceptionTests(unittest.TestCase):
         self.assertEqual(exception_problems(EXCEPTIONS, date(2026, 11, 10)), [])
 
     def test_common_exemption_lines_start_the_excepted_calls(self):
-        """Each excepted common.py line starts a Popen call, so a re-adoption that moves the calls fails here."""
-        source = (ROOT / COMMON).read_text(encoding="utf-8").splitlines()
-        for line in COMMON_EXEMPTION.lines:
-            with self.subTest(line=line):
-                text = source[line - 1] if 0 < line <= len(source) else "<past end of file>"
-                self.assertIn("subprocess.Popen(", text, f"{COMMON}:{line} is no Popen call: {text.strip()!r}")
+        """The excepted lines equal the subprocess.Popen call lines of common.py."""
+        source = (ROOT / COMMON).read_text(encoding="utf-8")
+        configured_lines = sorted(COMMON_EXEMPTION.lines)
+        call_lines = sorted(subprocess_popen_lines(source))
+        self.assertEqual(configured_lines, call_lines, f"{COMMON}: configured lines {configured_lines}, parsed call lines {call_lines}")
 
     def test_excepted_matches_relative_and_absolute_paths(self):
         """excepted is true for relative path and absolute path under ROOT."""
