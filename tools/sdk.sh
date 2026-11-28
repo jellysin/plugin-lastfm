@@ -15,8 +15,8 @@ DOTNET_IMAGE="mcr.microsoft.com/dotnet/sdk:11.0.100@sha256:2794448a07118a6eaf00f
 # The SDK image carries only its own runtime. The plugin, its tests and the code policy run on the .NET release
 # of TargetFramework in Directory.Build.props, so the dotnet container adds this image's shared frameworks.
 # The update bot keeps it on that major.
-DOTNET_RUNTIME_IMAGE="mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:bfd912c83295ce66d4b706ebb8541b9f14259b0e76fbb88b2751f58ce2399d2e"
-NODE_IMAGE="node:26.13.1@sha256:e18c3ccdf7d71619990b0e85639f506e2028a95410999cab24cc373cbd10e0ac"
+DOTNET_RUNTIME_IMAGE="mcr.microsoft.com/dotnet/aspnet:10.0.15@sha256:aac50ceef10391e78a899e3d2ccd00bbafa2dcb56ccf4586cbccf00edb84fc21"
+NODE_IMAGE="node:26.13.1@sha256:f8e5d4bb28fa55c74f1345166a082a10b7c68f22304350c1ce0d18358ae94996"
 CPUS=4
 MEMORY=4g
 
